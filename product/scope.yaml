@@ -1,0 +1,141 @@
+# ============================================================================
+# PRODUCT SCOPE - Feature definitions for workflow generation
+# ============================================================================
+# This file defines what features exist and how they map to parallel tracks.
+# Used by: scripts/generate-workflows to create slice MDs
+# Updated by: Product owner / lead agent before development starts
+#
+# CHANGE RULES:
+#   - Features must have unique IDs (kebab-case)
+#   - Each feature must specify risk-tags and contract-refs
+#   - Dependencies must reference existing feature IDs
+#   - Track assignment determines parallel execution boundaries
+# ============================================================================
+
+version: "1.0"
+updated: "2024-01-01"
+
+# =============================================================================
+# TRACK DEFINITIONS
+# =============================================================================
+# Tracks execute in parallel after foundation + shell complete.
+# Features within a track execute sequentially (respecting depends-on).
+# Features across tracks execute in parallel (if no cross-track deps).
+
+tracks:
+
+  # ---------------------------------------------------------------------------
+  # TRACK A - Example: User-facing features
+  # ---------------------------------------------------------------------------
+  track-a:
+    name: "Track A"
+    description: "User-facing features and UI flows"
+    owner: null  # Assign agent ID when starting
+
+    features: []
+    # Example features (uncomment and modify):
+    #
+    # - id: user-auth-login
+    #   name: "User Login"
+    #   description: "Email/password login flow"
+    #   risk-tags: [security]
+    #   conflict-risk: low
+    #   depends-on: []
+    #   contract-refs:
+    #     reads:
+    #       - api-contract.yaml#/resources/users/endpoints/create-user
+    #       - db-schema.yaml#/entities/user
+    #       - policies.yaml#/auth
+    #     writes: []
+    #   acceptance-criteria:
+    #     - id: AC-001
+    #       desc: "User can log in with valid credentials"
+    #     - id: AC-002
+    #       desc: "Invalid credentials show error message"
+    #   file-hints:
+    #     create:
+    #       - src/features/auth/login.tsx
+    #       - src/features/auth/login.test.ts
+    #     modify:
+    #       - src/router/routes.ts
+    #
+    # - id: user-auth-logout
+    #   name: "User Logout"
+    #   description: "Session termination flow"
+    #   risk-tags: [security]
+    #   conflict-risk: low
+    #   depends-on: [user-auth-login]
+    #   contract-refs:
+    #     reads:
+    #       - api-contract.yaml#/resources/users
+    #       - db-schema.yaml#/entities/session
+    #     writes: []
+
+  # ---------------------------------------------------------------------------
+  # TRACK B - Example: Data/backend features
+  # ---------------------------------------------------------------------------
+  track-b:
+    name: "Track B"
+    description: "Data management and backend features"
+    owner: null  # Assign agent ID when starting
+
+    features: []
+    # Example features (uncomment and modify):
+    #
+    # - id: data-user-profile
+    #   name: "User Profile Management"
+    #   description: "View and edit user profile"
+    #   risk-tags: [data, ux]
+    #   conflict-risk: low
+    #   depends-on: []
+    #   contract-refs:
+    #     reads:
+    #       - api-contract.yaml#/resources/users/endpoints/get-user-by-id
+    #       - api-contract.yaml#/resources/users/endpoints/update-user
+    #       - db-schema.yaml#/entities/user
+    #     writes: []
+    #
+    # - id: data-audit-log
+    #   name: "Audit Log Viewer"
+    #   description: "Admin view of system audit trail"
+    #   risk-tags: [security, data]
+    #   conflict-risk: low
+    #   depends-on: []
+    #   contract-refs:
+    #     reads:
+    #       - db-schema.yaml#/entities/audit-log
+    #       - policies.yaml#/roles/admin
+    #     writes: []
+
+# =============================================================================
+# CROSS-TRACK DEPENDENCIES
+# =============================================================================
+# Define dependencies between features in different tracks.
+# These create synchronization points during parallel execution.
+
+cross-track-deps: []
+# Example:
+# - from: track-b/data-user-profile
+#   to: track-a/user-auth-login
+#   type: hard  # hard = blocking, soft = can proceed with stub
+#   reason: "Profile requires authenticated user context"
+
+# =============================================================================
+# FEATURE RISK TAGS REFERENCE
+# =============================================================================
+# security  - Touches auth, permissions, sensitive data
+# data      - Database writes, data integrity concerns
+# perf      - Performance-sensitive code paths
+# ux        - User-facing UI/UX changes
+# infra     - Infrastructure, CI/CD, deployment
+# unknown   - New territory, needs extra review
+
+# =============================================================================
+# WORKFLOW GENERATION NOTES
+# =============================================================================
+# When generate-workflows runs:
+# 1. Each feature becomes a slice MD in its track folder
+# 2. Slice IDs follow pattern: {track}-{NNN}-{feature-id}
+# 3. Dependencies are validated against slice-graph.yaml
+# 4. Contract-refs are validated against contracts/*.yaml
+# 5. File-hints seed the File Plan section (agent refines during execution)

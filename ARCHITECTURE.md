@@ -27,11 +27,13 @@ This section defines the non-negotiable rules that govern this repository.
 
 ### Forbidden Documentation Rule
 
-**Only two markdown files are allowed at repository root:**
+**Only these markdown files are allowed at repository root:**
 - `README.md` - Quick start and navigation
 - `ARCHITECTURE.md` - This constitution
+- `CHANGELOG.md` - Release history (when created)
 
-**Workflow markdown is allowed only under:**
+**Markdown is allowed in these directories:**
+- `product/**/*.md` - Product definition (brief, specs)
 - `workflows/**/*.md` - Agent-executable instructions
 
 **No other `.md` files anywhere.** Documentation lives in:
