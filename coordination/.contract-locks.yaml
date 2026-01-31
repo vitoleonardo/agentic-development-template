@@ -1,0 +1,28 @@
+# Contract Locks - Active locks for conflict prevention
+# Machine-readable, auto-managed by workflow runner
+
+version: "1.0"
+
+# Active locks (populated at runtime)
+locks: []
+# Example lock entry:
+# - contract: contracts/api.yaml#/paths/users
+#   holder: a-001-user-auth
+#   acquired: 2024-01-15T10:30:00Z
+#   expires: 2024-01-15T10:35:00Z
+
+# Lock configuration
+config:
+  default-ttl-seconds: 300
+  max-wait-seconds: 300
+  on-expire: release-with-warning
+  on-conflict: queue
+
+# Lock history (last 10 for debugging)
+history: []
+# Example history entry:
+# - contract: contracts/api.yaml#/paths/users
+#   holder: a-001-user-auth
+#   acquired: 2024-01-15T10:25:00Z
+#   released: 2024-01-15T10:28:00Z
+#   reason: slice-complete

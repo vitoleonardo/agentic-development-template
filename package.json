@@ -1,0 +1,38 @@
+{
+  "name": "agentic-development-template",
+  "version": "0.0.1",
+  "description": "TypeScript-first AI-agent workflow template",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "lint": "./scripts/lint",
+    "format": "./scripts/format",
+    "typecheck": "./scripts/typecheck",
+    "test": "./scripts/test",
+    "validate:naming": "./scripts/validate-naming",
+    "validate:docs": "./scripts/validate-docs",
+    "validate:contracts": "./scripts/validate-contracts",
+    "storybook": "./scripts/storybook",
+    "storybook:build": "./scripts/storybook build",
+    "visual": "./scripts/visual",
+    "visual:update": "./scripts/visual update",
+    "visual:ui": "./scripts/visual --ui"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "typescript",
+    "template"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "_dependencies-note": "Install these when enabling the visual layer:",
+    "_storybook": "npx storybook@latest init",
+    "_playwright": "npm install -D @playwright/test && npx playwright install",
+    "_react-optional": "npm install react react-dom && npm install -D @types/react @types/react-dom"
+  },
+  "dependencies": {}
+}

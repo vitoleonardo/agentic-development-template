@@ -1,0 +1,146 @@
+# ============================================================================
+# CONTRACTS INDEX - Registry and validation rules
+# ============================================================================
+# This file is the entry point for all contract validation.
+# It defines which contracts exist and how they relate.
+# ============================================================================
+
+meta:
+  version: "0.1.0"
+  updated: "2024-01-01"
+
+# -----------------------------------------------------------------------------
+# Contract registry
+# -----------------------------------------------------------------------------
+contracts:
+  - file: api-contract.yaml
+    type: api
+    description: "API endpoint definitions"
+    validates-against: [db-schema.yaml, policies.yaml]
+
+  - file: db-schema.yaml
+    type: schema
+    description: "Database entity definitions"
+
+  - file: policies.yaml
+    type: policy
+    description: "Access control and permissions"
+    validates-against: [api-contract.yaml]
+
+  - file: nfr.yaml
+    type: nfr
+    description: "Non-functional requirements"
+
+# -----------------------------------------------------------------------------
+# Cross-contract validation rules
+# -----------------------------------------------------------------------------
+validation-rules:
+
+  - id: api-auth-required
+    description: "Every API endpoint must have auth requirements defined"
+    check: "resources.*.endpoints[*].auth.required exists"
+    severity: error
+
+  - id: api-permissions-exist
+    description: "Every API permission must exist in policies.yaml"
+    check: "resources.*.endpoints[*].auth.permissions[] in policies.permissions[*].id"
+    severity: error
+
+  - id: api-schema-refs-valid
+    description: "All $ref in api-contract must resolve"
+    check: "all $ref paths resolve to existing definitions"
+    severity: error
+
+  - id: db-field-types-required
+    description: "Every entity field must have a type"
+    check: "entities[*].fields[*].type exists"
+    severity: error
+
+  - id: db-relationships-bidirectional
+    description: "Relationship entities must exist"
+    check: "relationships[*].from.entity in entities[*].id"
+    severity: error
+
+  - id: policy-permissions-format
+    description: "Permissions must follow {resource}:{action} format"
+    check: "permissions[*].id matches /^[a-z-]+:[a-z-]+$/"
+    severity: error
+
+  - id: policy-matrix-complete
+    description: "Permission matrix must include all defined permissions"
+    check: "permission-matrix keys == permissions[*].id"
+    severity: warning
+
+  - id: nfr-threshold-measurable
+    description: "NFR thresholds must be quantifiable"
+    check: "*.threshold matches number or comparison"
+    severity: warning
+
+# -----------------------------------------------------------------------------
+# Consistency checklist (manual review)
+# -----------------------------------------------------------------------------
+consistency-checklist:
+  before-merge:
+    - "[ ] All endpoint IDs are unique and kebab-case"
+    - "[ ] All endpoints have auth.required specified"
+    - "[ ] All endpoints list applicable error codes"
+    - "[ ] All entity fields have types defined"
+    - "[ ] All new permissions added to permission-matrix"
+    - "[ ] All $ref paths resolve correctly"
+    - "[ ] No orphaned schemas (unused by any endpoint)"
+    - "[ ] NFR thresholds are measurable"
+    - "[ ] Breaking changes noted in meta.version bump"
+
+  before-release:
+    - "[ ] Contract versions match release tag"
+    - "[ ] All deprecated items have removal timeline"
+    - "[ ] Cross-contract references validated"
+    - "[ ] Migration path documented for breaking changes"
+
+# -----------------------------------------------------------------------------
+# Change protocol
+# -----------------------------------------------------------------------------
+change-protocol:
+
+  proposing-changes:
+    - step: 1
+      action: "Create branch with contract changes"
+      naming: "contract/{type}-{description}"
+
+    - step: 2
+      action: "Update meta.version if breaking change"
+      rule: "MAJOR for breaking, MINOR for additions, PATCH for fixes"
+
+    - step: 3
+      action: "Run validation script"
+      command: "npm run validate:contracts"
+
+    - step: 4
+      action: "Update dependent contracts if needed"
+      note: "API changes may require policy updates"
+
+    - step: 5
+      action: "Create PR with contract-change label"
+
+  conflict-resolution:
+    model: "gatekeeper"
+    description: |
+      Parallel contract changes are coordinated through a gatekeeper model:
+      1. Only ONE contract PR may be in "ready to merge" state at a time
+      2. Contract PRs require approval from contract owner (see meta.owner)
+      3. If conflicts arise, earlier PR has priority; later must rebase
+      4. Breaking changes require ALL dependent slice owners to approve
+
+    escalation:
+      - "Conflicting changes: schedule sync meeting"
+      - "Deadlock: tech lead makes final decision"
+      - "Emergency: hotfix branch, retroactive contract update"
+
+  slice-references:
+    format: "Slices reference contracts via stable IDs"
+    example: |
+      # In slice definition:
+      implements:
+        api: [get-user-by-id, create-user]
+        db: [user, session]
+        permissions: [users:read, users:create]

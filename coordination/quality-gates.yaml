@@ -1,0 +1,158 @@
+# Quality Gates Configuration
+# Machine-readable rules for checkpoint validation
+
+version: "1.0"
+
+# Gate definitions
+gates:
+  structural:
+    - id: validate-docs
+      script: scripts/validate-docs
+      required: true
+      description: Ensures .md files only in approved locations
+
+    - id: validate-naming
+      script: scripts/validate-naming
+      required: true
+      description: Enforces kebab-case naming convention
+
+  code-quality:
+    - id: lint
+      script: scripts/lint
+      required: true
+      auto-fix: false
+      description: Static analysis and code style
+
+    - id: format
+      script: scripts/format
+      required: true
+      auto-fix: true
+      description: Code formatting consistency
+
+    - id: typecheck
+      script: scripts/typecheck
+      required: true
+      skip-if-no-config: true
+      description: TypeScript type validation
+
+  testing:
+    - id: test
+      script: scripts/test
+      required: true
+      skip-if-no-tests: true
+      description: Unit and integration tests
+
+  visual:
+    - id: storybook
+      script: scripts/storybook build
+      required: false
+      description: Component library build
+
+    - id: visual
+      script: scripts/visual
+      required: false
+      description: Visual regression tests
+
+  contracts:
+    - id: validate-contracts
+      script: scripts/validate-contracts
+      required: true
+      description: API/DB contract schema validation
+
+# Naming convention rules
+naming:
+  pattern: kebab-case
+  regex: "^[a-z0-9]+(-[a-z0-9]+)*$"
+
+  # Files that don't need kebab-case
+  naming-exceptions:
+    - README.md
+    - ARCHITECTURE.md
+    - CHANGELOG.md
+    - LICENSE
+    - Makefile
+    - Dockerfile
+
+  # Directories to skip entirely
+  excluded-paths:
+    - node_modules
+    - dist
+    - coverage
+    - .git
+    - .storybook
+    - storybook-static
+
+# Documentation rules
+documentation:
+  allowed-locations:
+    - ./README.md
+    - ./ARCHITECTURE.md
+    - ./CHANGELOG.md
+    - ./workflows/**/*.md
+
+# DRY/KISS/SOLID review checklist
+# Used by agents during code review
+review-checklist:
+  dry:
+    - id: no-copy-paste
+      check: "No duplicated logic > 5 lines"
+      action: Extract to shared function/module
+
+    - id: single-source
+      check: "Constants defined once"
+      action: Move to shared constants file
+
+  kiss:
+    - id: no-premature-abstraction
+      check: "Abstraction used >= 2 places"
+      action: Inline if only used once
+
+    - id: minimal-indirection
+      check: "Call depth <= 3 for common paths"
+      action: Flatten or document why needed
+
+    - id: clear-naming
+      check: "Names describe purpose, not implementation"
+      action: Rename to reflect intent
+
+  solid:
+    - id: single-responsibility
+      check: "Module/class has one reason to change"
+      action: Split if multiple concerns
+
+    - id: open-closed
+      check: "Extend via composition, not modification"
+      action: Add extension point if needed
+
+    - id: interface-segregation
+      check: "No unused interface members in implementations"
+      action: Split interface if needed
+
+    - id: dependency-inversion
+      check: "High-level modules don't import low-level details"
+      action: Inject dependencies or use interfaces
+
+# Checkpoint triggers (aligned with workflow system)
+checkpoint-triggers:
+  # When to run full checkpoint
+  full:
+    - pre-commit
+    - slice-complete
+    - integration-checkpoint
+
+  # When quick mode is acceptable
+  quick:
+    - mid-slice-save
+    - wip-commit
+
+# Thresholds
+thresholds:
+  # Max warnings before failing
+  lint-warnings: 0
+  type-errors: 0
+
+  # Visual regression
+  visual-diff-percent: 0.1
+
+  # Test coverage (if configured)
+  coverage-percent: 80

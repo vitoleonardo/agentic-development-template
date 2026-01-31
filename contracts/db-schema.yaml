@@ -1,0 +1,268 @@
+# ============================================================================
+# DATABASE SCHEMA CONTRACT - Authoritative entity definitions
+# ============================================================================
+# CHANGE RULES:
+#   - Every entity MUST have a unique id (kebab-case)
+#   - Every field MUST have a type
+#   - Adding fields: append to entity, set nullable: true or provide default
+#   - Removing fields: mark deprecated: true, remove after migration
+#   - Renaming fields: add new field, migrate data, mark old deprecated
+#   - Index changes: document in entity's indexes section
+#   - Relationship changes require both sides updated atomically
+# ============================================================================
+
+meta:
+  version: "0.1.0"
+  updated: "2024-01-01"
+  owner: "data-team"
+  dialect: "postgres"  # or: mysql, sqlite, agnostic
+
+# -----------------------------------------------------------------------------
+# Field type definitions (for consistency)
+# -----------------------------------------------------------------------------
+types:
+  uuid:
+    base: string
+    format: uuid
+    description: "UUID v4 identifier"
+  timestamp:
+    base: string
+    format: date-time
+    description: "ISO 8601 timestamp with timezone"
+  email:
+    base: string
+    format: email
+    max-length: 255
+
+# -----------------------------------------------------------------------------
+# Entities
+# -----------------------------------------------------------------------------
+entities:
+
+  # ===========================================================================
+  # USER
+  # ===========================================================================
+  - id: user
+    table: users
+    description: "System user account"
+
+    fields:
+      - name: id
+        type: uuid
+        primary: true
+        generated: true
+
+      - name: email
+        type: email
+        unique: true
+        nullable: false
+
+      - name: name
+        type: string
+        max-length: 100
+        nullable: false
+
+      - name: password-hash
+        type: string
+        max-length: 255
+        nullable: false
+        sensitive: true  # excluded from logs/exports
+
+      - name: role
+        type: enum
+        values: [admin, member, viewer]
+        default: member
+        nullable: false
+
+      - name: status
+        type: enum
+        values: [active, inactive, pending]
+        default: pending
+        nullable: false
+
+      - name: created-at
+        type: timestamp
+        default: now
+        nullable: false
+
+      - name: updated-at
+        type: timestamp
+        default: now
+        on-update: now
+        nullable: false
+
+      - name: deleted-at
+        type: timestamp
+        nullable: true
+        description: "Soft delete timestamp"
+
+    indexes:
+      - name: idx-users-email
+        fields: [email]
+        unique: true
+
+      - name: idx-users-status
+        fields: [status]
+
+      - name: idx-users-created-at
+        fields: [created-at]
+
+    constraints:
+      - type: check
+        name: chk-users-email-format
+        expression: "email ~* '^[^@]+@[^@]+$'"
+
+  # ===========================================================================
+  # SESSION
+  # ===========================================================================
+  - id: session
+    table: sessions
+    description: "User authentication session"
+
+    fields:
+      - name: id
+        type: uuid
+        primary: true
+        generated: true
+
+      - name: user-id
+        type: uuid
+        nullable: false
+        references:
+          entity: user
+          field: id
+          on-delete: cascade
+
+      - name: token-hash
+        type: string
+        max-length: 255
+        nullable: false
+        sensitive: true
+
+      - name: expires-at
+        type: timestamp
+        nullable: false
+
+      - name: created-at
+        type: timestamp
+        default: now
+        nullable: false
+
+      - name: ip-address
+        type: string
+        max-length: 45
+        nullable: true
+
+      - name: user-agent
+        type: string
+        max-length: 500
+        nullable: true
+
+    indexes:
+      - name: idx-sessions-user-id
+        fields: [user-id]
+
+      - name: idx-sessions-expires-at
+        fields: [expires-at]
+
+      - name: idx-sessions-token-hash
+        fields: [token-hash]
+        unique: true
+
+  # ===========================================================================
+  # AUDIT LOG
+  # ===========================================================================
+  - id: audit-log
+    table: audit_logs
+    description: "System audit trail"
+
+    fields:
+      - name: id
+        type: uuid
+        primary: true
+        generated: true
+
+      - name: user-id
+        type: uuid
+        nullable: true
+        references:
+          entity: user
+          field: id
+          on-delete: set-null
+
+      - name: action
+        type: string
+        max-length: 50
+        nullable: false
+
+      - name: resource-type
+        type: string
+        max-length: 50
+        nullable: false
+
+      - name: resource-id
+        type: string
+        max-length: 100
+        nullable: true
+
+      - name: details
+        type: json
+        nullable: true
+
+      - name: ip-address
+        type: string
+        max-length: 45
+        nullable: true
+
+      - name: created-at
+        type: timestamp
+        default: now
+        nullable: false
+
+    indexes:
+      - name: idx-audit-user-id
+        fields: [user-id]
+
+      - name: idx-audit-action
+        fields: [action]
+
+      - name: idx-audit-resource
+        fields: [resource-type, resource-id]
+
+      - name: idx-audit-created-at
+        fields: [created-at]
+
+# -----------------------------------------------------------------------------
+# Relationships (explicit cross-reference)
+# -----------------------------------------------------------------------------
+relationships:
+  - id: user-has-sessions
+    from:
+      entity: user
+      field: id
+    to:
+      entity: session
+      field: user-id
+    type: one-to-many
+    cascade: delete
+
+  - id: user-has-audit-logs
+    from:
+      entity: user
+      field: id
+    to:
+      entity: audit-log
+      field: user-id
+    type: one-to-many
+    cascade: set-null
+
+# -----------------------------------------------------------------------------
+# Migration hints
+# -----------------------------------------------------------------------------
+migrations:
+  naming: "{timestamp}-{description}.sql"
+  directory: "migrations/"
+  notes:
+    - "Always use transactions for schema changes"
+    - "Test rollback before applying to production"
+    - "Document breaking changes in CHANGELOG"

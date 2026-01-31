@@ -1,0 +1,203 @@
+# ============================================================================
+# POLICIES CONTRACT - Authoritative access control definitions
+# ============================================================================
+# CHANGE RULES:
+#   - Every role MUST have a unique id (kebab-case)
+#   - Every permission MUST follow format: {resource}:{action}
+#   - Adding roles: append to roles section
+#   - Adding permissions: add to relevant role AND update permission-matrix
+#   - Removing permissions: remove from ALL roles that have it
+#   - Role hierarchy changes require full matrix review
+# ============================================================================
+
+meta:
+  version: "0.1.0"
+  updated: "2024-01-01"
+  owner: "security-team"
+
+# -----------------------------------------------------------------------------
+# Roles
+# -----------------------------------------------------------------------------
+roles:
+
+  - id: admin
+    name: "Administrator"
+    description: "Full system access"
+    inherits: [member]  # inherits all member permissions
+    permissions:
+      - users:create
+      - users:delete
+      - users:manage-roles
+      - system:configure
+      - system:view-audit
+
+  - id: member
+    name: "Member"
+    description: "Standard user access"
+    inherits: [viewer]
+    permissions:
+      - users:update-self
+      - items:create
+      - items:update-own
+      - items:delete-own
+
+  - id: viewer
+    name: "Viewer"
+    description: "Read-only access"
+    inherits: []
+    permissions:
+      - users:read
+      - items:read
+
+  - id: service
+    name: "Service Account"
+    description: "Machine-to-machine access"
+    inherits: []
+    permissions:
+      - api:access
+      - items:read
+      - items:create
+      - items:update
+    restrictions:
+      - no-ui-access
+      - rate-limited
+
+# -----------------------------------------------------------------------------
+# Permissions catalog
+# -----------------------------------------------------------------------------
+permissions:
+
+  # Users
+  - id: users:read
+    description: "View user profiles"
+    resources: [user]
+
+  - id: users:create
+    description: "Create new users"
+    resources: [user]
+
+  - id: users:update-self
+    description: "Update own profile"
+    resources: [user]
+    condition: "resource.id == actor.id"
+
+  - id: users:delete
+    description: "Delete users"
+    resources: [user]
+    condition: "resource.id != actor.id"  # cannot delete self
+
+  - id: users:manage-roles
+    description: "Change user roles"
+    resources: [user]
+
+  # Items (example resource)
+  - id: items:read
+    description: "View items"
+    resources: [item]
+
+  - id: items:create
+    description: "Create items"
+    resources: [item]
+
+  - id: items:update
+    description: "Update any item"
+    resources: [item]
+
+  - id: items:update-own
+    description: "Update own items"
+    resources: [item]
+    condition: "resource.owner-id == actor.id"
+
+  - id: items:delete-own
+    description: "Delete own items"
+    resources: [item]
+    condition: "resource.owner-id == actor.id"
+
+  # System
+  - id: system:configure
+    description: "Modify system settings"
+    resources: [system]
+
+  - id: system:view-audit
+    description: "View audit logs"
+    resources: [audit-log]
+
+  - id: api:access
+    description: "Access API endpoints"
+    resources: [api]
+
+# -----------------------------------------------------------------------------
+# Permission matrix (quick reference)
+# -----------------------------------------------------------------------------
+permission-matrix:
+  #                          admin  member  viewer  service
+  users:read:                [yes,   yes,    yes,    no]
+  users:create:              [yes,   no,     no,     no]
+  users:update-self:         [yes,   yes,    no,     no]
+  users:delete:              [yes,   no,     no,     no]
+  users:manage-roles:        [yes,   no,     no,     no]
+  items:read:                [yes,   yes,    yes,    yes]
+  items:create:              [yes,   yes,    no,     yes]
+  items:update:              [yes,   no,     no,     yes]
+  items:update-own:          [yes,   yes,    no,     no]
+  items:delete-own:          [yes,   yes,    no,     no]
+  system:configure:          [yes,   no,     no,     no]
+  system:view-audit:         [yes,   no,     no,     no]
+  api:access:                [yes,   yes,    yes,    yes]
+
+# -----------------------------------------------------------------------------
+# Resource ownership rules
+# -----------------------------------------------------------------------------
+ownership:
+  - resource: user
+    owner-field: id
+    note: "Users own themselves"
+
+  - resource: item
+    owner-field: owner-id
+    note: "Items have explicit owner"
+
+  - resource: session
+    owner-field: user-id
+    note: "Sessions belong to user"
+
+# -----------------------------------------------------------------------------
+# Policy rules (business logic)
+# -----------------------------------------------------------------------------
+rules:
+
+  - id: no-self-delete
+    description: "Users cannot delete their own account"
+    applies-to: users:delete
+    condition: "actor.id != target.id"
+    error: "Cannot delete your own account"
+
+  - id: no-self-demote
+    description: "Admins cannot remove their own admin role"
+    applies-to: users:manage-roles
+    condition: "!(actor.id == target.id && change.role == 'admin' && change.action == 'remove')"
+    error: "Cannot remove your own admin privileges"
+
+  - id: require-mfa-for-admin
+    description: "Admin actions require MFA"
+    applies-to: [users:delete, users:manage-roles, system:configure]
+    condition: "actor.mfa-verified == true"
+    error: "MFA verification required for this action"
+
+# -----------------------------------------------------------------------------
+# Authentication requirements
+# -----------------------------------------------------------------------------
+auth:
+  session:
+    max-age: 86400  # 24 hours
+    refresh-window: 3600  # 1 hour before expiry
+    max-concurrent: 5
+
+  mfa:
+    required-for-roles: [admin]
+    methods: [totp, webauthn]
+
+  api-keys:
+    allowed-for-roles: [service]
+    max-per-account: 10
+    rotation-period: 90  # days

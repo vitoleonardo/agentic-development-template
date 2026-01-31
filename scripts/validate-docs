@@ -1,0 +1,41 @@
+#!/bin/sh
+# Validate documentation locations
+# Ensures .md files only exist in approved locations
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo "Validating documentation locations..."
+
+# Find .md files outside allowed locations
+invalid_docs=$(find . -name "*.md" -type f \
+  ! -path "./README.md" \
+  ! -path "./ARCHITECTURE.md" \
+  ! -path "./CHANGELOG.md" \
+  ! -path "./workflows/*" \
+  ! -path "./node_modules/*" \
+  ! -path "./.git/*" \
+  ! -path "./dist/*" \
+  ! -path "./coverage/*" \
+  2>/dev/null || true)
+
+if [ -n "$invalid_docs" ]; then
+  echo "ERROR: Found .md files in unauthorized locations:"
+  echo "$invalid_docs"
+  echo ""
+  echo "Allowed locations:"
+  echo "  - ./README.md"
+  echo "  - ./ARCHITECTURE.md"
+  echo "  - ./CHANGELOG.md"
+  echo "  - ./workflows/**/*.md"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Move documentation to workflows/ if it's agent-executable"
+  echo "  2. Consolidate into README.md or ARCHITECTURE.md if it's project docs"
+  echo "  3. Delete if it's redundant or outdated"
+  exit 1
+fi
+
+echo "OK: All documentation in approved locations."

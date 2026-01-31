@@ -1,0 +1,285 @@
+# ============================================================================
+# NON-FUNCTIONAL REQUIREMENTS CONTRACT - Quality attributes baseline
+# ============================================================================
+# CHANGE RULES:
+#   - Every NFR MUST have a unique id
+#   - Thresholds must be measurable and testable
+#   - Relaxing thresholds requires explicit approval + justification
+#   - Tightening thresholds is always allowed
+#   - Add new NFRs as project needs evolve
+# ============================================================================
+
+meta:
+  version: "0.1.0"
+  updated: "2024-01-01"
+  owner: "platform-team"
+
+# -----------------------------------------------------------------------------
+# PERFORMANCE
+# -----------------------------------------------------------------------------
+performance:
+
+  - id: perf-api-latency-p50
+    metric: "API response time (p50)"
+    threshold: "< 100ms"
+    scope: "all endpoints"
+    measurement: "server-side, excluding network"
+    priority: high
+
+  - id: perf-api-latency-p95
+    metric: "API response time (p95)"
+    threshold: "< 500ms"
+    scope: "all endpoints"
+    measurement: "server-side, excluding network"
+    priority: high
+
+  - id: perf-api-latency-p99
+    metric: "API response time (p99)"
+    threshold: "< 1000ms"
+    scope: "all endpoints"
+    measurement: "server-side, excluding network"
+    priority: medium
+
+  - id: perf-page-load
+    metric: "Initial page load (LCP)"
+    threshold: "< 2.5s"
+    scope: "all pages"
+    measurement: "real user monitoring"
+    priority: high
+
+  - id: perf-ttfb
+    metric: "Time to first byte"
+    threshold: "< 200ms"
+    scope: "all routes"
+    measurement: "server response start"
+    priority: medium
+
+  - id: perf-bundle-size
+    metric: "JS bundle size (gzipped)"
+    threshold: "< 200KB"
+    scope: "initial bundle"
+    measurement: "build output"
+    priority: medium
+
+  - id: perf-memory
+    metric: "Server memory usage"
+    threshold: "< 512MB"
+    scope: "per instance"
+    measurement: "heap + external"
+    priority: medium
+
+# -----------------------------------------------------------------------------
+# RELIABILITY
+# -----------------------------------------------------------------------------
+reliability:
+
+  - id: rel-uptime
+    metric: "Service uptime"
+    threshold: ">= 99.9%"
+    scope: "production"
+    measurement: "monthly rolling"
+    priority: critical
+
+  - id: rel-error-rate
+    metric: "Error rate (5xx)"
+    threshold: "< 0.1%"
+    scope: "all requests"
+    measurement: "per-minute average"
+    priority: high
+
+  - id: rel-recovery-time
+    metric: "Recovery time (RTO)"
+    threshold: "< 1 hour"
+    scope: "critical services"
+    measurement: "from incident detection"
+    priority: high
+
+  - id: rel-data-loss
+    metric: "Data loss window (RPO)"
+    threshold: "< 1 hour"
+    scope: "user data"
+    measurement: "backup frequency"
+    priority: high
+
+# -----------------------------------------------------------------------------
+# SECURITY
+# -----------------------------------------------------------------------------
+security:
+
+  - id: sec-auth-required
+    requirement: "All API endpoints require authentication"
+    exceptions: ["health check", "public assets"]
+    validation: "automated test coverage"
+    priority: critical
+
+  - id: sec-https-only
+    requirement: "All traffic over HTTPS"
+    scope: "production, staging"
+    validation: "HSTS header, redirect enforcement"
+    priority: critical
+
+  - id: sec-input-validation
+    requirement: "All user input validated and sanitized"
+    scope: "all endpoints"
+    validation: "schema validation at boundary"
+    priority: critical
+
+  - id: sec-secrets-management
+    requirement: "No secrets in code or logs"
+    scope: "all environments"
+    validation: "secret scanning in CI"
+    priority: critical
+
+  - id: sec-dependency-audit
+    requirement: "No known critical vulnerabilities"
+    scope: "all dependencies"
+    validation: "weekly audit scan"
+    priority: high
+
+  - id: sec-session-management
+    requirement: "Secure session handling"
+    details:
+      - "HTTP-only cookies"
+      - "Secure flag in production"
+      - "SameSite=Strict"
+      - "Session timeout: 24h max"
+    priority: high
+
+  - id: sec-rate-limiting
+    requirement: "Rate limiting on all endpoints"
+    thresholds:
+      - "auth endpoints: 10 req/min per IP"
+      - "api endpoints: 100 req/min per user"
+    priority: high
+
+  - id: sec-cors
+    requirement: "CORS properly configured"
+    details: "Whitelist allowed origins, no wildcards in production"
+    priority: high
+
+# -----------------------------------------------------------------------------
+# OBSERVABILITY
+# -----------------------------------------------------------------------------
+observability:
+
+  - id: obs-structured-logging
+    requirement: "All logs in structured JSON format"
+    fields:
+      required: [timestamp, level, message, request-id]
+      optional: [user-id, duration, error]
+    priority: high
+
+  - id: obs-request-tracing
+    requirement: "Distributed tracing for all requests"
+    details: "Propagate trace-id across service boundaries"
+    priority: high
+
+  - id: obs-metrics
+    requirement: "Core metrics exposed"
+    metrics:
+      - "request_count (by endpoint, status)"
+      - "request_duration_seconds (histogram)"
+      - "active_connections"
+      - "error_count (by type)"
+    format: "Prometheus-compatible"
+    priority: high
+
+  - id: obs-health-check
+    requirement: "Health check endpoint"
+    path: "/health"
+    response:
+      healthy: '{"status": "ok"}'
+      degraded: '{"status": "degraded", "checks": {...}}'
+    priority: critical
+
+  - id: obs-alerting
+    requirement: "Alerts for critical thresholds"
+    alerts:
+      - "error rate > 1% for 5 min"
+      - "p95 latency > 2s for 5 min"
+      - "uptime < 99% in 1 hour window"
+    priority: high
+
+# -----------------------------------------------------------------------------
+# ACCESSIBILITY
+# -----------------------------------------------------------------------------
+accessibility:
+
+  - id: a11y-wcag-level
+    requirement: "WCAG 2.1 Level AA compliance"
+    scope: "all user-facing pages"
+    validation: "automated + manual audit"
+    priority: high
+
+  - id: a11y-keyboard-nav
+    requirement: "Full keyboard navigation support"
+    scope: "all interactive elements"
+    validation: "manual testing"
+    priority: high
+
+  - id: a11y-screen-reader
+    requirement: "Screen reader compatibility"
+    details:
+      - "Semantic HTML"
+      - "ARIA labels where needed"
+      - "Focus management"
+    priority: high
+
+  - id: a11y-color-contrast
+    requirement: "Color contrast ratio >= 4.5:1"
+    scope: "all text content"
+    validation: "automated scan"
+    priority: medium
+
+  - id: a11y-motion
+    requirement: "Respect prefers-reduced-motion"
+    scope: "all animations"
+    priority: medium
+
+# -----------------------------------------------------------------------------
+# SCALABILITY
+# -----------------------------------------------------------------------------
+scalability:
+
+  - id: scale-horizontal
+    requirement: "Stateless services for horizontal scaling"
+    scope: "API servers"
+    priority: high
+
+  - id: scale-db-connections
+    requirement: "Connection pooling configured"
+    threshold: "max 20 connections per instance"
+    priority: high
+
+  - id: scale-concurrent-users
+    requirement: "Support concurrent users"
+    threshold: ">= 1000 concurrent"
+    measurement: "load test baseline"
+    priority: medium
+
+# -----------------------------------------------------------------------------
+# MAINTAINABILITY
+# -----------------------------------------------------------------------------
+maintainability:
+
+  - id: maint-test-coverage
+    requirement: "Test coverage threshold"
+    threshold: ">= 80% line coverage"
+    scope: "src/**"
+    priority: medium
+
+  - id: maint-type-safety
+    requirement: "Full TypeScript strict mode"
+    config: "strict: true in tsconfig"
+    priority: high
+
+  - id: maint-lint-clean
+    requirement: "No linting errors"
+    scope: "all source files"
+    validation: "CI gate"
+    priority: medium
+
+  - id: maint-doc-coverage
+    requirement: "Public API documented"
+    scope: "exported functions and types"
+    priority: medium

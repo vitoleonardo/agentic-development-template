@@ -1,0 +1,101 @@
+# File Map - Module ownership and path rules
+# Machine-readable coordination file
+
+version: "1.0"
+
+module-roots:
+  core:
+    path: src/
+    owner: any
+    description: Shared core code
+
+  features:
+    path: src/features/
+    owner: track-assigned
+    description: Feature modules (track-isolated)
+
+  components:
+    path: src/components/
+    owner: any
+    description: Shared UI components
+
+  router:
+    path: src/router/
+    owner: any
+    description: Application routing
+
+  types:
+    path: src/types/
+    owner: any
+    description: Shared TypeScript types
+
+  tests:
+    path: tests/
+    owner: any
+    description: Test files
+
+  storybook:
+    path: storybook/
+    owner: any
+    description: Storybook stories
+
+track-boundaries:
+  track-a:
+    allowed:
+      - src/features/track-a-*/**
+      - src/features/shared/**
+      - src/components/**
+      - src/router/routes.ts
+      - tests/unit/track-a-*/**
+      - tests/visual/track-a-*/**
+      - storybook/stories/track-a-*/**
+    forbidden:
+      - src/features/track-b-*/**
+      - tests/**/track-b-*/**
+      - contracts/**
+      - coordination/**
+
+  track-b:
+    allowed:
+      - src/features/track-b-*/**
+      - src/features/shared/**
+      - src/components/**
+      - src/router/routes.ts
+      - tests/unit/track-b-*/**
+      - tests/visual/track-b-*/**
+      - storybook/stories/track-b-*/**
+    forbidden:
+      - src/features/track-a-*/**
+      - tests/**/track-a-*/**
+      - contracts/**
+      - coordination/**
+
+global-forbidden:
+  - node_modules/**
+  - dist/**
+  - .git/**
+  - "*.log"
+  - .env*
+  - "**/*.secret.*"
+
+shared-write-zones:
+  # Zones requiring coordination/locking
+  - path: src/router/routes.ts
+    lock-required: true
+    max-concurrent: 1
+
+  - path: src/types/index.ts
+    lock-required: true
+    max-concurrent: 1
+
+  - path: src/components/ui/**
+    lock-required: false
+    max-concurrent: 2
+
+naming-rules:
+  files: kebab-case
+  directories: kebab-case
+  components: PascalCase
+  hooks: camelCase
+  types: PascalCase
+  constants: SCREAMING_SNAKE_CASE

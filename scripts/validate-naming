@@ -1,0 +1,140 @@
+#!/bin/sh
+# Validate kebab-case naming convention
+# Exits non-zero if any file violates naming rules
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Load exceptions from quality-gates.yaml if available
+EXTRA_EXCEPTIONS=""
+if [ -f "coordination/quality-gates.yaml" ]; then
+  # Simple extraction of naming exceptions (grep-based, no yaml parser needed)
+  EXTRA_EXCEPTIONS=$(grep -A 100 'naming-exceptions:' coordination/quality-gates.yaml 2>/dev/null | \
+    grep '^\s*-' | sed 's/.*- //' | tr '\n' '|' || true)
+fi
+
+# Standard allowed files (not kebab-case)
+is_allowed_file() {
+  case "$1" in
+    # Root documentation
+    ./README.md|./ARCHITECTURE.md|./CHANGELOG.md) return 0 ;;
+    # Package managers
+    ./package.json|./package-lock.json|./pnpm-lock.yaml|./yarn.lock) return 0 ;;
+    # TypeScript/JS config
+    ./tsconfig.json|./tsconfig.*.json|./jsconfig.json) return 0 ;;
+    ./vite.config.*|./vitest.config.*|./jest.config.*) return 0 ;;
+    ./next.config.*|./nuxt.config.*|./svelte.config.*) return 0 ;;
+    ./rollup.config.*|./webpack.config.*|./esbuild.config.*) return 0 ;;
+    ./tailwind.config.*|./postcss.config.*) return 0 ;;
+    # Lint/format config
+    ./.eslintrc*|./eslint.config.*|./.prettierrc*|./prettier.config.*) return 0 ;;
+    ./biome.json|./.stylelintrc*) return 0 ;;
+    # Build/CI
+    ./Dockerfile*|./docker-compose*|./Makefile) return 0 ;;
+    ./.dockerignore|./.gitignore|./.gitattributes|./.editorconfig) return 0 ;;
+    ./.npmrc|./.nvmrc|./.node-version|./.tool-versions) return 0 ;;
+    # Environment
+    ./.env|./.env.*) return 0 ;;
+    # License
+    ./LICENSE|./LICENSE.*|./COPYING) return 0 ;;
+    # Storybook
+    ./.storybook/*) return 0 ;;
+  esac
+  return 1
+}
+
+# Validate kebab-case: lowercase, numbers, hyphens only
+# Allows: my-file.ts, my-file.test.ts, index.ts
+# Rejects: myFile.ts, MyFile.ts, my_file.ts
+is_kebab_case() {
+  filename=$(basename "$1")
+  # Remove all extensions
+  name="${filename%%.*}"
+  # Single word or kebab-case pattern
+  echo "$name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'
+}
+
+# Validate directory names
+is_kebab_case_dir() {
+  dirname=$(basename "$1")
+  echo "$dirname" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$|^\.[a-z0-9]+(-[a-z0-9]+)*$'
+}
+
+echo "Validating naming conventions..."
+
+invalid_files=""
+invalid_dirs=""
+
+# Check files
+while IFS= read -r file; do
+  [ ! -f "$file" ] && continue
+
+  # Skip hidden files/dirs
+  case "$file" in ./.*|./**/.*) continue ;; esac
+
+  # Skip allowed files
+  is_allowed_file "$file" && continue
+
+  # Check kebab-case
+  if ! is_kebab_case "$file"; then
+    invalid_files="$invalid_files  $file
+"
+  fi
+done <<EOF
+$(find . -type f \
+  ! -path "./node_modules/*" \
+  ! -path "./dist/*" \
+  ! -path "./.git/*" \
+  ! -path "./coverage/*" \
+  ! -path "./.storybook/*" \
+  ! -path "./storybook-static/*" \
+  2>/dev/null)
+EOF
+
+# Check directories
+while IFS= read -r dir; do
+  [ ! -d "$dir" ] && continue
+
+  # Skip hidden dirs and standard dirs
+  case "$dir" in
+    ./.*|./**/.*) continue ;;
+    ./node_modules|./dist|./coverage|./storybook-static) continue ;;
+  esac
+
+  if ! is_kebab_case_dir "$dir"; then
+    invalid_dirs="$invalid_dirs  $dir
+"
+  fi
+done <<EOF
+$(find . -type d \
+  ! -path "./node_modules/*" \
+  ! -path "./dist/*" \
+  ! -path "./.git/*" \
+  ! -path "./coverage/*" \
+  ! -path "./.storybook/*" \
+  ! -path "./storybook-static/*" \
+  -mindepth 1 \
+  2>/dev/null)
+EOF
+
+exit_code=0
+
+if [ -n "$invalid_files" ]; then
+  echo "ERROR: Non-kebab-case files found:"
+  echo "$invalid_files"
+  exit_code=1
+fi
+
+if [ -n "$invalid_dirs" ]; then
+  echo "ERROR: Non-kebab-case directories found:"
+  echo "$invalid_dirs"
+  exit_code=1
+fi
+
+if [ $exit_code -eq 0 ]; then
+  echo "OK: All names follow kebab-case convention."
+fi
+
+exit $exit_code

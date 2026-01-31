@@ -1,0 +1,108 @@
+# Assignments - Track ownership and agent roles
+# Machine-readable coordination file
+
+version: "1.0"
+
+# Agent roles
+roles:
+  lead-agent:
+    permissions:
+      - read: all
+      - write: all
+      - approve: contracts
+      - assign: slices
+    responsibilities:
+      - workflow orchestration
+      - conflict resolution
+      - checkpoint approval
+
+  track-owner:
+    permissions:
+      - read: all
+      - write: assigned-track
+      - approve: none
+      - assign: none
+    responsibilities:
+      - slice execution
+      - track-level testing
+      - status updates
+
+  contract-gatekeeper:
+    permissions:
+      - read: all
+      - write: contracts
+      - approve: contract-changes
+      - assign: none
+    responsibilities:
+      - contract version control
+      - breaking change review
+      - lock management
+
+# Track assignments
+tracks:
+  track-a:
+    owner: null  # Assign agent ID
+    status: PENDING
+    current-slice: null
+    completed-slices: []
+    blocked-by: [foundation-001, shell-001]
+
+  track-b:
+    owner: null  # Assign agent ID
+    status: PENDING
+    current-slice: null
+    completed-slices: []
+    blocked-by: [foundation-001, shell-001]
+
+# Special assignments
+special:
+  foundation:
+    owner: lead-agent
+    status: PENDING
+
+  shell:
+    owner: lead-agent
+    status: PENDING
+
+  integration-checkpoint:
+    owner: lead-agent
+    status: PENDING
+
+  visual-checkpoint:
+    owner: lead-agent
+    status: PENDING
+
+  hygiene:
+    owner: lead-agent
+    status: PENDING
+
+  release:
+    owner: lead-agent
+    status: PENDING
+
+# Conflict resolution
+conflict-resolution:
+  default-strategy: first-lock-wins
+  escalation: lead-agent
+  max-wait-seconds: 300
+
+  # File-level conflict rules
+  file-rules:
+    - pattern: src/router/routes.ts
+      strategy: queue
+      max-queue: 2
+
+    - pattern: src/types/index.ts
+      strategy: merge-if-additive
+      else: queue
+
+# Communication protocol
+communication:
+  status-updates:
+    on: [slice-start, slice-complete, slice-fail, checkpoint]
+    format: yaml
+    target: coordination/status-log.yaml
+
+  blockers:
+    escalate-after-seconds: 600
+    notify: [lead-agent, affected-track-owners]

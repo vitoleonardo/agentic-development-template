@@ -1,0 +1,279 @@
+# ============================================================================
+# API CONTRACT - Authoritative endpoint definitions
+# ============================================================================
+# CHANGE RULES:
+#   - Every endpoint MUST have a unique id (kebab-case, e.g., "get-user-by-id")
+#   - Every endpoint MUST specify auth requirements
+#   - Every endpoint MUST define error codes it can return
+#   - New endpoints: append to relevant resource group
+#   - Removing endpoints: mark deprecated: true first, remove in next major version
+#   - Breaking changes require version bump in meta.version
+# ============================================================================
+
+meta:
+  version: "0.1.0"
+  updated: "2024-01-01"
+  owner: "api-team"
+
+# -----------------------------------------------------------------------------
+# Common definitions (reusable across endpoints)
+# -----------------------------------------------------------------------------
+common:
+  errors:
+    validation-error:
+      code: 400
+      description: "Request validation failed"
+    unauthorized:
+      code: 401
+      description: "Authentication required"
+    forbidden:
+      code: 403
+      description: "Insufficient permissions"
+    not-found:
+      code: 404
+      description: "Resource not found"
+    conflict:
+      code: 409
+      description: "Resource conflict"
+    internal-error:
+      code: 500
+      description: "Internal server error"
+
+  headers:
+    authorization:
+      name: "Authorization"
+      type: "string"
+      required: true
+      pattern: "Bearer {token}"
+
+  pagination:
+    params:
+      - name: "limit"
+        type: "integer"
+        default: 20
+        max: 100
+      - name: "offset"
+        type: "integer"
+        default: 0
+
+# -----------------------------------------------------------------------------
+# Endpoints grouped by resource
+# -----------------------------------------------------------------------------
+resources:
+
+  # ===========================================================================
+  # USERS
+  # ===========================================================================
+  users:
+    base-path: "/users"
+
+    endpoints:
+      # -------------------------------------------------------------------------
+      - id: list-users
+        method: GET
+        path: "/"
+        summary: "List all users"
+        auth:
+          required: true
+          permissions: ["users:read"]
+        request:
+          query:
+            - $ref: "#/common/pagination/params"
+            - name: "status"
+              type: "string"
+              enum: ["active", "inactive", "pending"]
+              required: false
+        response:
+          success:
+            code: 200
+            schema:
+              type: "array"
+              items:
+                $ref: "#/schemas/user-summary"
+          errors:
+            - $ref: "#/common/errors/unauthorized"
+            - $ref: "#/common/errors/forbidden"
+
+      # -------------------------------------------------------------------------
+      - id: get-user-by-id
+        method: GET
+        path: "/:id"
+        summary: "Get user by ID"
+        auth:
+          required: true
+          permissions: ["users:read"]
+        request:
+          params:
+            - name: "id"
+              type: "string"
+              format: "uuid"
+              required: true
+        response:
+          success:
+            code: 200
+            schema:
+              $ref: "#/schemas/user"
+          errors:
+            - $ref: "#/common/errors/unauthorized"
+            - $ref: "#/common/errors/forbidden"
+            - $ref: "#/common/errors/not-found"
+
+      # -------------------------------------------------------------------------
+      - id: create-user
+        method: POST
+        path: "/"
+        summary: "Create new user"
+        auth:
+          required: true
+          permissions: ["users:create"]
+        request:
+          body:
+            $ref: "#/schemas/user-create"
+        response:
+          success:
+            code: 201
+            schema:
+              $ref: "#/schemas/user"
+          errors:
+            - $ref: "#/common/errors/validation-error"
+            - $ref: "#/common/errors/unauthorized"
+            - $ref: "#/common/errors/forbidden"
+            - $ref: "#/common/errors/conflict"
+
+      # -------------------------------------------------------------------------
+      - id: update-user
+        method: PATCH
+        path: "/:id"
+        summary: "Update user"
+        auth:
+          required: true
+          permissions: ["users:update"]
+        request:
+          params:
+            - name: "id"
+              type: "string"
+              format: "uuid"
+              required: true
+          body:
+            $ref: "#/schemas/user-update"
+        response:
+          success:
+            code: 200
+            schema:
+              $ref: "#/schemas/user"
+          errors:
+            - $ref: "#/common/errors/validation-error"
+            - $ref: "#/common/errors/unauthorized"
+            - $ref: "#/common/errors/forbidden"
+            - $ref: "#/common/errors/not-found"
+
+      # -------------------------------------------------------------------------
+      - id: delete-user
+        method: DELETE
+        path: "/:id"
+        summary: "Delete user"
+        auth:
+          required: true
+          permissions: ["users:delete"]
+        request:
+          params:
+            - name: "id"
+              type: "string"
+              format: "uuid"
+              required: true
+        response:
+          success:
+            code: 204
+          errors:
+            - $ref: "#/common/errors/unauthorized"
+            - $ref: "#/common/errors/forbidden"
+            - $ref: "#/common/errors/not-found"
+
+  # ===========================================================================
+  # EXAMPLE: Add more resources below
+  # ===========================================================================
+  # items:
+  #   base-path: "/items"
+  #   endpoints:
+  #     - id: list-items
+  #       ...
+
+# -----------------------------------------------------------------------------
+# Schemas (request/response shapes)
+# -----------------------------------------------------------------------------
+schemas:
+
+  user:
+    id: user
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      email:
+        type: string
+        format: email
+      name:
+        type: string
+      role:
+        type: string
+        enum: ["admin", "member", "viewer"]
+      status:
+        type: string
+        enum: ["active", "inactive", "pending"]
+      created-at:
+        type: string
+        format: date-time
+      updated-at:
+        type: string
+        format: date-time
+
+  user-summary:
+    id: user-summary
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      email:
+        type: string
+        format: email
+      name:
+        type: string
+      status:
+        type: string
+
+  user-create:
+    id: user-create
+    type: object
+    required: [email, name]
+    properties:
+      email:
+        type: string
+        format: email
+      name:
+        type: string
+        min-length: 1
+        max-length: 100
+      role:
+        type: string
+        enum: ["admin", "member", "viewer"]
+        default: "member"
+
+  user-update:
+    id: user-update
+    type: object
+    properties:
+      email:
+        type: string
+        format: email
+      name:
+        type: string
+        min-length: 1
+        max-length: 100
+      role:
+        type: string
+        enum: ["admin", "member", "viewer"]
+      status:
+        type: string
+        enum: ["active", "inactive", "pending"]

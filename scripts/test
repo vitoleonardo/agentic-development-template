@@ -1,0 +1,84 @@
+#!/bin/sh
+# Test runner wrapper - detects and runs configured test framework
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Check for package.json script
+has_npm_script() {
+  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
+}
+
+# Detect test framework
+detect_test_framework() {
+  # Vitest
+  [ -f "vitest.config.ts" ] || [ -f "vitest.config.js" ] || [ -f "vitest.config.mts" ] && \
+  echo "vitest" && return
+
+  # Jest
+  [ -f "jest.config.js" ] || [ -f "jest.config.ts" ] || [ -f "jest.config.json" ] && \
+  echo "jest" && return
+
+  # Check package.json for test runner
+  if [ -f "package.json" ]; then
+    grep -q '"vitest"' package.json 2>/dev/null && echo "vitest" && return
+    grep -q '"jest"' package.json 2>/dev/null && echo "jest" && return
+  fi
+
+  echo ""
+}
+
+echo "Running tests..."
+
+# Try npm script first
+if has_npm_script "test"; then
+  npm test "$@"
+  exit $?
+fi
+
+# Try direct framework detection
+framework=$(detect_test_framework)
+
+case "$framework" in
+  vitest)
+    if [ -f "node_modules/.bin/vitest" ]; then
+      npx vitest run "$@"
+      exit $?
+    fi
+    ;;
+  jest)
+    if [ -f "node_modules/.bin/jest" ]; then
+      npx jest "$@"
+      exit $?
+    fi
+    ;;
+esac
+
+# Check if there are any test files
+test_files=$(find . -type f \( -name "*.test.ts" -o -name "*.test.tsx" -o -name "*.test.js" -o -name "*.spec.ts" -o -name "*.spec.tsx" -o -name "*.spec.js" \) \
+  ! -path "./node_modules/*" 2>/dev/null | head -1)
+
+if [ -z "$test_files" ]; then
+  echo "SKIP: No test files found. Tests not configured."
+  exit 0
+fi
+
+# Test files exist but no framework
+echo "ERROR: Test files found but no test framework configured."
+echo ""
+echo "To configure testing:"
+echo ""
+echo "  Option 1: Vitest (fast, Vite-native)"
+echo "    npm install -D vitest"
+echo "    # Add to package.json scripts:"
+echo "    \"test\": \"vitest run\""
+echo ""
+echo "  Option 2: Jest"
+echo "    npm install -D jest @types/jest ts-jest"
+echo "    npx ts-jest config:init"
+echo "    # Add to package.json scripts:"
+echo "    \"test\": \"jest\""
+echo ""
+exit 1

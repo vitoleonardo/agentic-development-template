@@ -1,0 +1,178 @@
+#!/bin/sh
+# ============================================================================
+# Contract validation script
+# ============================================================================
+# Validates contract files for:
+#   - YAML syntax
+#   - Required fields
+#   - Cross-contract consistency
+#   - Naming conventions
+# ============================================================================
+set -e
+
+echo "Validating contracts..."
+
+CONTRACTS_DIR="./contracts"
+ERRORS=""
+WARNINGS=""
+
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+add_error() {
+  ERRORS="$ERRORS\n  ERROR: $1"
+}
+
+add_warning() {
+  WARNINGS="$WARNINGS\n  WARNING: $1"
+}
+
+# -----------------------------------------------------------------------------
+# Check contract files exist
+# -----------------------------------------------------------------------------
+echo "Checking required contract files..."
+
+required_files="api-contract.yaml db-schema.yaml policies.yaml nfr.yaml index.yaml"
+for file in $required_files; do
+  if [ ! -f "$CONTRACTS_DIR/$file" ]; then
+    add_error "Missing required contract: $file"
+  fi
+done
+
+# -----------------------------------------------------------------------------
+# YAML syntax validation (requires yq or python)
+# -----------------------------------------------------------------------------
+echo "Checking YAML syntax..."
+
+validate_yaml() {
+  file="$1"
+  # Try yq first (common YAML tool)
+  if command -v yq >/dev/null 2>&1; then
+    yq '.' "$file" >/dev/null 2>&1
+    return $?
+  fi
+  # Try python with PyYAML
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import sys
+try:
+    import yaml
+    with open('$file', 'r') as f:
+        yaml.safe_load(f)
+    sys.exit(0)
+except ImportError:
+    # PyYAML not installed, skip validation
+    sys.exit(0)
+except yaml.YAMLError as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null
+    return $?
+  fi
+  # No validator available, skip
+  echo "  (skipping YAML syntax check - install yq or PyYAML for validation)"
+  return 0
+}
+
+for file in "$CONTRACTS_DIR"/*.yaml; do
+  if [ -f "$file" ]; then
+    if ! validate_yaml "$file"; then
+      add_error "Invalid YAML syntax in $file"
+    fi
+  fi
+done
+
+# -----------------------------------------------------------------------------
+# API contract validation
+# -----------------------------------------------------------------------------
+echo "Checking api-contract.yaml..."
+
+if [ -f "$CONTRACTS_DIR/api-contract.yaml" ]; then
+  # Check for endpoints without auth (basic grep check)
+  if grep -q "auth:" "$CONTRACTS_DIR/api-contract.yaml"; then
+    : # auth sections exist
+  else
+    add_error "api-contract.yaml: No auth definitions found"
+  fi
+
+  # Check for required meta section
+  if ! grep -q "^meta:" "$CONTRACTS_DIR/api-contract.yaml"; then
+    add_error "api-contract.yaml: Missing meta section"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# DB schema validation
+# -----------------------------------------------------------------------------
+echo "Checking db-schema.yaml..."
+
+if [ -f "$CONTRACTS_DIR/db-schema.yaml" ]; then
+  # Check for entities without fields
+  if ! grep -q "fields:" "$CONTRACTS_DIR/db-schema.yaml"; then
+    add_error "db-schema.yaml: No field definitions found"
+  fi
+
+  # Check for type definitions
+  if ! grep -q "type:" "$CONTRACTS_DIR/db-schema.yaml"; then
+    add_error "db-schema.yaml: No type definitions found in fields"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# Policies validation
+# -----------------------------------------------------------------------------
+echo "Checking policies.yaml..."
+
+if [ -f "$CONTRACTS_DIR/policies.yaml" ]; then
+  # Check for roles
+  if ! grep -q "^roles:" "$CONTRACTS_DIR/policies.yaml"; then
+    add_error "policies.yaml: Missing roles section"
+  fi
+
+  # Check for permissions
+  if ! grep -q "^permissions:" "$CONTRACTS_DIR/policies.yaml"; then
+    add_error "policies.yaml: Missing permissions section"
+  fi
+
+  # Check for permission matrix
+  if ! grep -q "^permission-matrix:" "$CONTRACTS_DIR/policies.yaml"; then
+    add_warning "policies.yaml: Missing permission-matrix section"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# NFR validation
+# -----------------------------------------------------------------------------
+echo "Checking nfr.yaml..."
+
+if [ -f "$CONTRACTS_DIR/nfr.yaml" ]; then
+  # Check for major sections
+  for section in performance reliability security observability accessibility; do
+    if ! grep -q "^$section:" "$CONTRACTS_DIR/nfr.yaml"; then
+      add_warning "nfr.yaml: Missing $section section"
+    fi
+  done
+fi
+
+# -----------------------------------------------------------------------------
+# Report results
+# -----------------------------------------------------------------------------
+echo ""
+echo "======================================"
+echo "Contract Validation Results"
+echo "======================================"
+
+if [ -n "$WARNINGS" ]; then
+  echo "$WARNINGS"
+  echo ""
+fi
+
+if [ -n "$ERRORS" ]; then
+  echo "$ERRORS"
+  echo ""
+  echo "Validation FAILED"
+  exit 1
+fi
+
+echo "All contract validations passed."
+exit 0

@@ -1,0 +1,69 @@
+#!/bin/sh
+# Lint wrapper - detects and runs configured linter
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Check for package.json lint script
+has_npm_script() {
+  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
+}
+
+# Detect linter configuration
+detect_linter() {
+  # ESLint
+  [ -f ".eslintrc" ] || [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || \
+  [ -f ".eslintrc.yml" ] || [ -f ".eslintrc.cjs" ] || [ -f "eslint.config.js" ] || \
+  [ -f "eslint.config.mjs" ] && echo "eslint" && return
+
+  # Biome
+  [ -f "biome.json" ] || [ -f "biome.jsonc" ] && echo "biome" && return
+
+  echo ""
+}
+
+echo "Running lint..."
+
+# Try npm script first
+if has_npm_script "lint"; then
+  npm run lint "$@"
+  exit $?
+fi
+
+# Try direct linter detection
+linter=$(detect_linter)
+
+case "$linter" in
+  eslint)
+    if [ -f "node_modules/.bin/eslint" ]; then
+      npx eslint . "$@"
+      exit $?
+    fi
+    ;;
+  biome)
+    if [ -f "node_modules/.bin/biome" ]; then
+      npx biome lint . "$@"
+      exit $?
+    fi
+    ;;
+esac
+
+# Not configured - provide guidance
+echo "ERROR: Lint not configured."
+echo ""
+echo "To configure linting:"
+echo ""
+echo "  Option 1: ESLint"
+echo "    npm init @eslint/config@latest"
+echo "    # Add to package.json scripts:"
+echo "    \"lint\": \"eslint .\""
+echo ""
+echo "  Option 2: Biome (faster, all-in-one)"
+echo "    npm install -D @biomejs/biome"
+echo "    npx biome init"
+echo "    # Add to package.json scripts:"
+echo "    \"lint\": \"biome lint .\""
+echo ""
+exit 1

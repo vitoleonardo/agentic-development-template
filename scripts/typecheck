@@ -1,0 +1,47 @@
+#!/bin/sh
+# TypeScript type checking wrapper
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Check for package.json script
+has_npm_script() {
+  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
+}
+
+echo "Running typecheck..."
+
+# Try npm script first
+if has_npm_script "typecheck"; then
+  npm run typecheck "$@"
+  exit $?
+fi
+
+if has_npm_script "type-check"; then
+  npm run type-check "$@"
+  exit $?
+fi
+
+# Try direct tsc
+if [ -f "tsconfig.json" ]; then
+  if [ -f "node_modules/.bin/tsc" ]; then
+    npx tsc --noEmit "$@"
+    exit $?
+  fi
+
+  echo "ERROR: TypeScript config found but tsc not installed."
+  echo ""
+  echo "Install TypeScript:"
+  echo "  npm install -D typescript"
+  exit 1
+fi
+
+# No TypeScript config
+echo "SKIP: No tsconfig.json found. TypeScript not configured."
+echo ""
+echo "To enable TypeScript:"
+echo "  npm install -D typescript"
+echo "  npx tsc --init"
+exit 0

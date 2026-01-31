@@ -1,0 +1,93 @@
+#!/bin/sh
+# Format wrapper - detects and runs configured formatter
+# Usage: ./scripts/format [--check]
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+CHECK_MODE=false
+if [ "$1" = "--check" ] || [ "$1" = "-c" ]; then
+  CHECK_MODE=true
+  shift
+fi
+
+# Check for package.json script
+has_npm_script() {
+  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
+}
+
+# Detect formatter configuration
+detect_formatter() {
+  # Prettier
+  [ -f ".prettierrc" ] || [ -f ".prettierrc.js" ] || [ -f ".prettierrc.json" ] || \
+  [ -f ".prettierrc.yml" ] || [ -f "prettier.config.js" ] || [ -f "prettier.config.mjs" ] && \
+  echo "prettier" && return
+
+  # Biome
+  [ -f "biome.json" ] || [ -f "biome.jsonc" ] && echo "biome" && return
+
+  echo ""
+}
+
+if $CHECK_MODE; then
+  echo "Checking format..."
+else
+  echo "Running format..."
+fi
+
+# Try npm script first
+if $CHECK_MODE && has_npm_script "format:check"; then
+  npm run format:check "$@"
+  exit $?
+elif ! $CHECK_MODE && has_npm_script "format"; then
+  npm run format "$@"
+  exit $?
+fi
+
+# Try direct formatter detection
+formatter=$(detect_formatter)
+
+case "$formatter" in
+  prettier)
+    if [ -f "node_modules/.bin/prettier" ]; then
+      if $CHECK_MODE; then
+        npx prettier --check . "$@"
+      else
+        npx prettier --write . "$@"
+      fi
+      exit $?
+    fi
+    ;;
+  biome)
+    if [ -f "node_modules/.bin/biome" ]; then
+      if $CHECK_MODE; then
+        npx biome check . "$@"
+      else
+        npx biome format --write . "$@"
+      fi
+      exit $?
+    fi
+    ;;
+esac
+
+# Not configured - provide guidance
+echo "ERROR: Format not configured."
+echo ""
+echo "To configure formatting:"
+echo ""
+echo "  Option 1: Prettier"
+echo "    npm install -D prettier"
+echo "    echo '{}' > .prettierrc"
+echo "    # Add to package.json scripts:"
+echo "    \"format\": \"prettier --write .\","
+echo "    \"format:check\": \"prettier --check .\""
+echo ""
+echo "  Option 2: Biome (faster, all-in-one)"
+echo "    npm install -D @biomejs/biome"
+echo "    npx biome init"
+echo "    # Add to package.json scripts:"
+echo "    \"format\": \"biome format --write .\","
+echo "    \"format:check\": \"biome check .\""
+echo ""
+exit 1

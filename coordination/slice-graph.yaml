@@ -1,0 +1,123 @@
+# Slice Graph - Dependencies and execution state
+# Machine-readable coordination file
+
+version: "1.0"
+
+# Sequential phase (blocking)
+sequential:
+  - id: foundation-001
+    workflow: workflows/current/01-foundation.md
+    status: PENDING
+    risk-tags: [security, data]
+    conflict-risk: low
+    depends-on: []
+    contract-touches:
+      reads:
+        - contracts/api.yaml#/info
+        - contracts/db.yaml#/version
+      writes: []
+
+  - id: shell-001
+    workflow: workflows/current/02-shell.md
+    status: PENDING
+    risk-tags: [ux, perf]
+    conflict-risk: low
+    depends-on: [foundation-001]
+    contract-touches:
+      reads:
+        - contracts/api.yaml#/paths
+      writes: []
+
+# Parallel tracks (after sequential complete)
+tracks:
+  track-a:
+    slices: []
+    # Example slice entry:
+    # - id: a-001-feature-name
+    #   workflow: workflows/current/tracks/track-a/03-slice-feature-name.md
+    #   status: PENDING
+    #   risk-tags: [ux]
+    #   conflict-risk: low
+    #   depends-on: [shell-001]
+    #   contract-touches:
+    #     reads:
+    #       - contracts/api.yaml#/paths/feature
+    #     writes: []
+
+  track-b:
+    slices: []
+    # Example slice entry:
+    # - id: b-001-feature-name
+    #   workflow: workflows/current/tracks/track-b/03-slice-feature-name.md
+    #   status: PENDING
+    #   risk-tags: [data]
+    #   conflict-risk: med
+    #   depends-on: [shell-001]
+    #   contract-touches:
+    #     reads:
+    #       - contracts/db.yaml#/tables/feature
+    #     writes: []
+
+# Convergence phase
+convergence:
+  - id: checkpoint-integration
+    workflow: workflows/current/90-integration-checkpoint.md
+    status: PENDING
+    risk-tags: [data, security]
+    conflict-risk: high
+    depends-on: all-track-slices
+    contract-touches:
+      reads:
+        - contracts/api.yaml#/**
+        - contracts/db.yaml#/**
+        - contracts/nfr.yaml#/**
+      writes: []
+
+  - id: checkpoint-visual
+    workflow: workflows/current/91-visual-checkpoint.md
+    status: PENDING
+    risk-tags: [ux]
+    conflict-risk: low
+    depends-on: [checkpoint-integration]
+    contract-touches:
+      reads:
+        - contracts/nfr.yaml#/accessibility
+        - contracts/nfr.yaml#/browser-support
+      writes: []
+
+  - id: hygiene-001
+    workflow: workflows/current/95-hygiene.md
+    status: PENDING
+    risk-tags: [security]
+    conflict-risk: low
+    depends-on: [checkpoint-integration, checkpoint-visual]
+    contract-touches:
+      reads:
+        - contracts/nfr.yaml#/code-quality
+        - contracts/policies.yaml#/naming-conventions
+      writes: []
+
+  - id: release-001
+    workflow: workflows/current/99-release.md
+    status: PENDING
+    risk-tags: [security, data]
+    conflict-risk: low
+    depends-on: [hygiene-001]
+    contract-touches:
+      reads:
+        - contracts/api.yaml#/info/version
+        - contracts/nfr.yaml#/**
+      writes: []
+
+# Cross-track dependencies (if any)
+cross-track-deps: []
+# Example:
+# - from: a-002-feature
+#   to: b-001-data-layer
+#   type: hard  # hard = blocking, soft = can proceed with stub
+
+# Checkpoint triggers
+checkpoint-triggers:
+  slice-count: 3
+  high-risk-complete: true
+  cross-track-resolved: true

@@ -1,0 +1,224 @@
+#!/bin/sh
+#
+# Checkpoint Runner - Local CI entrypoint
+#
+# Runs all validation gates in sequence.
+# Use before commits, after slice completion, or at integration checkpoints.
+#
+# USAGE:
+#   ./scripts/checkpoint           # Run all gates
+#   ./scripts/checkpoint --quick   # Skip visual/storybook
+#   ./scripts/checkpoint --fix     # Auto-fix format issues
+#
+# EXIT CODES:
+#   0 - All gates passed
+#   1 - Gate failed (see output for details)
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Options
+QUICK_MODE=false
+FIX_MODE=false
+VERBOSE=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --quick|-q) QUICK_MODE=true ;;
+    --fix|-f) FIX_MODE=true ;;
+    --verbose|-v) VERBOSE=true ;;
+  esac
+done
+
+# Track results
+PASSED=0
+FAILED=0
+SKIPPED=0
+FAILED_GATES=""
+
+# Run a gate
+run_gate() {
+  gate_name="$1"
+  gate_script="$2"
+  shift 2
+
+  printf "${BLUE}[GATE]${NC} %s... " "$gate_name"
+
+  if [ ! -x "$gate_script" ]; then
+    echo "${YELLOW}SKIP${NC} (script not found)"
+    SKIPPED=$((SKIPPED + 1))
+    return 0
+  fi
+
+  # Capture output
+  output_file=$(mktemp)
+  if "$gate_script" "$@" > "$output_file" 2>&1; then
+    echo "${GREEN}PASS${NC}"
+    PASSED=$((PASSED + 1))
+    if $VERBOSE; then
+      cat "$output_file"
+    fi
+  else
+    exit_code=$?
+    # Check if it was a "not configured" skip
+    if grep -q "^SKIP:" "$output_file" 2>/dev/null; then
+      echo "${YELLOW}SKIP${NC}"
+      SKIPPED=$((SKIPPED + 1))
+      if $VERBOSE; then
+        cat "$output_file"
+      fi
+    else
+      echo "${RED}FAIL${NC}"
+      FAILED=$((FAILED + 1))
+      FAILED_GATES="$FAILED_GATES  - $gate_name\n"
+      # Always show failure output
+      cat "$output_file"
+      echo ""
+    fi
+  fi
+  rm -f "$output_file"
+}
+
+# Run optional gate (doesn't fail checkpoint if script missing or not configured)
+run_optional_gate() {
+  gate_name="$1"
+  gate_script="$2"
+  shift 2
+
+  printf "${BLUE}[GATE]${NC} %s (optional)... " "$gate_name"
+
+  if [ ! -x "$gate_script" ]; then
+    echo "${YELLOW}SKIP${NC}"
+    SKIPPED=$((SKIPPED + 1))
+    return 0
+  fi
+
+  output_file=$(mktemp)
+  if "$gate_script" "$@" > "$output_file" 2>&1; then
+    echo "${GREEN}PASS${NC}"
+    PASSED=$((PASSED + 1))
+  else
+    # Check if it's a configuration skip (not a real failure)
+    if grep -qE "^(SKIP:|not configured|Not configured)" "$output_file" 2>/dev/null; then
+      echo "${YELLOW}SKIP${NC}"
+      SKIPPED=$((SKIPPED + 1))
+    else
+      echo "${YELLOW}WARN${NC}"
+      SKIPPED=$((SKIPPED + 1))
+      if $VERBOSE; then
+        cat "$output_file"
+      fi
+    fi
+  fi
+  rm -f "$output_file"
+}
+
+echo ""
+echo "========================================"
+echo "  CHECKPOINT RUNNER"
+echo "========================================"
+echo ""
+if $QUICK_MODE; then
+  echo "Mode: ${YELLOW}Quick${NC} (skipping visual gates)"
+elif $FIX_MODE; then
+  echo "Mode: ${YELLOW}Auto-fix${NC}"
+else
+  echo "Mode: ${GREEN}Full${NC}"
+fi
+echo ""
+echo "----------------------------------------"
+echo "  Structural Gates"
+echo "----------------------------------------"
+
+# Structural gates (always run)
+run_gate "validate-docs" "$SCRIPT_DIR/validate-docs"
+run_gate "validate-naming" "$SCRIPT_DIR/validate-naming"
+
+echo ""
+echo "----------------------------------------"
+echo "  Code Quality Gates"
+echo "----------------------------------------"
+
+# Code quality gates
+run_gate "lint" "$SCRIPT_DIR/lint"
+
+if $FIX_MODE; then
+  run_gate "format (fix)" "$SCRIPT_DIR/format"
+else
+  run_gate "format (check)" "$SCRIPT_DIR/format" --check
+fi
+
+run_gate "typecheck" "$SCRIPT_DIR/typecheck"
+
+echo ""
+echo "----------------------------------------"
+echo "  Test Gates"
+echo "----------------------------------------"
+
+run_gate "test" "$SCRIPT_DIR/test"
+
+# Visual gates (skip in quick mode)
+if ! $QUICK_MODE; then
+  echo ""
+  echo "----------------------------------------"
+  echo "  Visual Gates (optional)"
+  echo "----------------------------------------"
+
+  run_optional_gate "storybook build" "$SCRIPT_DIR/storybook" build
+  run_optional_gate "visual tests" "$SCRIPT_DIR/visual"
+fi
+
+# Contract validation (if available)
+if [ -x "$SCRIPT_DIR/validate-contracts" ]; then
+  echo ""
+  echo "----------------------------------------"
+  echo "  Contract Gates"
+  echo "----------------------------------------"
+  run_gate "validate-contracts" "$SCRIPT_DIR/validate-contracts"
+fi
+
+echo ""
+echo "========================================"
+echo "  CHECKPOINT SUMMARY"
+echo "========================================"
+echo ""
+echo "  ${GREEN}Passed:${NC}  $PASSED"
+echo "  ${RED}Failed:${NC}  $FAILED"
+echo "  ${YELLOW}Skipped:${NC} $SKIPPED"
+echo ""
+
+if [ $FAILED -gt 0 ]; then
+  echo "${RED}CHECKPOINT FAILED${NC}"
+  echo ""
+  echo "Failed gates:"
+  printf "$FAILED_GATES"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Review failures above"
+  echo "  2. Fix issues in your code"
+  echo "  3. Re-run: ./scripts/checkpoint"
+  if ! $FIX_MODE; then
+    echo ""
+    echo "Tip: Use --fix to auto-fix format issues"
+  fi
+  exit 1
+fi
+
+echo "${GREEN}CHECKPOINT PASSED${NC}"
+echo ""
+if [ $SKIPPED -gt 0 ]; then
+  echo "Note: Some gates were skipped (not configured)."
+  echo "Run with --verbose to see details."
+fi
+exit 0

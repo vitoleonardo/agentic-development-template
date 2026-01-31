@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+
+/**
+ * Workflow Generator Stub
+ *
+ * Generates workflows/current/* from coordination and contract definitions.
+ * This is a stub - implement full logic as needed.
+ *
+ * INPUTS:
+ *   - product/scope.yaml (optional) - Feature scope definitions
+ *   - coordination/file-map.yaml    - Module ownership rules
+ *   - coordination/slice-graph.yaml - Dependency graph (template)
+ *   - coordination/assignments.yaml - Track assignments (template)
+ *   - contracts/api.yaml           - API contract
+ *   - contracts/db.yaml            - Database contract
+ *   - contracts/policies.yaml      - Policy contract
+ *   - contracts/nfr.yaml           - Non-functional requirements
+ *
+ * OUTPUTS:
+ *   - workflows/current/00-index.md
+ *   - workflows/current/01-foundation.md
+ *   - workflows/current/02-shell.md
+ *   - workflows/current/tracks/track-a/03-slice-{feature}.md (per feature)
+ *   - workflows/current/tracks/track-b/03-slice-{feature}.md (per feature)
+ *   - workflows/current/90-integration-checkpoint.md
+ *   - workflows/current/91-visual-checkpoint.md
+ *   - workflows/current/95-hygiene.md
+ *   - workflows/current/99-release.md
+ *   - coordination/slice-graph.yaml (populated)
+ *   - coordination/assignments.yaml (populated)
+ *
+ * USAGE:
+ *   ./scripts/generate-workflows [options]
+ *
+ * OPTIONS:
+ *   --scope <path>     Path to scope.yaml (default: product/scope.yaml)
+ *   --contracts <dir>  Path to contracts directory (default: contracts/)
+ *   --output <dir>     Output directory (default: workflows/current/)
+ *   --dry-run          Print what would be generated without writing
+ *   --verbose          Enable verbose logging
+ *
+ * SCOPE.YAML FORMAT:
+ *   version: "1.0"
+ *   tracks:
+ *     track-a:
+ *       features:
+ *         - id: user-auth
+ *           risk-tags: [security]
+ *           contract-refs:
+ *             - api.yaml#/paths/auth
+ *             - db.yaml#/tables/users
+ *         - id: user-profile
+ *           risk-tags: [ux]
+ *           depends-on: [user-auth]
+ *     track-b:
+ *       features:
+ *         - id: data-export
+ *           risk-tags: [data, perf]
+ *           contract-refs:
+ *             - api.yaml#/paths/export
+ */
+
+const fs = require('fs');
+const path = require('path');
+const yaml = require('yaml'); // Requires: npm install yaml
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+const DEFAULT_CONFIG = {
+  scopePath: 'product/scope.yaml',
+  contractsDir: 'contracts/',
+  outputDir: 'workflows/current/',
+  coordinationDir: 'coordination/',
+  dryRun: false,
+  verbose: false,
+};
+
+// ============================================================================
+// STUB IMPLEMENTATION
+// ============================================================================
+
+function parseArgs(args) {
+  const config = { ...DEFAULT_CONFIG };
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--scope':
+        config.scopePath = args[++i];
+        break;
+      case '--contracts':
+        config.contractsDir = args[++i];
+        break;
+      case '--output':
+        config.outputDir = args[++i];
+        break;
+      case '--dry-run':
+        config.dryRun = true;
+        break;
+      case '--verbose':
+        config.verbose = true;
+        break;
+    }
+  }
+  return config;
+}
+
+function loadScope(scopePath) {
+  // STUB: Load and parse scope.yaml
+  // Returns: { tracks: { 'track-a': { features: [...] }, ... } }
+  console.log(`[STUB] Would load scope from: ${scopePath}`);
+  return null;
+}
+
+function loadContracts(contractsDir) {
+  // STUB: Load all contract files
+  // Returns: { api: {...}, db: {...}, policies: {...}, nfr: {...} }
+  console.log(`[STUB] Would load contracts from: ${contractsDir}`);
+  return null;
+}
+
+function generateSliceWorkflow(feature, track, contracts) {
+  // STUB: Generate slice MD from feature definition
+  // Returns: string (markdown content)
+  console.log(`[STUB] Would generate slice for: ${track}/${feature.id}`);
+  return null;
+}
+
+function updateSliceGraph(scope, outputPath) {
+  // STUB: Update slice-graph.yaml with generated slices
+  console.log(`[STUB] Would update slice graph at: ${outputPath}`);
+}
+
+function updateAssignments(scope, outputPath) {
+  // STUB: Update assignments.yaml with track info
+  console.log(`[STUB] Would update assignments at: ${outputPath}`);
+}
+
+function main() {
+  const config = parseArgs(process.argv.slice(2));
+
+  console.log('='.repeat(60));
+  console.log('Workflow Generator (STUB)');
+  console.log('='.repeat(60));
+  console.log('');
+  console.log('Configuration:');
+  console.log(JSON.stringify(config, null, 2));
+  console.log('');
+
+  if (config.dryRun) {
+    console.log('[DRY RUN MODE]');
+  }
+
+  // STUB: Main generation flow
+  console.log('Steps to implement:');
+  console.log('  1. Load scope.yaml (if exists)');
+  console.log('  2. Load contracts/*.yaml');
+  console.log('  3. Parse features into track assignments');
+  console.log('  4. Generate slice MDs from template');
+  console.log('  5. Update slice-graph.yaml');
+  console.log('  6. Update assignments.yaml');
+  console.log('  7. Write output files');
+  console.log('');
+  console.log('Template files already exist in workflows/current/');
+  console.log('Use tracks/track-*/03-slice-template.md as base');
+  console.log('');
+  console.log('[STUB COMPLETE - Implement full logic as needed]');
+}
+
+main();
