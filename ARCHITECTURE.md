@@ -19,6 +19,7 @@ This section defines the non-negotiable rules that govern this repository.
 | Access control | `contracts/policies.yaml` | Authoritative |
 | Quality requirements | `contracts/nfr.yaml` | Authoritative |
 | **Design intent** | `product/design.yaml` | **Authoritative** |
+| **Tech stack** | `contracts/tech-stack.yaml` | **Authoritative** |
 | Slice coordination | `coordination/*.yaml` | Authoritative |
 | Source code | `src/**/*.ts` | Authoritative |
 | Tests | `tests/**/*.ts` | Authoritative |
@@ -76,7 +77,8 @@ Enforced by: `npm run validate:naming`
 
 ```
 .
-├── contracts/          # Authoritative API, DB, policy definitions
+├── contracts/          # Authoritative API, DB, policy, tech stack
+│   ├── tech-stack.yaml # FIXED: Next.js, Next Auth, shadcn, Tailwind, Postgres, Docker
 │   ├── api-contract.yaml
 │   ├── db-schema.yaml
 │   ├── policies.yaml
@@ -103,19 +105,24 @@ Enforced by: `npm run validate:naming`
 │           ├── track-a/
 │           └── track-b/
 │
-├── src/                # Application source code
-│   ├── ui/             # UI components (if applicable)
-│   └── *.ts
+├── src/                # Next.js App Router application
+│   ├── app/            # App Router: layout.tsx, page.tsx, api/, error.tsx, loading.tsx
+│   ├── components/     # Shared UI (layout, ui from shadcn)
+│   ├── features/       # Feature modules (track-isolated)
+│   ├── lib/            # Shared utilities, db client
+│   └── types/          # Shared TypeScript types
 │
 ├── tests/              # Test files
-│   ├── *.test.ts       # Unit/integration tests
-│   └── visual/         # Visual regression tests
+│   ├── *.test.ts       # Unit/integration (Vitest)
+│   └── visual/         # Visual regression (Playwright)
 │
-├── scripts/            # Build, validation, and workflow scripts
+├── scripts/            # Build, validation, workflow scripts
+├── docker-compose.yml  # Local Postgres + app (optional)
 │
 ├── README.md           # Quick start guide
 ├── ARCHITECTURE.md     # This file (constitution)
 ├── package.json        # Dependencies and scripts
+├── biome.json          # Lint + format (Biome)
 └── tsconfig.json       # TypeScript configuration
 ```
 
@@ -159,20 +166,18 @@ slices:
 
 ```
 src/
+├── app/                # Next.js App Router (layout, pages, api, error, loading)
+├── components/         # Shared UI (layout/, ui/ from shadcn)
 ├── features/           # Feature modules (isolated)
 │   ├── auth/
 │   └── users/
-├── shared/             # Shared utilities (imported by features)
-│   ├── types/
-│   └── utils/
-└── ui/                 # UI components (imported by features)
-    └── components/
+├── lib/                # Shared utilities, db (Prisma), auth helpers
+└── types/              # Shared TypeScript types
 ```
 
 **Allowed imports:**
-- `features/*` → `shared/*` ✓
-- `features/*` → `ui/*` ✓
-- `shared/*` → `shared/*` ✓
+- `app/*` → `components/*`, `lib/*`, `types/*` ✓
+- `features/*` → `components/*`, `lib/*`, `types/*` ✓
 - `features/a` → `features/b` ✗ (cross-feature forbidden)
 
 ---
@@ -236,9 +241,9 @@ It is a **constraint document** that tells agents what direction to follow and w
 - Contracts define canonical shapes; code implements them
 
 ### KISS (Keep It Simple, Stupid)
-- No framework until needed (start vanilla TypeScript)
-- No abstraction until pattern emerges
-- No optimization until measured
+- Use the template stack only (see `contracts/tech-stack.yaml`)
+- No extra frameworks or libraries beyond the stack
+- No abstraction until pattern emerges; no optimization until measured
 
 ### SOLID
 - **S**ingle Responsibility: One module, one purpose
@@ -317,23 +322,23 @@ Before merging any integration checkpoint:
 
 ## Technology Decisions
 
-### Fixed (Template)
+### Fixed (Template) — see `contracts/tech-stack.yaml`
+
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Language | TypeScript | Type safety, tooling, ecosystem |
-| Module system | ESM | Modern standard, tree-shaking |
-| Node version | ≥18.0.0 | LTS with native fetch, test runner |
+| Framework | Next.js (App Router) | Fullstack, RSC, API routes, Server Actions; one codebase |
+| Auth | NextAuth (Auth.js) | Standard solution; no custom auth |
+| UI | shadcn/ui + Tailwind CSS 3 | Components + styling; minimal custom CSS |
+| Database | PostgreSQL + Prisma | One ORM, migrations, type-safe client |
+| Runtime | Docker (Compose) | Local Postgres + app; one compose file |
+| Validation | Zod | Env, API, forms; one lib |
+| Lint + Format | Biome | One tool; fewer tokens than ESLint + Prettier |
+| Test | Vitest (unit), Playwright (e2e/visual) | Fast, ESM-native; no Jest |
+| Language | TypeScript | Type safety, tooling |
+| Node | ≥18.0.0 | LTS |
 | Contract format | YAML | Human-readable, diff-friendly |
 
-### Project-Specific (Choose Later)
-| Decision | Options | When to Decide |
-|----------|---------|----------------|
-| Framework | Next.js, Remix, Express, none | Sprint 0 |
-| UI library | React, Vue, Svelte, none | Sprint 0 |
-| Database | Postgres, SQLite, none | Sprint 0 |
-| Test runner | Vitest, Jest | Sprint 0 |
-| Linter | ESLint, Biome | Sprint 0 |
-| Formatter | Prettier, Biome | Sprint 0 |
+**Do not substitute.** Agents must use this stack only. Saves tokens and code.
 
 ---
 

@@ -13,6 +13,10 @@ meta:
 # Contract registry
 # -----------------------------------------------------------------------------
 contracts:
+  - file: tech-stack.yaml
+    type: tech-stack
+    description: "Fixed technology choices (Next.js, Next Auth, shadcn, Tailwind, Postgres, Docker, etc.)"
+
   - file: api-contract.yaml
     type: api
     description: "API endpoint definitions"

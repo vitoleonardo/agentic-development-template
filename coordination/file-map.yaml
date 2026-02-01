@@ -1,13 +1,14 @@
 # File Map - Module ownership and path rules
-# Machine-readable coordination file
+# Next.js App Router: no src/router; routes are src/app/**/page.tsx
+# See contracts/tech-stack.yaml
 
 version: "1.0"
 
 module-roots:
-  core:
-    path: src/
+  app:
+    path: src/app/
     owner: any
-    description: Shared core code
+    description: Next.js App Router (layout, pages, api, error, loading)
 
   features:
     path: src/features/
@@ -17,12 +18,12 @@ module-roots:
   components:
     path: src/components/
     owner: any
-    description: Shared UI components
+    description: Shared UI (layout, ui from shadcn)
 
-  router:
-    path: src/router/
+  lib:
+    path: src/lib/
     owner: any
-    description: Application routing
+    description: Shared utilities, db (Prisma), auth
 
   types:
     path: src/types/
@@ -45,7 +46,7 @@ track-boundaries:
       - src/features/track-a-*/**
       - src/features/shared/**
       - src/components/**
-      - src/router/routes.ts
+      - src/app/**/page.tsx
       - tests/unit/track-a-*/**
       - tests/visual/track-a-*/**
       - storybook/stories/track-a-*/**
@@ -60,7 +61,7 @@ track-boundaries:
       - src/features/track-b-*/**
       - src/features/shared/**
       - src/components/**
-      - src/router/routes.ts
+      - src/app/**/page.tsx
       - tests/unit/track-b-*/**
       - tests/visual/track-b-*/**
       - storybook/stories/track-b-*/**
@@ -73,14 +74,14 @@ track-boundaries:
 global-forbidden:
   - node_modules/**
   - dist/**
+  - .next/**
   - .git/**
   - "*.log"
   - .env*
   - "**/*.secret.*"
 
 shared-write-zones:
-  # Zones requiring coordination/locking
-  - path: src/router/routes.ts
+  - path: src/app/layout.tsx
     lock-required: true
     max-concurrent: 1
 

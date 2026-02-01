@@ -54,11 +54,17 @@ forbidden:
   verify: "{Command or manual step}"
 ```
 
+## Tech Stack
+```yaml
+reads: contracts/tech-stack.yaml
+# Next.js App Router; no src/router. Routes = app/**/page.tsx
+```
+
 ## Contract Touches
 ```yaml
 reads:
-  # - contracts/api.yaml#/paths/{endpoint}
-  # - contracts/db.yaml#/tables/{table}
+  # - contracts/api-contract.yaml#/paths/{endpoint}
+  # - contracts/db-schema.yaml#/tables/{table}
   # - contracts/policies.yaml#/{policy-id}
   # - contracts/nfr.yaml#/{requirement-id}
 writes:
@@ -72,9 +78,9 @@ no-new-folders: true
 create:
   # - src/features/{feature}/index.ts
   # - src/features/{feature}/components/{component}.tsx
-  # - src/features/{feature}/hooks/use-{hook}.ts
+  # - src/app/{feature}/page.tsx  # Next.js route
 modify:
-  # - src/router/routes.ts
+  # - src/app/layout.tsx  # only when adding nav link
 forbidden:
   - "src/features/track-a-*/**"
   - "contracts/**"
@@ -93,9 +99,10 @@ screenshots:
 ## Required Checks
 ```bash
 npm run lint
-npm run format:check
+npm run format -- --check
 npm run typecheck
 npm run test -- --testPathPattern="{feature}"
+npm run validate:contracts
 npm run validate:docs
 npm run validate:naming
 # If visual plan exists:

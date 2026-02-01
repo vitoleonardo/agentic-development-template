@@ -35,39 +35,55 @@ Before marking shell complete:
 - [ ] Navigation matches ux.navigation pattern
 - [ ] No hardcoded colors outside design system
 
+## Tech Stack
+```yaml
+reads: contracts/tech-stack.yaml
+# Next.js App Router only. No src/index.ts, no src/router/*
+```
+
 ## Acceptance Criteria
 - [ ] AC-001: App shell renders without error
-- [ ] AC-002: Router configured with placeholder routes
-- [ ] AC-003: Layout component accepts children
-- [ ] AC-004: Error boundary at root level
-- [ ] AC-005: Loading state component exists
+- [ ] AC-002: Placeholder route exists (e.g. app/dashboard)
+- [ ] AC-003: Root layout uses shell and accepts children
+- [ ] AC-004: App-level error boundary (app/error.tsx)
+- [ ] AC-005: App-level loading UI (app/loading.tsx)
+- [ ] AC-006: Not-found page (app/not-found.tsx)
 
 ## Contract Touches
 ```yaml
 reads:
-  - contracts/api.yaml#/paths
+  - contracts/tech-stack.yaml
+  - contracts/api-contract.yaml#/paths
+  - product/design.yaml
 writes: []
 ```
 
 ## File Plan
 ```yaml
+# Next.js App Router — entry is app/layout.tsx; routes are app/**/page.tsx
 max-new-files: 6
 no-new-folders: false
 create:
-  - src/app.tsx
   - src/components/layout/shell.tsx
   - src/components/layout/error-boundary.tsx
-  - src/components/ui/loading.tsx
-  - src/router/index.ts
-  - src/router/routes.ts
+  - src/app/error.tsx
+  - src/app/loading.tsx
+  - src/app/not-found.tsx
+  - src/app/dashboard/page.tsx
 modify:
-  - src/index.ts
+  - src/app/layout.tsx
 forbidden:
   - "**/*.stories.tsx"
   - "contracts/**"
   - "tests/**"
 patch-budget: 7
 ```
+
+### Next.js Notes
+- **Entry**: `src/app/layout.tsx` (not src/index.ts).
+- **Routes**: File-based; add `app/{route}/page.tsx`. No src/router/*.
+- **Error**: Use `app/error.tsx`; optional `components/layout/error-boundary.tsx` inside it.
+- **Loading**: Use `app/loading.tsx`.
 
 ## Visual Plan
 ```yaml
@@ -79,7 +95,7 @@ deferred-to: track-slices
 ## Required Checks
 ```bash
 npm run lint
-npm run format:check
+npm run format -- --check
 npm run typecheck
 npm run test -- --passWithNoTests
 ```

@@ -9,71 +9,66 @@ risk-tags: [security, data]
 conflict-risk: low
 ```
 
-## Design System Setup
+## Tech Stack (Fixed)
 ```yaml
-# If product/design.yaml exists, foundation must configure the design system
-reads: product/design.yaml (optional)
-configures:
-  - Tailwind CSS with colors from design.yaml
-  - CSS variables for theme switching (light/dark/system)
-  - Spacing scale matching density.level
-  - Typography defaults matching typography section
+# MUST use contracts/tech-stack.yaml — no substitutions
+reads: contracts/tech-stack.yaml
+stack: Next.js, Next Auth, shadcn, Tailwind 3, Postgres (Prisma), Docker, Biome, Vitest, Zod
 ```
-
-### Design-Aware Foundation Tasks
-If `product/design.yaml` exists:
-- [ ] Configure Tailwind with primary/accent colors from design.yaml
-- [ ] Set up CSS custom properties for theme switching
-- [ ] Configure spacing scale matching density.level
-- [ ] Add shadcn/ui components with design-compliant theme
-
-If `product/design.yaml` does not exist:
-- [ ] Use sensible defaults (Tailwind defaults, system theme)
-- [ ] Log warning: "No design.yaml found - using defaults"
 
 ## Acceptance Criteria
 - [ ] AC-001: Project structure matches file-map.yaml
 - [ ] AC-002: All contract schemas valid (contracts/*.yaml)
 - [ ] AC-003: TypeScript config strict mode enabled
-- [ ] AC-004: ESLint + Prettier configured
-- [ ] AC-005: Base CI pipeline defined
-- [ ] AC-006: Design system configured (if design.yaml exists)
+- [ ] AC-004: Biome configured (lint + format; no ESLint/Prettier)
+- [ ] AC-005: Next.js, Prisma, Tailwind, NextAuth deps present
+- [ ] AC-006: Docker Compose for local Postgres
+- [ ] AC-007: Design system configured from design.yaml (if exists)
 
 ## Contract Touches
 ```yaml
 reads:
-  - contracts/api.yaml#/info
-  - contracts/db.yaml#/version
+  - contracts/tech-stack.yaml
+  - contracts/api-contract.yaml#/info
+  - contracts/db-schema.yaml#/version
   - product/design.yaml (optional)
 writes: []
 ```
 
 ## File Plan
 ```yaml
-max-new-files: 5
+# Next.js App Router — no src/index.ts; entry is src/app/layout.tsx (shell step)
+max-new-files: 8
 no-new-folders: false
 create:
-  - src/index.ts
-  - src/types/index.ts
-  - .eslintrc.json
-  - .prettierrc
+  - biome.json
   - tsconfig.json
-modify: []
+  - .env.example
+  - prisma/schema.prisma
+  - docker-compose.yml
+  - src/types/index.ts
+  - src/lib/db.ts
+  - next.config.ts
+modify:
+  - package.json
 forbidden:
   - "**/*.test.ts"
   - "contracts/**"
-patch-budget: 5
+  - ".eslintrc*"
+  - ".prettierrc*"
+patch-budget: 6
 ```
 
 ## Required Checks
 ```bash
 npm run lint
-npm run format:check
+npm run format -- --check
 npm run typecheck
+npm run validate:contracts
 ```
 
 ## Non-Goals
-- No business logic
-- No UI components
+- No UI components (shell step)
+- No app routes (shell step)
 - No test implementation
 - No CI execution (define only)

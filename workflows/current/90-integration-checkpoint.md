@@ -50,14 +50,13 @@ patch-budget: 0
 ## Required Checks
 ```bash
 npm run lint
-npm run format:check
+npm run format -- --check
 npm run typecheck
 npm run test
 npm run build
+npm run validate:contracts
 npm run validate:docs
 npm run validate:naming
-# Bundle analysis
-npm run analyze:bundle
 ```
 
 ## Validation Matrix

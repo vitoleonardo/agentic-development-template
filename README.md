@@ -2,6 +2,23 @@
 
 > TypeScript-first AI-agent workflow template for building web applications with parallel development tracks.
 
+## Tech Stack (Fixed)
+
+**Do not substitute.** See [contracts/tech-stack.yaml](./contracts/tech-stack.yaml).
+
+| Layer | Choice | Rationale |
+|-------|--------|-----------|
+| Framework | Next.js (App Router) | Fullstack, API routes, Server Actions; one codebase |
+| Auth | Next Auth (Auth.js) | Standard; no custom auth |
+| UI | shadcn/ui + Tailwind CSS 3 | Components + styling; minimal code |
+| Database | PostgreSQL + Prisma | One ORM, migrations, type-safe client |
+| Runtime | Docker (Compose) | Local Postgres + app |
+| Validation | Zod | Env, API, forms |
+| Lint/Format | Biome | One tool; fewer tokens |
+| Test | Vitest (unit), Playwright (e2e/visual) | Fast, ESM-native |
+
+Using this stack keeps the workflow simple and reduces tokens and code.
+
 ## Quick Start
 
 ```bash
@@ -74,7 +91,7 @@ All scripts are in `scripts/` and exposed via `package.json`:
 
 ## Configuring Tooling
 
-This template is **framework-agnostic**. Configure tooling based on project needs:
+This template uses a **fixed stack** (see Tech Stack above). Use **Biome** for lint + format; do not add ESLint + Prettier.
 
 ### Linting & Formatting
 

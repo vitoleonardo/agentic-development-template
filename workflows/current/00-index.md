@@ -6,7 +6,18 @@ Before executing any workflow:
 1. `product/brief.md` - Product intent defined
 2. `product/scope.yaml` - Features scoped to tracks
 3. `product/design.yaml` - Design intent captured (recommended for UI projects)
-4. `contracts/*.yaml` - Contracts defined
+4. `contracts/*.yaml` - Contracts defined (includes **tech-stack.yaml** — fixed stack)
+
+## Tech Stack (Fixed)
+
+**Do not substitute.** See `contracts/tech-stack.yaml`.
+
+- **Framework**: Next.js (App Router, fullstack)
+- **Auth**: Next Auth (Auth.js)
+- **UI**: shadcn/ui + Tailwind CSS 3
+- **Database**: PostgreSQL + Prisma
+- **Runtime**: Docker (Compose)
+- **Validation**: Zod | **Lint/Format**: Biome | **Test**: Vitest + Playwright
 
 ## Execution Order
 

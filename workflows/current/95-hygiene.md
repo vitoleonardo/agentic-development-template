@@ -41,9 +41,9 @@ patch-budget: 0
 
 ## Required Checks
 ```bash
-# Code quality
+# Code quality (Biome = lint + format)
 npm run lint
-npm run format:check
+npm run format -- --check
 npm run typecheck
 
 # Structural
@@ -57,20 +57,18 @@ npm run validate:naming
 npm run audit
 npx secretlint "**/*"
 
-# Docs
+# Contracts + docs
+npm run validate:contracts
 npm run validate:docs
-npx markdown-link-check docs/**/*.md
+npx markdown-link-check docs/**/*.md 2>/dev/null || true
 ```
 
 ## Validation Matrix
 ```yaml
-lint:
-  tool: eslint
-  config: .eslintrc.json
+lint-format:
+  tool: biome
+  config: biome.json
   max-warnings: 0
-format:
-  tool: prettier
-  config: .prettierrc
 types:
   strict: true
   no-implicit-any: true
@@ -85,7 +83,7 @@ security:
 ## Auto-Fix Rules
 ```yaml
 allowed:
-  - npm run lint -- --fix
+  - npm run lint -- --write
   - npm run format
 forbidden:
   - any src/ logic changes

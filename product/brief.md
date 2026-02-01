@@ -72,13 +72,19 @@
 
 ## Technical Constraints
 
-{Any fixed technical decisions?}
+**Fixed by template.** See `contracts/tech-stack.yaml`. Do not re-evaluate.
 
 | Constraint | Decision | Rationale |
 |------------|----------|-----------|
-| Framework | {e.g., Next.js, none} | {why} |
-| Database | {e.g., PostgreSQL, SQLite} | {why} |
-| Hosting | {e.g., Vercel, self-hosted} | {why} |
+| Framework | Next.js (App Router) | Fullstack, one codebase, API routes, Server Actions |
+| Auth | NextAuth (Auth.js) | Standard; no custom auth |
+| UI | shadcn/ui + Tailwind CSS 3 | Components + styling; minimal code |
+| Database | PostgreSQL + Prisma | One ORM, migrations, type-safe client |
+| Runtime | Docker (Compose) | Local Postgres + app |
+| Validation | Zod | Env, API, forms |
+| Lint/Format | Biome | One tool; fewer tokens |
+| Test | Vitest (unit), Playwright (e2e/visual) | Fast, ESM-native |
+| Hosting | {e.g., Vercel, self-hosted with Docker} | {why} |
 
 ---
 

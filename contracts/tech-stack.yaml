@@ -1,0 +1,89 @@
+# ============================================================================
+# TECH STACK - Fixed choices for this template
+# ============================================================================
+# Single source of truth. Agents MUST use these; no re-evaluation.
+# Rationale: simplicity, fewer tokens, less code, existing solutions.
+# ============================================================================
+
+meta:
+  version: "1.0"
+  updated: "2024-01-01"
+
+# -----------------------------------------------------------------------------
+# FIXED STACK (do not substitute)
+# -----------------------------------------------------------------------------
+stack:
+
+  framework:
+    name: Next.js
+    role: fullstack
+    version: ">=14"
+    notes: "App Router, RSC, API routes, Server Actions. No separate API server."
+
+  auth:
+    name: NextAuth
+    version: ">=5"
+    notes: "Auth.js; use built-in adapters (e.g. Prisma). No custom auth from scratch."
+
+  ui:
+    components: shadcn/ui
+    styling: Tailwind CSS
+    tailwind-version: "3"
+    notes: "shadcn + Tailwind only. No custom design system or extra CSS framework."
+
+  database:
+    engine: PostgreSQL
+    orm: Prisma
+    notes: "Prisma for schema, migrations, client. No raw SQL or other ORMs."
+
+  runtime:
+    container: Docker
+    notes: "Docker Compose for local Postgres + app. One docker-compose.yml."
+
+  validation:
+    name: Zod
+    notes: "Env, API, forms. One validation lib."
+
+  lint-format:
+    name: Biome
+    notes: "Lint + format in one tool. No ESLint + Prettier."
+
+  test:
+    unit: Vitest
+    e2e: Playwright
+    notes: "Vitest for unit; Playwright for visual/e2e. No Jest."
+
+# -----------------------------------------------------------------------------
+# DIRECTORY CONVENTIONS (Next.js App Router)
+# -----------------------------------------------------------------------------
+conventions:
+  entry: src/app/layout.tsx
+  routes: "src/app/**/page.tsx"
+  api: src/app/api/
+  components: src/components/
+  features: src/features/  # or app/(features)/ if using route groups
+  lib: src/lib/
+  types: src/types/
+  no-router-dir: true  # No src/router/*; file-based routing only
+
+# -----------------------------------------------------------------------------
+# FORBIDDEN (saves tokens and code)
+# -----------------------------------------------------------------------------
+forbidden:
+  - "Separate API server (Express, Fastify, etc.)"
+  - "ESLint + Prettier (use Biome)"
+  - "Raw SQL or Drizzle/Kysely (use Prisma)"
+  - "Custom auth implementation (use NextAuth)"
+  - "Another UI library (MUI, Chakra, etc.)"
+  - "CSS-in-JS or Sass (use Tailwind only)"
+  - "Jest (use Vitest)"
+  - "Multiple form libraries (pick one: react-hook-form + Zod)"
+
+# -----------------------------------------------------------------------------
+# RECOMMENDED ADDITIONS (minimal set)
+# -----------------------------------------------------------------------------
+recommended:
+  - "Prisma — ORM, migrations, type-safe client"
+  - "Zod — env + API + form validation"
+  - "class-variance-authority + tailwind-merge — shadcn class handling"
+  - "lucide-react — icons (shadcn default)"
