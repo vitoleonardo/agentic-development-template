@@ -1,6 +1,10 @@
 # File Map - Module ownership and path rules
 # Next.js App Router: no src/router; routes are src/app/**/page.tsx
 # See contracts/tech-stack.yaml
+#
+# When growth path is chosen (contracts/monorepo.yaml):
+#   Use apps/web/*, apps/api/*, packages/shared/*. Shared package is
+#   single source for types/schemas; no duplicate models in web or api.
 
 version: "1.0"
 

@@ -67,17 +67,53 @@ conventions:
   no-router-dir: true  # No src/router/*; file-based routing only
 
 # -----------------------------------------------------------------------------
+# GROWTH PATH — When features and business logic grow
+# -----------------------------------------------------------------------------
+# See contracts/monorepo.yaml for full spec.
+#
+# When to add: Features and business logic outgrow Next.js API routes.
+# Then: Create monorepo, add separate backend, use shared lib for models.
+#
+# Backend:
+#   runtime: Deno
+#   framework: Express (simpler) or NestJS (higher complexity)
+#   tooling: Deno built-in (deno lint, deno test, deno fmt) — no extra config
+#
+# Monorepo layout:
+#   apps/web     — Next.js (existing app)
+#   apps/api     — Deno backend (Express or NestJS)
+#   packages/shared — Types, Zod schemas, constants (single source; no duplicate models)
+#
+# Rule: Define models/schemas once in packages/shared. Consume from apps/web and
+#       apps/api. Do not duplicate type or schema definitions.
+
+growth-path:
+  trigger: "Features and business logic grow beyond Next.js API routes"
+  monorepo: true
+  backend:
+    runtime: Deno
+    framework:
+      simple: Express
+      complex: NestJS
+    tooling: "Deno built-in: deno lint, deno test, deno fmt, deno check"
+  shared-package:
+    path: packages/shared
+    contents: [types, zod-schemas, constants]
+    rule: "Define models once; no duplicate definitions across apps"
+
+# -----------------------------------------------------------------------------
 # FORBIDDEN (saves tokens and code)
 # -----------------------------------------------------------------------------
 forbidden:
-  - "Separate API server (Express, Fastify, etc.)"
-  - "ESLint + Prettier (use Biome)"
+  - "Separate API server with Node (use Deno when adding backend; see growth-path)"
+  - "ESLint + Prettier (use Biome on Node side; Deno built-in on backend)"
   - "Raw SQL or Drizzle/Kysely (use Prisma)"
   - "Custom auth implementation (use NextAuth)"
   - "Another UI library (MUI, Chakra, etc.)"
   - "CSS-in-JS or Sass (use Tailwind only)"
   - "Jest (use Vitest)"
   - "Multiple form libraries (pick one: react-hook-form + Zod)"
+  - "Duplicate model/type definitions (use packages/shared when in monorepo)"
 
 # -----------------------------------------------------------------------------
 # RECOMMENDED ADDITIONS (minimal set)
@@ -87,3 +123,34 @@ recommended:
   - "Zod — env + API + form validation"
   - "class-variance-authority + tailwind-merge — shadcn class handling"
   - "lucide-react — icons (shadcn default)"
+
+# -----------------------------------------------------------------------------
+# HANDY CANDIDATES — Use these instead of rolling your own
+# -----------------------------------------------------------------------------
+# One choice per concern; avoids custom code and token waste.
+handy-candidates:
+
+  forms:
+    - package: "react-hook-form"
+      use: "Forms; pair with @hookform/resolvers and zodResolver(ZodSchema)"
+      avoid: "Multiple form libs; raw controlled inputs for complex forms"
+
+  toasts:
+    - package: "sonner"
+      use: "Toasts (shadcn-compatible); fits design.yaml ux.feedback: toast"
+      avoid: "Custom toast state; react-hot-toast ok but sonner fits shadcn"
+
+  theme:
+    - package: "next-themes"
+      use: "Light/dark/system theme; fits design.yaml theme.mode"
+      avoid: "Custom theme context and localStorage"
+
+  dates:
+    - package: "date-fns"
+      use: "Date formatting, parsing, relative time; small, tree-shakeable"
+      avoid: "moment (heavy); dayjs ok but date-fns is smaller per-use"
+
+  ids:
+    - package: "nanoid"
+      use: "Short unique IDs (DB, client keys)"
+      avoid: "uuid unless you need UUID format; crypto.randomUUID in browser is ok for one-offs"

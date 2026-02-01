@@ -20,6 +20,7 @@ This section defines the non-negotiable rules that govern this repository.
 | Quality requirements | `contracts/nfr.yaml` | Authoritative |
 | **Design intent** | `product/design.yaml` | **Authoritative** |
 | **Tech stack** | `contracts/tech-stack.yaml` | **Authoritative** |
+| **Monorepo (growth path)** | `contracts/monorepo.yaml` | **Authoritative** when growth path chosen |
 | Slice coordination | `coordination/*.yaml` | Authoritative |
 | Source code | `src/**/*.ts` | Authoritative |
 | Tests | `tests/**/*.ts` | Authoritative |
@@ -136,6 +137,64 @@ Enforced by: `npm run validate:naming`
 | `src/` | Implement the system | Slice agents (per assignment) |
 | `tests/` | Verify the system | Slice agents (per assignment) |
 | `scripts/` | Automate validation | Integrator agent |
+
+---
+
+## Growth Path: Monorepo + Backend
+
+**When features and business logic grow**, consider adding a separate backend and moving to a monorepo. See `contracts/tech-stack.yaml` (growth-path) and `contracts/monorepo.yaml`.
+
+### When to Add
+
+- Business logic outgrows Next.js API routes
+- Multiple API consumers (web, mobile, partners)
+- Need for Deno runtime (tooling, performance, security)
+- Clear split between frontend and backend ownership
+
+### Monorepo Layout
+
+```
+.
+├── apps/
+│   ├── web/              # Next.js (existing app moved here)
+│   │   ├── src/app/
+│   │   ├── src/components/
+│   │   ├── prisma/
+│   │   └── package.json
+│   └── api/               # Deno backend (Express or NestJS)
+│       ├── main.ts
+│       ├── deno.json      # config, tasks: lint, test, fmt
+│       └── import_map.json
+├── packages/
+│   └── shared/            # Single source for types and schemas
+│       ├── src/
+│       │   ├── types/    # Entity types, DTOs, API shapes
+│       │   ├── schemas/  # Zod schemas (define once; z.infer for types)
+│       │   └── constants/
+│       ├── package.json
+│       └── tsconfig.json
+├── contracts/
+├── coordination/
+└── workflows/
+```
+
+### Shared Package — Define Models Once
+
+- **Rule**: Types and Zod schemas live in `packages/shared`. Consumed by `apps/web` (Node) and `apps/api` (Deno). **Do not define models twice.**
+- **Prefer**: Zod schemas as source of truth; use `z.infer<typeof schema>` for TypeScript types.
+- **No**: Duplicate type definitions in web and api; Prisma schema in shared (stays in apps/web); React/Deno-specific code in shared.
+
+### Backend: Deno + Express or NestJS
+
+- **Runtime**: Deno (use Deno 2 when available).
+- **Framework**: Express for simpler APIs; NestJS when complexity warrants (modules, DI, structure).
+- **Tooling**: Use Deno built-in only — no extra config:
+  - `deno lint`
+  - `deno fmt`
+  - `deno test`
+  - `deno check` (typecheck)
+
+No ESLint, Prettier, or Vitest in `apps/api`; Deno covers lint, format, test, and typecheck.
 
 ---
 

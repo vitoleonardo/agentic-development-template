@@ -1,0 +1,140 @@
+# ============================================================================
+# MONOREPO & GROWTH PATH - When to add backend and how to structure
+# ============================================================================
+# Apply when features and business logic outgrow Next.js API routes.
+# Single source for models; Deno backend with built-in tooling.
+# ============================================================================
+
+meta:
+  version: "1.0"
+  updated: "2024-01-01"
+  applies-when: "Growth path chosen (see tech-stack.yaml growth-path)"
+
+# -----------------------------------------------------------------------------
+# WHEN TO USE
+# -----------------------------------------------------------------------------
+trigger:
+  - "Heavy business logic better suited to a dedicated API"
+  - "Multiple consumers of the same API (web, mobile, partners)"
+  - "Need for Deno runtime (performance, security, tooling)"
+  - "Team split between frontend and backend ownership"
+
+default: false  # Start with Next.js fullstack; adopt when triggered
+
+# -----------------------------------------------------------------------------
+# MONOREPO LAYOUT
+# -----------------------------------------------------------------------------
+layout:
+  root: "."
+
+  apps:
+    web:
+      path: apps/web
+      description: "Next.js App Router (existing app moved here)"
+      stack: [Next.js, Next Auth, shadcn, Tailwind, Prisma]
+      entry: apps/web/src/app/layout.tsx
+
+    api:
+      path: apps/api
+      description: "Backend API (Deno)"
+      stack: [Deno, Express or NestJS]
+      entry: apps/api/main.ts  # or apps/api/src/main.ts
+
+  packages:
+    shared:
+      path: packages/shared
+      description: "Shared types, Zod schemas, constants — single source of truth"
+      contents:
+        - types/       # TypeScript types (entities, DTOs, API shapes)
+        - schemas/     # Zod schemas (validation; derive types from here when possible)
+        - constants/   # Shared constants (enums, config keys)
+      rules:
+        - "Define models once; no duplicate definitions in apps/web or apps/api"
+        - "Prefer Zod schemas as source; infer TypeScript types with z.infer<>"
+        - "No framework-specific code (no React, no Deno-specific imports in shared)"
+        - "Consumable by both Node (apps/web) and Deno (apps/api)"
+
+# -----------------------------------------------------------------------------
+# SHARED PACKAGE — DEFINE MODELS ONCE
+# -----------------------------------------------------------------------------
+shared-package:
+  purpose: "Single source for types and validation; avoid defining models twice"
+
+  structure:
+    - "packages/shared/src/types/     — entity types, API request/response shapes"
+    - "packages/shared/src/schemas/   — Zod schemas (validation + z.infer for types)"
+    - "packages/shared/src/constants/ — enums, shared config"
+    - "packages/shared/package.json   — exports for apps/web and apps/api"
+    - "packages/shared/tsconfig.json — strict; build to dist for Node; Deno imports from source or dist"
+
+  consumption:
+    web: "apps/web imports from @repo/shared or workspace package"
+    api: "apps/api imports from shared via Deno import map or path"
+
+  forbidden:
+    - "Duplicate type definitions in apps/web and apps/api"
+    - "Prisma schema in shared (Prisma runs in Node; keep in apps/web or separate package if needed)"
+    - "React or Next.js imports in shared"
+    - "Deno-specific APIs in shared (keep shared runtime-agnostic)"
+
+  prisma-note: "Prisma schema stays in apps/web (or packages/db if you add it). Shared holds TypeScript types and Zod schemas that mirror or derive from contract/db concepts; Prisma client stays in Node app."
+
+# -----------------------------------------------------------------------------
+# BACKEND — DENO
+# -----------------------------------------------------------------------------
+backend:
+  runtime: Deno
+  version: ">=2.0"  # Deno 2 when available; otherwise latest stable
+
+  framework:
+    simple: Express
+    complex: NestJS
+    choose: "Express for simpler APIs; NestJS when you need modules, DI, and structure"
+
+  tooling:
+    lint: "deno lint"
+    format: "deno fmt"
+    test: "deno test"
+    typecheck: "deno check"
+    notes: "Use Deno built-in; no ESLint/Prettier/Vitest in apps/api"
+
+  structure:
+    - "apps/api/main.ts (or src/main.ts)"
+    - "apps/api/deno.json (config, imports, tasks)"
+    - "apps/api/import_map.json (map @repo/shared to packages/shared)"
+    - "apps/api/routes/ or apps/api/src/ (Express) / apps/api/src/ (NestJS)"
+
+  scripts-in-deno-json:
+    - "deno task lint   → deno lint"
+    - "deno task fmt    → deno fmt"
+    - "deno task test   → deno test"
+    - "deno task check  → deno check"
+    - "deno task start  → deno run --allow-net main.ts"
+
+# -----------------------------------------------------------------------------
+# WORKSPACE / ROOT
+# -----------------------------------------------------------------------------
+workspace:
+  root-package-json: "pnpm-workspace.yaml or npm workspaces or Turborepo"
+  package-manager: "pnpm recommended (fast, strict); npm workspaces ok"
+  build-order: "packages/shared first, then apps/web, apps/api"
+
+  scripts:
+    - "build    — build all (shared, web, api)"
+    - "lint     — lint web (Biome) + api (deno lint)"
+    - "test     — test web (Vitest) + api (deno test)"
+    - "dev      — run web + api (e.g. turbo run dev)"
+
+# -----------------------------------------------------------------------------
+# MIGRATION FROM SINGLE-APP
+# -----------------------------------------------------------------------------
+migration:
+  steps:
+    - "1. Create apps/web, apps/api, packages/shared"
+    - "2. Move existing Next.js app to apps/web (keep structure)"
+    - "3. Extract types/schemas used by API surface into packages/shared"
+    - "4. Bootstrap apps/api with Deno + Express or NestJS"
+    - "5. Point apps/api to packages/shared via import map or workspace"
+    - "6. Move API route logic from Next.js to apps/api; web calls api"
+    - "7. Update docker-compose: add api service; web and api share Postgres"
+  contract: "contracts/api-contract.yaml remains source of truth for API shape; shared implements it"

@@ -15,7 +15,11 @@ meta:
 contracts:
   - file: tech-stack.yaml
     type: tech-stack
-    description: "Fixed technology choices (Next.js, Next Auth, shadcn, Tailwind, Postgres, Docker, etc.)"
+    description: "Fixed technology choices; growth path (monorepo, Deno backend, shared lib)"
+
+  - file: monorepo.yaml
+    type: monorepo
+    description: "Monorepo layout and shared package when growth path is chosen (Deno backend, packages/shared)"
 
   - file: api-contract.yaml
     type: api

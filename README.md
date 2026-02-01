@@ -19,6 +19,8 @@
 
 Using this stack keeps the workflow simple and reduces tokens and code.
 
+**Growth path:** When features and business logic grow, see [contracts/monorepo.yaml](./contracts/monorepo.yaml): add a **monorepo** (apps/web, apps/api, packages/shared), a **Deno backend** (Express or NestJS) using Deno’s built-in lint/test/fmt, and a **shared package** so models are defined once and reused by web and api.
+
 ## Quick Start
 
 ```bash
