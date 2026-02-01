@@ -53,6 +53,13 @@ gates:
       required: false
       description: Visual regression tests
 
+  design:
+    - id: validate-design
+      script: scripts/validate-design
+      required: false
+      skip-if-no-design: true
+      description: Design intent validation against product/design.yaml
+
   contracts:
     - id: validate-contracts
       script: scripts/validate-contracts
@@ -90,6 +97,25 @@ documentation:
     - ./CHANGELOG.md
     - ./product/**/*.md
     - ./workflows/**/*.md
+
+# Design intent rules
+design-intent:
+  source: product/design.yaml
+  required-for-ui: true
+  
+  # Fields that must be populated before UI work begins
+  required-fields:
+    - theme.mode
+    - color.primary
+    - density.level
+    - personality.tone
+  
+  # Validation rules
+  validation:
+    - "All UI slices must receive design constraints"
+    - "Foundation must configure design system"
+    - "Shell must implement declared navigation pattern"
+    - "Visual checkpoint must validate against design.yaml"
 
 # DRY/KISS/SOLID review checklist
 # Used by agents during code review

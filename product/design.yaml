@@ -1,0 +1,267 @@
+# ============================================================================
+# DESIGN INTENT - Visual and UX constraints for the application
+# ============================================================================
+# This file captures design decisions ONCE, early in the project.
+# All UI-touching slices MUST respect these constraints.
+#
+# CHANGE RULES:
+#   - Captured BEFORE workflow generation
+#   - Changes require visual checkpoint + re-baselining
+#   - Agents MUST NOT invent values outside this spec
+#   - Mid-slice design changes are PROHIBITED
+#
+# USAGE:
+#   - Answer the UX questions below to populate this file
+#   - Run generate-workflows to inject constraints into slice MDs
+#   - Visual checkpoints validate against these constraints
+# ============================================================================
+
+meta:
+  version: "1.0"
+  captured: "2024-01-01"
+  reviewed-by: null  # user/product-owner who approved
+
+# =============================================================================
+# UX INTAKE QUESTIONS
+# =============================================================================
+# Answer these questions to populate the design intent.
+# Delete this section after completing the intake.
+#
+# REQUIRED:
+#   1. What should this app feel like in one word?
+#      → Maps to: personality.tone
+#
+#   2. Name 1-2 apps this should resemble (and what aspect)?
+#      → Maps to: references.apps[]
+#
+#   3. What visual style should be avoided?
+#      → Maps to: references.anti-references[], forbidden[]
+#
+#   4. Light mode, dark mode, or user preference?
+#      → Maps to: theme.mode
+#
+#   5. Dense information or breathing room?
+#      → Maps to: density.level
+#
+#   6. Primary color family (blue, green, purple, etc.)?
+#      → Maps to: color.primary
+#
+# OPTIONAL:
+#   7. Sidebar navigation or top navbar?
+#      → Maps to: ux.navigation
+#
+#   8. How should errors/success be shown?
+#      → Maps to: ux.feedback
+#
+#   9. Any specific accessibility needs beyond WCAG AA?
+#      → Maps to: accessibility.wcag-level
+#
+#  10. Anything that's an absolute dealbreaker visually?
+#      → Maps to: forbidden[]
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# THEME
+# -----------------------------------------------------------------------------
+theme:
+  mode: system  # light | dark | system
+  fallback: light  # default when system preference unavailable
+
+# -----------------------------------------------------------------------------
+# COLOR DIRECTION
+# -----------------------------------------------------------------------------
+# Use semantic color names that map to your design system (Tailwind/shadcn).
+# Agents use these as constraints, not as literal hex values.
+color:
+  primary: blue  # blue | green | purple | red | orange | amber | etc.
+  accent: amber  # secondary highlight color
+  
+  semantic:
+    success: green
+    warning: yellow
+    error: red
+    info: blue
+  
+  neutrals: slate  # gray | slate | zinc | neutral | stone
+
+  # Hard constraints on color usage
+  constraints:
+    - "No neon or fluorescent colors"
+    - "Maintain 4.5:1 contrast ratio minimum (WCAG AA)"
+    - "Limit to 3 accent colors maximum per view"
+
+# -----------------------------------------------------------------------------
+# SPACING & DENSITY
+# -----------------------------------------------------------------------------
+# Controls whitespace and information density throughout the UI.
+density:
+  level: comfortable  # compact | comfortable | spacious
+  # compact:     tight padding, small gaps (p-2, gap-2)
+  # comfortable: balanced spacing (p-4, gap-4)
+  # spacious:    generous whitespace (p-6, gap-6)
+
+# -----------------------------------------------------------------------------
+# TYPOGRAPHY
+# -----------------------------------------------------------------------------
+typography:
+  scale: default  # default | large (accessibility)
+  font-family: system  # system | serif | mono | custom
+  line-height: relaxed  # tight | normal | relaxed
+  
+  constraints:
+    - "Maximum 3 font weights per page"
+    - "Body text minimum 16px"
+    - "Heading hierarchy must be semantic (h1 > h2 > h3)"
+
+# -----------------------------------------------------------------------------
+# PERSONALITY / VIBE
+# -----------------------------------------------------------------------------
+# Describes the emotional quality and character of the interface.
+personality:
+  tone: professional  # playful | neutral | professional | minimal
+  
+  # Positive attributes to embody
+  attributes:
+    - Clean
+    - Trustworthy
+    - Efficient
+  
+  # Qualities to actively avoid
+  avoid:
+    - Cluttered
+    - Overly decorative
+    - Aggressive
+    - Childish
+
+# -----------------------------------------------------------------------------
+# UX PATTERNS
+# -----------------------------------------------------------------------------
+# Standard interaction patterns used throughout the application.
+ux:
+  navigation: sidebar  # sidebar | topnav | hybrid
+  forms: stacked  # stacked | inline | wizard
+  feedback: toast  # toast | inline | modal
+  loading: skeleton  # skeleton | spinner | shimmer
+  empty-states: illustrated  # illustrated | text-only | action-prompt
+  
+  # Additional UX guidelines
+  guidelines:
+    - "Primary actions always on the right"
+    - "Destructive actions require confirmation"
+    - "Forms validate on blur, not on change"
+    - "Loading states appear after 200ms delay"
+
+# -----------------------------------------------------------------------------
+# INSPIRATION REFERENCES
+# -----------------------------------------------------------------------------
+# Reference apps/sites for design direction. NOT screenshots or URLs.
+# Describe WHAT to take from each reference.
+references:
+  apps: []
+  # Example entries (uncomment and modify):
+  # - name: Linear
+  #   aspect: "Clean task management, keyboard-first navigation"
+  # - name: Notion
+  #   aspect: "Content density, flexible block-based layouts"
+  # - name: Stripe Dashboard
+  #   aspect: "Data visualization, professional tone"
+
+  # What NOT to emulate
+  anti-references: []
+  # Example entries (uncomment and modify):
+  # - name: "Enterprise dashboards with 50 widgets"
+  #   avoid: "Information overload, no visual hierarchy"
+  # - name: "Social media feeds"
+  #   avoid: "Infinite scroll, attention-grabbing animations"
+
+# -----------------------------------------------------------------------------
+# ANTI-PATTERNS (FORBIDDEN)
+# -----------------------------------------------------------------------------
+# Patterns that are explicitly prohibited. Agents MUST NOT implement these.
+forbidden:
+  - "Gradients on interactive elements (buttons, links)"
+  - "More than 3 font weights per page"
+  - "Modals inside modals (nested modals)"
+  - "Auto-playing carousels or sliders"
+  - "Infinite scroll without pagination alternative"
+  - "Icons without labels on primary actions"
+  - "Horizontal scrolling for content (tables excepted)"
+  - "Custom scrollbars that break native behavior"
+  - "Placeholder text as labels"
+  - "Disabled buttons without explanation"
+
+# -----------------------------------------------------------------------------
+# ACCESSIBILITY BASELINE
+# -----------------------------------------------------------------------------
+# Minimum accessibility requirements. See also: contracts/nfr.yaml
+accessibility:
+  wcag-level: AA  # A | AA | AAA
+  focus-visible: required  # required | enhanced
+  motion: respect-preference  # respect-preference | reduce | none
+  touch-target: 44px  # minimum tap target size (iOS/Android guideline)
+  
+  requirements:
+    - "All interactive elements keyboard accessible"
+    - "Skip-to-content link on every page"
+    - "Form inputs have visible labels (not just placeholders)"
+    - "Error messages programmatically associated with inputs"
+    - "Color is never the only indicator of state"
+
+# -----------------------------------------------------------------------------
+# COMPONENT DEFAULTS
+# -----------------------------------------------------------------------------
+# Default settings for common component patterns.
+components:
+  buttons:
+    border-radius: md  # none | sm | md | lg | full
+    size-default: md  # sm | md | lg
+  
+  cards:
+    border-radius: lg
+    shadow: sm  # none | sm | md | lg
+    border: subtle  # none | subtle | prominent
+  
+  inputs:
+    border-radius: md
+    size-default: md
+    
+  modals:
+    size-default: md  # sm | md | lg | xl | full
+    close-on-overlay: true
+    close-on-escape: true
+
+# -----------------------------------------------------------------------------
+# RESPONSIVE BREAKPOINTS
+# -----------------------------------------------------------------------------
+# Standard breakpoints for responsive design. Aligns with Tailwind defaults.
+responsive:
+  mobile: 640px   # sm
+  tablet: 768px   # md
+  desktop: 1024px # lg
+  wide: 1280px    # xl
+  
+  mobile-first: true  # design mobile-first, enhance for larger screens
+
+# -----------------------------------------------------------------------------
+# CHANGE PROTOCOL
+# -----------------------------------------------------------------------------
+# Rules for modifying this design intent after initial capture.
+change-protocol:
+  trigger: "Explicit user/stakeholder request only"
+  
+  process:
+    - step: 1
+      action: "Update product/design.yaml"
+    - step: 2
+      action: "Bump meta.version"
+    - step: 3
+      action: "Run visual checkpoint with --rebaseline flag"
+    - step: 4
+      action: "Regenerate affected workflow MDs"
+    - step: 5
+      action: "Notify all active track agents"
+  
+  prohibited:
+    - "Mid-slice design changes without checkpoint"
+    - "Per-slice design overrides"
+    - "Agent-initiated design modifications"

@@ -18,6 +18,7 @@ This section defines the non-negotiable rules that govern this repository.
 | Database schema | `contracts/db-schema.yaml` | Authoritative |
 | Access control | `contracts/policies.yaml` | Authoritative |
 | Quality requirements | `contracts/nfr.yaml` | Authoritative |
+| **Design intent** | `product/design.yaml` | **Authoritative** |
 | Slice coordination | `coordination/*.yaml` | Authoritative |
 | Source code | `src/**/*.ts` | Authoritative |
 | Tests | `tests/**/*.ts` | Authoritative |
@@ -173,6 +174,57 @@ src/
 - `features/*` → `ui/*` ✓
 - `shared/*` → `shared/*` ✓
 - `features/a` → `features/b` ✗ (cross-feature forbidden)
+
+---
+
+## Design Intent
+
+### Purpose
+
+`product/design.yaml` captures visual and UX constraints **once**, **early**, and makes them **enforceable** across all UI work.
+
+### Why Design Intent Matters
+
+Without explicit design intent:
+- Parallel agents interpret "appropriate styling" differently
+- Visual consistency is only caught at visual checkpoint (too late)
+- UX patterns drift across tracks
+- Rework required after integration
+
+With design intent:
+- All agents share the same design vocabulary
+- Foundation configures design system correctly
+- Shell implements correct layout pattern
+- Slices receive explicit constraints
+- Visual checkpoint validates compliance
+
+### Design Intent Lifecycle
+
+```
+1. CAPTURE (before workflows)
+   └── Answer UX questions → populate product/design.yaml
+
+2. CONFIGURE (foundation)
+   └── Tailwind/shadcn setup reads design.yaml
+
+3. ENFORCE (shell + slices)
+   └── Constraints injected into UI-touching workflows
+
+4. VALIDATE (visual checkpoint)
+   └── Screenshots reviewed against design.yaml
+
+5. CHANGE (explicit only)
+   └── Update design.yaml → rebaseline → regenerate MDs
+```
+
+### What Design Intent Is NOT
+
+- Not a design spec or mockup
+- Not pixel-perfect instructions
+- Not Figma/screenshot-driven
+- Not per-slice overridable
+
+It is a **constraint document** that tells agents what direction to follow and what to avoid.
 
 ---
 

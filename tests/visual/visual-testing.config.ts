@@ -6,8 +6,12 @@
  *
  * USAGE:
  * ```typescript
- * import { visualConfig, CRITICAL_ROUTES, VIEWPORTS } from './visual-testing.config';
+ * import { visualConfig, CRITICAL_ROUTES, VIEWPORTS, DESIGN_CHECKS } from './visual-testing.config';
  * ```
+ *
+ * DESIGN INTENT:
+ * Visual tests validate against product/design.yaml constraints.
+ * See DESIGN_CHECKS for design-aware validation settings.
  */
 
 /**
@@ -50,6 +54,60 @@ export const SCREENSHOT_OPTIONS = {
 /**
  * Visual test configuration object.
  */
+/**
+ * Design Intent Validation Configuration
+ *
+ * These checks validate UI against product/design.yaml constraints.
+ * Used in conjunction with visual regression tests.
+ */
+export const DESIGN_CHECKS = {
+  /** Whether to validate theme consistency */
+  themeConsistency: true,
+
+  /** Check for unauthorized color usage */
+  colorAudit: {
+    enabled: true,
+    /** Colors allowed outside design system (e.g., transparent, inherit) */
+    allowedRaw: ['transparent', 'inherit', 'currentColor'],
+    /** Regex to detect hardcoded colors */
+    hardcodedColorRegex: /(?:#[0-9a-fA-F]{3,8}|rgb\(|rgba\(|hsl\(|hsla\()/gi,
+  },
+
+  /** Density validation settings */
+  densityValidation: {
+    enabled: true,
+    /** Expected density level from design.yaml */
+    level: 'comfortable' as 'compact' | 'comfortable' | 'spacious',
+    /** Spacing scale by density (Tailwind units) */
+    spacingScale: {
+      compact: { base: 2, gap: 2 },    // p-2, gap-2
+      comfortable: { base: 4, gap: 4 }, // p-4, gap-4
+      spacious: { base: 6, gap: 6 },    // p-6, gap-6
+    },
+  },
+
+  /** UX pattern validation */
+  uxPatterns: {
+    enabled: true,
+    expected: {
+      navigation: 'sidebar' as 'sidebar' | 'topnav' | 'hybrid',
+      feedback: 'toast' as 'toast' | 'inline' | 'modal',
+      loading: 'skeleton' as 'skeleton' | 'spinner' | 'shimmer',
+    },
+  },
+
+  /** Forbidden pattern detection */
+  forbiddenPatterns: {
+    enabled: true,
+    patterns: [
+      // CSS-detectable forbidden patterns
+      { name: 'gradient-buttons', selector: 'button[style*="gradient"], button[class*="gradient"]' },
+      { name: 'nested-modals', selector: '[role="dialog"] [role="dialog"]' },
+      { name: 'icon-only-primary', selector: 'button[class*="primary"]:not(:has(span)):has(svg)' },
+    ],
+  },
+};
+
 export const visualConfig = {
   /** Base URL for the application */
   baseURL: process.env.BASE_URL || 'http://localhost:3000',
@@ -68,6 +126,12 @@ export const visualConfig = {
 
   /** Screenshot options */
   screenshotOptions: SCREENSHOT_OPTIONS,
+
+  /** Design intent checks */
+  designChecks: DESIGN_CHECKS,
+
+  /** Path to design intent file */
+  designIntentPath: '../../product/design.yaml',
 
   /** Selectors to hide during screenshots (e.g., dynamic timestamps) */
   hideSelectors: [

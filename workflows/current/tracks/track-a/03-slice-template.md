@@ -13,6 +13,36 @@ risk-tags: []  # Options: security, perf, ux, data, unknown
 conflict-risk: low  # Options: low, med, high
 ```
 
+## Design Constraints
+<!-- GENERATED: Injected by generate-workflows for slices with risk-tags: [ux] -->
+<!-- If this slice has NO 'ux' risk tag, this section can be removed -->
+```yaml
+# From product/design.yaml - DO NOT DEVIATE
+source: product/design.yaml
+theme: ${THEME_MODE}
+primary-color: ${PRIMARY_COLOR}
+density: ${DENSITY_LEVEL}
+personality: ${PERSONALITY_TONE}
+navigation: ${UX_NAVIGATION}
+feedback: ${UX_FEEDBACK}
+loading: ${UX_LOADING}
+forbidden:
+  # ${FORBIDDEN_PATTERNS}
+```
+
+### Enforcement Rules
+- Use ONLY colors defined in design.yaml color section
+- Use ONLY spacing consistent with declared density level
+- Match declared personality tone in all copy and UI decisions
+- NEVER use any pattern listed in forbidden[]
+- If uncertain, reference product/design.yaml or ask for clarification
+
+### Violations (Auto-Fail)
+- Inventing new colors outside design system
+- Custom spacing inconsistent with density level
+- Implementing any forbidden pattern
+- Deviating from declared UX patterns
+
 ## Acceptance Criteria
 ```yaml
 # Use sequential IDs per slice

@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+
+/**
+ * Design Intent Validator
+ *
+ * Validates product/design.yaml schema and required fields.
+ * Used as a quality gate before UI work begins.
+ *
+ * USAGE:
+ *   ./scripts/validate-design [options]
+ *
+ * OPTIONS:
+ *   --design <path>  Path to design.yaml (default: product/design.yaml)
+ *   --strict         Fail on warnings (default: false)
+ *   --verbose        Show detailed output
+ *
+ * EXIT CODES:
+ *   0 - Valid
+ *   1 - Missing or invalid design.yaml
+ *   2 - Missing required fields
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Try to load yaml parser
+let yaml;
+try {
+  yaml = require('yaml');
+} catch {
+  console.error('[ERROR] yaml package not installed. Run: npm install yaml');
+  process.exit(1);
+}
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+const DEFAULT_CONFIG = {
+  designPath: 'product/design.yaml',
+  strict: false,
+  verbose: false,
+};
+
+const REQUIRED_FIELDS = [
+  'meta.version',
+  'theme.mode',
+  'color.primary',
+  'density.level',
+  'personality.tone',
+];
+
+const RECOMMENDED_FIELDS = [
+  'color.accent',
+  'color.semantic',
+  'ux.navigation',
+  'ux.feedback',
+  'ux.loading',
+  'forbidden',
+  'accessibility.wcag-level',
+];
+
+const VALID_VALUES = {
+  'theme.mode': ['light', 'dark', 'system'],
+  'density.level': ['compact', 'comfortable', 'spacious'],
+  'personality.tone': ['playful', 'neutral', 'professional', 'minimal'],
+  'ux.navigation': ['sidebar', 'topnav', 'hybrid'],
+  'ux.feedback': ['toast', 'inline', 'modal'],
+  'ux.loading': ['skeleton', 'spinner', 'shimmer'],
+  'accessibility.wcag-level': ['A', 'AA', 'AAA'],
+};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+function parseArgs(args) {
+  const config = { ...DEFAULT_CONFIG };
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--design':
+        config.designPath = args[++i];
+        break;
+      case '--strict':
+        config.strict = true;
+        break;
+      case '--verbose':
+        config.verbose = true;
+        break;
+    }
+  }
+  return config;
+}
+
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((current, key) => {
+    return current && current[key] !== undefined ? current[key] : undefined;
+  }, obj);
+}
+
+function validateField(design, fieldPath, validValues) {
+  const value = getNestedValue(design, fieldPath);
+  
+  if (value === undefined) {
+    return { valid: false, error: `Missing field: ${fieldPath}` };
+  }
+  
+  if (validValues && !validValues.includes(value)) {
+    return {
+      valid: false,
+      error: `Invalid value for ${fieldPath}: "${value}". Expected one of: ${validValues.join(', ')}`,
+    };
+  }
+  
+  return { valid: true, value };
+}
+
+// ============================================================================
+// MAIN VALIDATION
+// ============================================================================
+
+function validate(config) {
+  const errors = [];
+  const warnings = [];
+  
+  console.log('='.repeat(60));
+  console.log('Design Intent Validator');
+  console.log('='.repeat(60));
+  console.log('');
+  
+  // Check file exists
+  if (!fs.existsSync(config.designPath)) {
+    console.log(`[SKIP] No design.yaml found at ${config.designPath}`);
+    console.log('[INFO] This is OK for backend-only projects');
+    console.log('[INFO] Create product/design.yaml for UI projects');
+    return 0; // Not an error - design is optional
+  }
+  
+  // Load and parse
+  let design;
+  try {
+    const content = fs.readFileSync(config.designPath, 'utf8');
+    design = yaml.parse(content);
+    console.log(`[OK] Loaded ${config.designPath}`);
+  } catch (err) {
+    console.error(`[ERROR] Failed to parse: ${err.message}`);
+    return 1;
+  }
+  
+  console.log('');
+  console.log('--- Required Fields ---');
+  
+  // Validate required fields
+  for (const field of REQUIRED_FIELDS) {
+    const result = validateField(design, field, VALID_VALUES[field]);
+    if (result.valid) {
+      console.log(`  [OK] ${field}: ${result.value}`);
+    } else {
+      console.log(`  [ERROR] ${result.error}`);
+      errors.push(result.error);
+    }
+  }
+  
+  console.log('');
+  console.log('--- Recommended Fields ---');
+  
+  // Check recommended fields
+  for (const field of RECOMMENDED_FIELDS) {
+    const result = validateField(design, field, VALID_VALUES[field]);
+    if (result.valid) {
+      if (config.verbose) {
+        console.log(`  [OK] ${field}: ${JSON.stringify(result.value)}`);
+      } else {
+        console.log(`  [OK] ${field}`);
+      }
+    } else {
+      console.log(`  [WARN] ${result.error}`);
+      warnings.push(result.error);
+    }
+  }
+  
+  // Check forbidden patterns
+  console.log('');
+  console.log('--- Forbidden Patterns ---');
+  const forbidden = design.forbidden || [];
+  if (forbidden.length > 0) {
+    console.log(`  [OK] ${forbidden.length} forbidden patterns defined`);
+    if (config.verbose) {
+      forbidden.forEach(p => console.log(`       - ${p}`));
+    }
+  } else {
+    console.log('  [WARN] No forbidden patterns defined');
+    warnings.push('No forbidden patterns defined');
+  }
+  
+  // Summary
+  console.log('');
+  console.log('='.repeat(60));
+  console.log('Summary');
+  console.log('='.repeat(60));
+  console.log(`  Errors:   ${errors.length}`);
+  console.log(`  Warnings: ${warnings.length}`);
+  console.log('');
+  
+  if (errors.length > 0) {
+    console.log('[FAIL] Design intent has errors');
+    return 2;
+  }
+  
+  if (warnings.length > 0 && config.strict) {
+    console.log('[FAIL] Design intent has warnings (strict mode)');
+    return 2;
+  }
+  
+  console.log('[PASS] Design intent is valid');
+  return 0;
+}
+
+// ============================================================================
+// ENTRY POINT
+// ============================================================================
+
+const config = parseArgs(process.argv.slice(2));
+const exitCode = validate(config);
+process.exit(exitCode);

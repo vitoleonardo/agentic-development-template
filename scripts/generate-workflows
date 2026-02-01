@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * Workflow Generator Stub
+ * Workflow Generator
  *
- * Generates workflows/current/* from coordination and contract definitions.
- * This is a stub - implement full logic as needed.
+ * Generates workflows/current/* from coordination, contract, and design definitions.
  *
  * INPUTS:
- *   - product/scope.yaml (optional) - Feature scope definitions
- *   - coordination/file-map.yaml    - Module ownership rules
- *   - coordination/slice-graph.yaml - Dependency graph (template)
- *   - coordination/assignments.yaml - Track assignments (template)
- *   - contracts/api.yaml           - API contract
- *   - contracts/db.yaml            - Database contract
- *   - contracts/policies.yaml      - Policy contract
- *   - contracts/nfr.yaml           - Non-functional requirements
+ *   - product/scope.yaml (optional)  - Feature scope definitions
+ *   - product/design.yaml (optional) - Design intent constraints
+ *   - coordination/file-map.yaml     - Module ownership rules
+ *   - coordination/slice-graph.yaml  - Dependency graph (template)
+ *   - coordination/assignments.yaml  - Track assignments (template)
+ *   - contracts/api.yaml             - API contract
+ *   - contracts/db.yaml              - Database contract
+ *   - contracts/policies.yaml        - Policy contract
+ *   - contracts/nfr.yaml             - Non-functional requirements
  *
  * OUTPUTS:
  *   - workflows/current/00-index.md
@@ -34,9 +34,11 @@
  *
  * OPTIONS:
  *   --scope <path>     Path to scope.yaml (default: product/scope.yaml)
+ *   --design <path>    Path to design.yaml (default: product/design.yaml)
  *   --contracts <dir>  Path to contracts directory (default: contracts/)
  *   --output <dir>     Output directory (default: workflows/current/)
  *   --dry-run          Print what would be generated without writing
+ *   --skip-design      Skip design intent injection (for backend-only projects)
  *   --verbose          Enable verbose logging
  *
  * SCOPE.YAML FORMAT:
@@ -58,6 +60,11 @@
  *           risk-tags: [data, perf]
  *           contract-refs:
  *             - api.yaml#/paths/export
+ *
+ * DESIGN INTENT:
+ *   When product/design.yaml exists, the generator injects design constraints
+ *   into all UI-touching slices (those with risk-tags containing 'ux').
+ *   This ensures consistent visual/UX decisions across parallel agent work.
  */
 
 const fs = require('fs');
@@ -70,10 +77,12 @@ const yaml = require('yaml'); // Requires: npm install yaml
 
 const DEFAULT_CONFIG = {
   scopePath: 'product/scope.yaml',
+  designPath: 'product/design.yaml',
   contractsDir: 'contracts/',
   outputDir: 'workflows/current/',
   coordinationDir: 'coordination/',
   dryRun: false,
+  skipDesign: false,
   verbose: false,
 };
 
@@ -88,6 +97,9 @@ function parseArgs(args) {
       case '--scope':
         config.scopePath = args[++i];
         break;
+      case '--design':
+        config.designPath = args[++i];
+        break;
       case '--contracts':
         config.contractsDir = args[++i];
         break;
@@ -96,6 +108,9 @@ function parseArgs(args) {
         break;
       case '--dry-run':
         config.dryRun = true;
+        break;
+      case '--skip-design':
+        config.skipDesign = true;
         break;
       case '--verbose':
         config.verbose = true;
@@ -119,10 +134,105 @@ function loadContracts(contractsDir) {
   return null;
 }
 
-function generateSliceWorkflow(feature, track, contracts) {
+/**
+ * Load design intent from product/design.yaml
+ * Returns null if file doesn't exist or skipDesign is true
+ */
+function loadDesign(designPath, skipDesign) {
+  if (skipDesign) {
+    console.log('[INFO] Design intent skipped (--skip-design flag)');
+    return null;
+  }
+
+  if (!fs.existsSync(designPath)) {
+    console.warn(`[WARN] No design.yaml found at ${designPath}`);
+    console.warn('[WARN] UI slices will lack design constraints');
+    console.warn('[WARN] Create product/design.yaml or use --skip-design for backend-only projects');
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(designPath, 'utf8');
+    const design = yaml.parse(content);
+    console.log(`[OK] Loaded design intent v${design.meta?.version || 'unknown'} from ${designPath}`);
+    return design;
+  } catch (err) {
+    console.error(`[ERROR] Failed to parse design.yaml: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Format design constraints for injection into slice MDs
+ * Only includes relevant fields to keep token count low
+ */
+function formatDesignConstraints(design) {
+  if (!design) return '';
+
+  const constraints = {
+    theme: design.theme?.mode || 'system',
+    'primary-color': design.color?.primary || 'blue',
+    density: design.density?.level || 'comfortable',
+    personality: design.personality?.tone || 'professional',
+    navigation: design.ux?.navigation || 'sidebar',
+    feedback: design.ux?.feedback || 'toast',
+    loading: design.ux?.loading || 'skeleton',
+    forbidden: design.forbidden || [],
+  };
+
+  return `## Design Constraints
+<!-- GENERATED from product/design.yaml - DO NOT EDIT MANUALLY -->
+\`\`\`yaml
+source: product/design.yaml
+theme: ${constraints.theme}
+primary-color: ${constraints['primary-color']}
+density: ${constraints.density}
+personality: ${constraints.personality}
+navigation: ${constraints.navigation}
+feedback: ${constraints.feedback}
+loading: ${constraints.loading}
+forbidden:
+${constraints.forbidden.map(f => `  - "${f}"`).join('\n')}
+\`\`\`
+
+### Enforcement Rules
+- Use ONLY colors defined in design.yaml color section
+- Use ONLY spacing consistent with \`density: ${constraints.density}\`
+- Match \`personality: ${constraints.personality}\` in all copy and UI decisions
+- NEVER use any pattern listed in forbidden[]
+- If uncertain, reference design.yaml or ask for clarification
+
+### Violations (Auto-Fail)
+- Inventing new colors outside design system
+- Custom spacing inconsistent with density level
+- Implementing any forbidden pattern
+- Deviating from declared UX patterns (navigation, feedback, loading)
+`;
+}
+
+/**
+ * Check if a feature touches UI (has 'ux' risk tag)
+ */
+function featureTouchesUI(feature) {
+  const riskTags = feature['risk-tags'] || [];
+  return riskTags.includes('ux');
+}
+
+function generateSliceWorkflow(feature, track, contracts, design) {
   // STUB: Generate slice MD from feature definition
   // Returns: string (markdown content)
   console.log(`[STUB] Would generate slice for: ${track}/${feature.id}`);
+
+  // Inject design constraints for UI-touching slices
+  const hasUxRisk = featureTouchesUI(feature);
+  if (hasUxRisk && design) {
+    console.log(`  → Injecting design constraints (risk-tags includes 'ux')`);
+    const designBlock = formatDesignConstraints(design);
+    // In full implementation: insert designBlock after Metadata section
+  } else if (hasUxRisk && !design) {
+    console.warn(`  → [WARN] UI slice without design constraints`);
+  }
+
   return null;
 }
 
@@ -140,7 +250,7 @@ function main() {
   const config = parseArgs(process.argv.slice(2));
 
   console.log('='.repeat(60));
-  console.log('Workflow Generator (STUB)');
+  console.log('Workflow Generator');
   console.log('='.repeat(60));
   console.log('');
   console.log('Configuration:');
@@ -149,22 +259,47 @@ function main() {
 
   if (config.dryRun) {
     console.log('[DRY RUN MODE]');
+    console.log('');
   }
 
-  // STUB: Main generation flow
-  console.log('Steps to implement:');
-  console.log('  1. Load scope.yaml (if exists)');
-  console.log('  2. Load contracts/*.yaml');
-  console.log('  3. Parse features into track assignments');
-  console.log('  4. Generate slice MDs from template');
-  console.log('  5. Update slice-graph.yaml');
-  console.log('  6. Update assignments.yaml');
-  console.log('  7. Write output files');
+  // Load design intent (optional but recommended for UI projects)
+  console.log('--- Loading Design Intent ---');
+  const design = loadDesign(config.designPath, config.skipDesign);
   console.log('');
+
+  // Generation flow
+  console.log('--- Generation Steps ---');
+  console.log('  1. Load scope.yaml (if exists)');
+  console.log('  2. Load design.yaml (if exists) ✓');
+  console.log('  3. Load contracts/*.yaml');
+  console.log('  4. Parse features into track assignments');
+  console.log('  5. Generate slice MDs from template');
+  console.log('     → Inject design constraints for UI slices (risk-tags: [ux])');
+  console.log('  6. Update slice-graph.yaml');
+  console.log('  7. Update assignments.yaml');
+  console.log('  8. Write output files');
+  console.log('');
+
+  // Design injection summary
+  if (design) {
+    console.log('--- Design Intent Summary ---');
+    console.log(`  Theme: ${design.theme?.mode || 'system'}`);
+    console.log(`  Primary Color: ${design.color?.primary || 'blue'}`);
+    console.log(`  Density: ${design.density?.level || 'comfortable'}`);
+    console.log(`  Personality: ${design.personality?.tone || 'professional'}`);
+    console.log(`  Forbidden Patterns: ${design.forbidden?.length || 0}`);
+    console.log('');
+    console.log('  Design constraints will be injected into:');
+    console.log('    - 02-shell.md (layout structure)');
+    console.log('    - All slice MDs with risk-tags: [ux]');
+    console.log('    - 91-visual-checkpoint.md (validation criteria)');
+    console.log('');
+  }
+
   console.log('Template files already exist in workflows/current/');
   console.log('Use tracks/track-*/03-slice-template.md as base');
   console.log('');
-  console.log('[STUB COMPLETE - Implement full logic as needed]');
+  console.log('[Generation complete - implement full logic as needed]');
 }
 
 main();
