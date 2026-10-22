@@ -1,6 +1,6 @@
 # Project guide for Claude
 
-Rules in `.claude/rules/` load automatically. Stack rules (from a preset) load when you touch matching files.
+Rules in `.claude/rules/` load automatically. Stack rules from the adapter load when you touch matching files.
 
 ## Project facts
 
@@ -8,16 +8,9 @@ Rules in `.claude/rules/` load automatically. Stack rules (from a preset) load w
 
 - Product: <one sentence: who uses it and what problem it solves>
 - Stack: <framework, database, auth, hosting>
-- Package manager: <npm | pnpm>. Use the project's scripts; never invent commands that `package.json` does not define.
-- Commands:
-  - Install: `<pm> install`
-  - Dev server: `<pm> run dev`
-  - Typecheck: `<pm> run typecheck`
-  - Lint: `<pm> run lint`
-  - Format: `<pm> run format`
-  - Tests: `<pm> test` (single file: `<pm> test -- <path>`)
-  - Build: `<pm> run build`
-- What CI runs on every PR: typecheck, lint, tests with coverage, build (`.github/workflows/quality-gates.yml`).
+- Install and dev server: `<install command>`, `<dev server command>`
+- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf`; a check that reports "not configured" does not exist in this project. Never invent commands.
+- What CI runs on every PR: <the workflow file and its checks>
 - Things only a human can do: <dashboards, API keys, DNS, third-party accounts>
 
 ## How work flows here

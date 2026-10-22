@@ -153,7 +153,15 @@ Checked against code.claude.com/docs on 23.10.2026. Re-check before Phase 1 writ
 | Plugins can ship skills, agents, hooks and MCP servers, but **not permissions** (plugin `settings.json` only applies `agent` and `subagentStatusLine`) | `settings.json` stays a manual copy step in the plugin install path. Plugin hooks still block dangerous commands |
 | PostToolUse exit 2 sends stderr back to Claude; Stop exit 2 keeps Claude working, so check `stop_hook_active` to avoid loops | Edit hooks report failures with exit 2; the stop hook prints its summary and does not block |
 
-## 6. Decisions for approval
+## 6. Change after approval: language-neutral core
+
+Decided 23.10.2026. The kit splits into a core that works in any language and stack adapters. v1 ships and tests only the TypeScript adapter.
+
+- `kit/` (core): `CLAUDE.md`, the workflow, the general rules, `settings.json`, `specs/`, and `.claude/bin/check`, one entry point for typecheck, lint, test, related tests, format and build.
+- `adapters/<stack>/` overlays the core. Its `.claude/kit.conf` (POSIX sh) defines what each check runs; it also adds language rules and stack presets, and later its CI workflow.
+- Hooks and CI call `.claude/bin/check`, never a package manager directly, so `settings.json` needs one allow line for checks and nothing is merged at install time.
+
+## 7. Decisions for approval
 
 1. Specs live in `specs/<feature>.md` (committed). Plan progress and the verify log live in `.claude/state/<branch>.md` (gitignored).
 2. Criterion IDs are `<FEATURE>-AC<n>` (for example `INVITE-AC3`). IDs are never reused after deletion. Test names include the ID.
