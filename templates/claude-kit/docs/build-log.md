@@ -10,7 +10,7 @@ What the workflow and its tests caught while building the kit. Newest first.
 - **`/ship-feature` end to end through the plugin** (Sonnet, headless, three turns, `--plugin-dir`). It extended the spec with SPLIT-AC7 to AC9, and the reviewer's spec pass led to four fixes. It wrote the plan and, after approval, built it on a branch with `agentic-workflow:implementer` subagents, one commit per task. It ran the reviewer, set the status to `in-review`, and stopped before pushing.
 - **The Stop hook trusted stale results.** In that run the last hook-run typecheck was the intended red one (a test importing a function that did not exist yet), so Stop kept reporting it as failing after Claude's own runs were green. Stop now re-runs each red check once on the turn's files and blocks only if it is still red. New test; its timeout went from 10 to 300 seconds.
 - **Small fix:** the Stop message said "still failing: test-related ." and now lists checks with commas.
-- **Repository CI** (`.github/workflows/claude-kit.yml`): ShellCheck, the three test suites (also under `dash`), and the TypeScript gates on the demo app with the kit installed. Simulated locally first; actionlint and ShellCheck are clean.
+- **Repository CI** (`.github/workflows/claude-kit.yml`): ShellCheck, the three test suites (also under `dash`), and the TypeScript gates on the demo app with the kit installed. Simulated locally first; actionlint and ShellCheck are clean. The first real run on GitHub Actions (PR #1) passed: kit tests in 11 s, demo gates in 18 s.
 
 ## 23.10.2026: Phase 4 (plugin, docs, MCP example)
 
