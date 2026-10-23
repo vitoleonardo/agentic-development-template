@@ -3,7 +3,7 @@
 # Usage: ./install.sh <project-dir> [--adapter <name>] [--preset <name>]... [--plugin] [--force]
 #   --adapter  stack adapter from adapters/ (for example typescript)
 #   --preset   stack preset from the adapter's presets/ (for example nextjs); repeatable
-#   --plugin   the skills, agents and hooks come from the agentic-workflow plugin; install only the project files
+#   --plugin   the skills, agents and hooks come from the agentic-workflow-kit plugin; install only the project files
 #   --force    overwrite files that already exist in the project
 # Existing project files are never overwritten without --force; they are listed for a manual merge.
 set -eu
@@ -49,8 +49,8 @@ copy() {
   fi
   mkdir -p "$(dirname -- "$dest")"
   case $2 in
-    # Skills name the plugin's agents (agentic-workflow:reviewer); in the project they are plain names.
-    .claude/skills/*/SKILL.md) sed 's/^agent: agentic-workflow:/agent: /' "$1" >"$dest" ;;
+    # Skills name the plugin's agents (agentic-workflow-kit:reviewer); in the project they are plain names.
+    .claude/skills/*/SKILL.md) sed 's/^agent: agentic-workflow-kit:/agent: /' "$1" >"$dest" ;;
     *) cp -p "$1" "$dest" ;;
   esac
   printf '%s\n' "$2" >>"$installed"
@@ -104,6 +104,6 @@ Next steps:
   3. Make sure every check in .claude/kit.conf works: .claude/bin/check typecheck (and lint, test, coverage, build).
   4. Start Claude Code in the project and accept the trust prompt once; until then the hooks and allow rules stay off.
      With --plugin: /plugin marketplace add vitoleonardo/agentic-development-template
-                    /plugin install agentic-workflow@agentic-development-template
+                    /plugin install agentic-workflow-kit@agentic-development-template
   5. Make the CI workflow a required status check in your branch protection rules.
 EOF

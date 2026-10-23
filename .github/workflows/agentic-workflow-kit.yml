@@ -1,6 +1,6 @@
-# Tests for templates/claude-kit: the hook, spec-lint and installer tests, and the
+# Tests for templates/agentic-workflow-kit: the hook, spec-lint and installer tests, and the
 # TypeScript adapter's quality gates run on the demo app with the kit installed.
-name: claude-kit
+name: agentic-workflow-kit
 
 # No path filters: the jobs are required status checks, and a filtered required check
 # would leave pull requests that do not touch the kit waiting forever.
@@ -18,7 +18,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: templates/claude-kit
+    working-directory: templates/agentic-workflow-kit
 
 jobs:
   kit:

@@ -4,8 +4,8 @@
   "owner": { "name": "Viktor Krawutschke" },
   "plugins": [
     {
-      "name": "agentic-workflow",
-      "source": "./templates/claude-kit/kit/.claude",
+      "name": "agentic-workflow-kit",
+      "source": "./templates/agentic-workflow-kit/kit/.claude",
       "description": "Spec-driven workflow, guard hooks, check hooks and subagents for Claude Code"
     }
   ]

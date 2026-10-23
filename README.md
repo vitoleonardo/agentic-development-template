@@ -5,15 +5,15 @@ Templates for building software with AI coding agents. Each template is self-con
 | Template | For | Status |
 |----------|-----|--------|
 | [greenfield-nextjs](./templates/greenfield-nextjs/) | New Next.js apps built by agents in parallel tracks, contract-first | Usable |
-| [claude-kit](./templates/claude-kit/) | Existing projects in any language: spec-driven workflow, rules, permissions, hooks, subagents and CI gates for Claude Code. Ships a TypeScript adapter | Usable. TypeScript adapter tested; also installable as the `agentic-workflow` plugin |
+| [agentic-workflow-kit](./templates/agentic-workflow-kit/) | Existing projects in any language: spec-driven workflow, rules, permissions, hooks, subagents and CI gates for Claude Code. Ships a TypeScript adapter | Usable. TypeScript adapter tested; also installable as the `agentic-workflow-kit` plugin |
 
 ## Repository layout
 
 ```
-.claude-plugin/         # plugin marketplace: lists claude-kit as the agentic-workflow plugin
+.claude-plugin/         # plugin marketplace: lists the agentic-workflow-kit plugin
 templates/
   greenfield-nextjs/    # contract-first greenfield template (own README, ARCHITECTURE, validators)
-  claude-kit/           # governed Claude Code workflow kit
+  agentic-workflow-kit/           # governed Claude Code workflow kit
 references/             # private source material, gitignored, never published
 ```
 

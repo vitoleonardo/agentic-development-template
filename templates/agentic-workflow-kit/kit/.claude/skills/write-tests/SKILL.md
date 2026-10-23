@@ -3,7 +3,7 @@ name: write-tests
 description: Add or improve tests for a file, an acceptance criterion, or the current diff. Runs in the test-writer agent, which can only edit test files.
 argument-hint: [file path | criterion ID | empty for the current diff]
 context: fork
-agent: agentic-workflow:test-writer
+agent: agentic-workflow-kit:test-writer
 background: false
 ---
 

@@ -22,7 +22,7 @@ Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The core
 
 ```sh
 git clone https://github.com/vitoleonardo/agentic-development-template
-cd agentic-development-template/templates/claude-kit
+cd agentic-development-template/templates/agentic-workflow-kit
 ./install.sh ~/code/my-app --adapter typescript --preset nextjs
 ```
 
@@ -41,10 +41,10 @@ For teams with many repositories, the skills, agents and hooks can come from a p
 
 ```text
 /plugin marketplace add vitoleonardo/agentic-development-template
-/plugin install agentic-workflow@agentic-development-template
+/plugin install agentic-workflow-kit@agentic-development-template
 ```
 
-Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/agentic-workflow:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
+Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/agentic-workflow-kit:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
 
 ## How a feature flows
 
@@ -101,4 +101,4 @@ MIT. See [LICENSE](../../LICENSE).
 
 ---
 
-Need this tailored to your codebase, your stack and your team? [Book a free 20-minute check](TODO-BOOKING-URL).
+Need this tailored to your codebase, your stack and your team? [Book a free 20-minute check](https://github.com/vitoleonardo).

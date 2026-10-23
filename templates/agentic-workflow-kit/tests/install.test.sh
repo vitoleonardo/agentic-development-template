@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for install.sh. Run: sh templates/claude-kit/tests/install.test.sh
+# Tests for install.sh. Run: sh templates/agentic-workflow-kit/tests/install.test.sh
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -28,7 +28,7 @@ expect() {
 expect "full: hooks, skills and agents installed" test -x "$full/.claude/hooks/guard" -a -f "$full/.claude/skills/ship-feature/SKILL.md" -a -f "$full/.claude/agents/reviewer.md"
 expect "full: settings.json registers the hooks" grep -q '"PreToolUse"' "$full/.claude/settings.json"
 expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.claude/skills/review-diff/SKILL.md"
-expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow:' '$full/.claude/skills'"
+expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
 expect "full: plugin files not installed" test ! -e "$full/.claude/.claude-plugin" -a ! -e "$full/.claude/hooks/hooks.json"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
 

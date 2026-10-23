@@ -118,11 +118,11 @@ Never write a token into `.mcp.json`. Use `${VAR}` references; the file is commi
 
 ## Use it as a plugin
 
-`kit/.claude` is also a Claude Code plugin named `agentic-workflow`, listed in the repository's `.claude-plugin/marketplace.json`. The plugin carries the skills, the agents and the hooks; `install.sh --plugin` installs the rest. To change the workflow for every repository at once, fork this repository, change `kit/.claude`, bump `version` in `kit/.claude/.claude-plugin/plugin.json`, and point your team's marketplace at the fork.
+`kit/.claude` is also a Claude Code plugin named `agentic-workflow-kit`, listed in the repository's `.claude-plugin/marketplace.json`. The plugin carries the skills, the agents and the hooks; `install.sh --plugin` installs the rest. To change the workflow for every repository at once, fork this repository, change `kit/.claude`, bump `version` in `kit/.claude/.claude-plugin/plugin.json`, and point your team's marketplace at the fork.
 
 Two differences from a project install:
 
-- Plugin skills are called `/agentic-workflow:ship-feature` and so on; the plain `/ship-feature` also works unless another command has that name. Plugin agents are named `agentic-workflow:reviewer`. The skills in `kit/.claude` use the prefixed agent names; `install.sh` rewrites them to plain names for project installs.
+- Plugin skills are called `/agentic-workflow-kit:ship-feature` and so on; the plain `/ship-feature` also works unless another command has that name. Plugin agents are named `agentic-workflow-kit:reviewer`. The skills in `kit/.claude` use the prefixed agent names; `install.sh` rewrites them to plain names for project installs.
 - Plugin hooks run in every project where the plugin is enabled. The guard applies everywhere; the check hooks do nothing in a project without `.claude/bin/check`.
 
 ## Formatters and the kit's own files
