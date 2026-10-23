@@ -1,0 +1,87 @@
+# Tests for templates/agentic-workflow-kit: the hook, spec-lint and installer tests, and the
+# TypeScript adapter's quality gates run on the demo app with the kit installed.
+name: agentic-workflow-kit
+
+# No path filters: the jobs are required status checks, and a filtered required check
+# would leave pull requests that do not touch the kit waiting forever.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: templates/agentic-workflow-kit
+
+jobs:
+  kit:
+    name: Kit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shellcheck
+        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/lib.sh tests/*.sh
+      - name: Hooks
+        run: sh tests/hooks.test.sh
+      - name: Spec lint
+        run: sh tests/spec-lint.test.sh
+      - name: Installer
+        run: sh tests/install.test.sh
+      - name: Hooks under dash
+        run: dash tests/hooks.test.sh
+
+  demo:
+    name: Demo app gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COVERAGE_THRESHOLD: "70"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install the kit into a copy of the demo
+        run: |
+          demo="$RUNNER_TEMP/demo"
+          cp -R examples/demo-app "$demo"
+          ./install.sh "$demo" --adapter typescript --preset nextjs
+          cd "$demo"
+          npm ci
+          .claude/bin/check format .github/scripts/changed-coverage.mjs
+          git init -q -b main
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm base --allow-empty
+          git checkout -q -b change
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm "demo with kit"
+          echo "DEMO=$demo" >>"$GITHUB_ENV"
+      - name: Spec lint
+        working-directory: ${{ env.DEMO }}
+        run: .claude/bin/spec-lint
+      - name: Typecheck
+        working-directory: ${{ env.DEMO }}
+        run: .claude/bin/check typecheck
+      - name: Lint
+        working-directory: ${{ env.DEMO }}
+        run: .claude/bin/check lint
+      - name: Tests with coverage
+        working-directory: ${{ env.DEMO }}
+        run: .claude/bin/check coverage
+      - name: Coverage on changed files
+        working-directory: ${{ env.DEMO }}
+        env:
+          BASE_REF: main
+        run: node .github/scripts/changed-coverage.mjs
+      - name: Build
+        working-directory: ${{ env.DEMO }}
+        run: .claude/bin/check build
