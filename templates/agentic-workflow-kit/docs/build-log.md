@@ -12,7 +12,7 @@ Sanitization checklist from the spec, run on `main` after the merge (e0398f0), i
 - [x] Rules rewritten in generic terms.
 - [x] `references/` never committed: 0 paths in the history; it is in `.gitignore`.
 
-Delivered (spec §5): `CLAUDE.md` and rules, permissions, 4 hooks, 6 skills, 3 subagents, CI gates, MCP example, plugin and marketplace, README with GIF, team playbook, customizing guide, demo app, this build log, MIT license. `main` requires the kit's CI. Open for later: the booking link points to the GitHub profile until a booking page exists.
+Delivered (spec §5): `CLAUDE.md` and rules, permissions, 4 hooks, 6 skills, 3 subagents, CI gates, MCP example, plugin and marketplace, README with GIF, team playbook, customizing guide, demo app, this build log, MIT license. `main` requires the kit's CI. The booking link points to the GitHub profile, confirmed as final by the owner.
 
 ## 23.10.2026: leftovers (interactive run, GIF, repository CI)
 
