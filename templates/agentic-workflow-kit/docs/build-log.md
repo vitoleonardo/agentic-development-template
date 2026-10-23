@@ -2,6 +2,18 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 23.10.2026: release checks
+
+Sanitization checklist from the spec, run on `main` after the merge (e0398f0), including the full git history:
+
+- [x] No client or project names: 0 matches in the tree and in `git log -p --all`.
+- [x] No business logic, domain models or code from client projects: the demo is a generic expense splitter written for the kit.
+- [x] No internal URLs, hostnames, API keys, tokens or emails in tracked files (pattern search for tokens, private keys, private IP ranges and internal domains; the only addresses are `ci@example.invalid` and the commit trailer). Commit metadata carries the author's own addresses.
+- [x] Rules rewritten in generic terms.
+- [x] `references/` never committed: 0 paths in the history; it is in `.gitignore`.
+
+Delivered (spec §5): `CLAUDE.md` and rules, permissions, 4 hooks, 6 skills, 3 subagents, CI gates, MCP example, plugin and marketplace, README with GIF, team playbook, customizing guide, demo app, this build log, MIT license. `main` requires the kit's CI. Open for later: the booking link points to the GitHub profile until a booking page exists.
+
 ## 23.10.2026: leftovers (interactive run, GIF, repository CI)
 
 - **Interactive run in a trusted folder** (Claude Code 2.1.309, manual permission mode). The trust dialog listed the kit's 9 allow rules. `.claude/bin/check test` ran without a prompt, `cat .env` was refused with the security rule as the reason, and `git push` stopped for approval. An edit that broke SPLIT-AC2 was formatted, typechecked and tested by the hooks; the Stop hook held the turn once and the summary listed the red check.
