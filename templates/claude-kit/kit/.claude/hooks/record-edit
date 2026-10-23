@@ -7,7 +7,9 @@ rel=$(relative_path "$(json_string file_path)")
 [ -n "$rel" ] || exit 0
 
 printf '%s\n' "$rel" >>"$(state_file turn-files)"
-if matches_any "$rel" "${KIT_SOURCE_PATTERNS:-}"; then
-  printf '%s\n' "$rel" >>"$(state_file pending)"
-fi
+case $rel in
+  specs/README.md) ;;
+  specs/*.md) printf '%s\n' "$rel" >>"$(state_file pending)" ;;
+  *) matches_any "$rel" "${KIT_SOURCE_PATTERNS:-}" && printf '%s\n' "$rel" >>"$(state_file pending)" ;;
+esac
 exit 0

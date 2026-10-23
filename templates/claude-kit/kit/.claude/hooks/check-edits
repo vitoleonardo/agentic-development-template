@@ -1,7 +1,7 @@
 #!/bin/sh
-# PostToolBatch: once per batch of tool calls, format the edited source files,
-# then run the typecheck and the tests related to them. Failures go back to
-# Claude as context so it fixes them in the same turn.
+# PostToolBatch: once per batch of tool calls, lint edited specs, then format the
+# edited source files and run the typecheck and the tests related to them.
+# Failures go back to Claude as context so it fixes them in the same turn.
 . "$(dirname -- "$0")/lib.sh"
 
 pending=$(state_file pending)
@@ -21,7 +21,11 @@ run() {
   name=$1
   shift
   started=$(date +%s)
-  out=$(.claude/bin/check "$name" "$@" 2>&1)
+  if [ "$name" = spec-lint ]; then
+    out=$(.claude/bin/spec-lint "$@" 2>&1)
+  else
+    out=$(.claude/bin/check "$name" "$@" 2>&1)
+  fi
   code=$?
   seconds=$(($(date +%s) - started))
   case $code in
@@ -37,23 +41,32 @@ $(printf '%s\n' "$out" | tail -n 40)"
   fi
 }
 
+specs=$(printf '%s\n' "$files" | grep '^specs/.*\.md$')
+sources=$(printf '%s\n' "$files" | grep -v '^specs/.*\.md$')
+
 # Files are passed one per argument; names with spaces stay intact.
 set -f
 old_ifs=$IFS
 IFS='
 '
-# shellcheck disable=SC2086
-set -- $files
+if [ -n "$specs" ]; then
+  # shellcheck disable=SC2086
+  run spec-lint $specs
+fi
+if [ -n "$sources" ]; then
+  # shellcheck disable=SC2086
+  set -- $sources
+  IFS=$old_ifs
+  run format "$@"
+  run typecheck
+  run test-related "$@"
+fi
 IFS=$old_ifs
 set +f
 
-run format "$@"
-run typecheck
-run test-related "$@"
-
 [ -z "$failures" ] && exit 0
 
-message="Checks failed after editing: $*
+message="Checks failed after editing: $(printf '%s\n' "$files" | tr '\n' ' ')
 If you just wrote a test that is meant to fail first (red before green), record the failure in the state file and continue. Otherwise fix the cause before moving on.
 $failures"
 

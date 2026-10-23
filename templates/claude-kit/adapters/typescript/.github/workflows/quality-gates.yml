@@ -58,6 +58,10 @@ jobs:
             echo "::warning title=Large pull request::$changed changed lines (limit $MAX_CHANGED_LINES). Consider splitting it into smaller pull requests; small diffs get better reviews."
           fi
 
+      - name: Spec lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: .claude/bin/spec-lint
+
       - name: Typecheck
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: .claude/bin/check typecheck

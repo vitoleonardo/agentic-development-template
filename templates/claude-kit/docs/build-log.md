@@ -2,6 +2,19 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 23.10.2026: acceptance-criteria gate, user flow, technical design
+
+- **The gate has two layers.**
+  - `.claude/bin/spec-lint` is a deterministic hard gate (shell and awk, any language). It checks: ID format and reuse, Given/when/then in order, one "then" per criterion, vague words, the required sections (Goal, User flow, Acceptance criteria, Edge cases, Out of scope), and no open questions once a spec is approved. It runs on every spec edit (hook), before approval in `/spec-feature`, and in CI. 19 tests.
+  - The reviewer now also reviews specs for what a linter cannot judge: testability, missing cases, contradictions, scope.
+- **The linter caught the demo's own spec on its first run:** no User flow, and the invalid-input criterion was not under Edge cases.
+- **End to end with `/spec-feature`**, given the request "mark a transfer as paid so it works nicely and fast":
+  - It called "nicely and fast" untestable, noticed the conflict with the existing "no saving between visits" scope, and asked five questions instead of guessing.
+  - After the answers, spec-lint passed and the reviewer still found a real flaw. "The text field stays unchanged" would pass even after a reload, because browsers restore form text. It was rewritten to "no page navigation or network request".
+  - A dropped criterion kept its ID as removed, and the model flagged its own additions (keyboard support) as proposals for the user to accept or reject.
+- **The spec template now has a User flow section.** The plan template opens with a Design section: data, contract, permissions, states, decisions with alternatives.
+- **Only the user sets `done`, after acceptance.**
+
 ## 23.10.2026: Phase 3 (CI gates, installer, demo app)
 
 - **CI ran as designed.** The TypeScript adapter ships `quality-gates.yml`, which `actionlint` reports as clean. Locally simulated pull requests on the demo app:

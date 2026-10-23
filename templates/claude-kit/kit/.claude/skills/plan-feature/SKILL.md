@@ -23,13 +23,19 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 ```markdown
 # Plan: <feature> (spec: specs/<feature>.md)
 
+## Design
+- Parts: <which UI, server and data pieces change, and how they connect>
+- Data: <new or changed tables/fields/types, precise enough that nobody has to guess>
+- Contract: <only when a frontend and a backend talk: route, method, request, response, errors, required role>
+- Permissions: <who may see and change what; how user A is kept out of user B's data>
+- States and errors: <loading, empty, failure; what the user sees in each>
+- Decisions: <choice, the alternatives considered, and why>
+- Reused: <existing modules and patterns this builds on, with path:line>
+
 ## Tasks
 | # | Task | Files | Criteria | Test cases | Depends on |
 |---|------|-------|----------|------------|------------|
 | 1 | <one concern> | <paths> | INVITE-AC1, INVITE-AC5 | <file>: duplicate email, missing role | – |
-
-## Contract
-<Only when the change spans a frontend and a backend: route, method, request, response, errors, required role.>
 
 ## Risks
 - <What could break, and how the plan guards against it.>
@@ -47,6 +53,7 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 
 Rules for the plan:
 
+- The design covers every criterion; it introduces nothing the spec does not ask for.
 - Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
 - Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
 - Name the test cases, not just "add tests".
@@ -54,6 +61,6 @@ Rules for the plan:
 
 ## 3. Ask for approval
 
-Summarise: the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over 400 lines, propose how to split it into several PRs.
+Summarise: the design decisions, the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over 400 lines, propose how to split it into several PRs.
 
 Then stop and wait. When the user approves, set the feature's status in `specs/README.md` to `planned`.

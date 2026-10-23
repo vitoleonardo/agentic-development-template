@@ -38,6 +38,10 @@ ID prefix: INVITE
 ## Goal
 <Who uses it and why, from the user's point of view. One or two sentences.>
 
+## User flow
+1. <What the user sees and does, step by step, including where errors show up.>
+2. <Link to the visual design (Figma or similar) if there is one.>
+
 ## Acceptance criteria
 - **INVITE-AC1**: Given <starting state>, when <action>, then <observable result>.
 - **INVITE-AC2**: ...
@@ -55,10 +59,19 @@ ID prefix: INVITE
 - <DD.MM.YYYY>: <decision>, because <reason>.
 ```
 
-Each criterion is a single yes/no check that a test can prove.
+Each criterion is a single yes/no check that a test can prove:
+
+- Exactly one Given, when and then, in that order. Two results means two criteria.
+- Observable results: exact text, numbers with units, states. No "fast", "correctly", "user-friendly", "handles", "etc.".
+- At least one edge case: errors, empty data, duplicates, missing permissions, limits.
 
 When you extend a spec, continue the numbering. Never renumber or reuse an ID. Mark a dropped criterion as `**INVITE-AC3** (removed DD.MM.YYYY: reason)` instead of deleting it.
 
-## 4. Status and approval
+## 4. Check it
 
-Add or update the feature's row in `specs/README.md` with status `draft`. Show the spec and ask for approval. Only after the user approves, set the status to `approved`. Do not plan or write code in this step.
+1. Run `.claude/bin/spec-lint specs/<feature-slug>.md` and fix every finding. This is a hard gate: never ask for approval while it fails.
+2. Dispatch the `reviewer` subagent to review the spec (not a diff). Fix what it finds, or add it to Open questions.
+
+## 5. Status and approval
+
+Add or update the feature's row in `specs/README.md` with status `draft`. Show the spec and the reviewer's remaining points, and ask for approval. Only after the user approves, set the status to `approved`; spec-lint then also requires that no open questions remain. Do not plan or write code in this step.

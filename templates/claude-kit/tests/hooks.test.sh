@@ -89,6 +89,7 @@ expect block Edit file_path "$project/src/app.ts" my-plugin:test-writer
 expect block Edit file_path "$project/src/app.test.ts" reviewer
 expect allow Bash command "git diff main...HEAD" reviewer
 expect allow Bash command ".claude/bin/check test" test-writer
+expect allow Bash command ".claude/bin/spec-lint" reviewer
 expect allow Bash command "$project/.claude/bin/check test-related src/a.test.ts" test-writer
 expect allow Bash command "git -C $project status --porcelain" test-writer
 expect block Bash command "git -C $project push" reviewer
@@ -129,6 +130,18 @@ case $out in
   *systemMessage*'a b.ts'*'typecheck fail'*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: summary should report after the retry: $out" ;;
 esac
+
+# A spec edit runs spec-lint and reports its findings to Claude.
+printf '# X\n\nID prefix: X\n\n## Acceptance criteria\n- **X-AC1**: it works fast\n' >"$project/specs/x.md"
+printf '{"session_id":"s2","tool_name":"Write","tool_input":{"file_path":"%s/specs/x.md"}}' "$project" |
+  "$project/.claude/hooks/record-edit"
+out=$(printf '{"session_id":"s2"}' | "$project/.claude/hooks/check-edits")
+if printf '%s' "$out" | python3 -I -c 'import json,sys; c=json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; assert "spec-lint failed" in c and "X-AC1" in c and "User flow" in c' 2>/dev/null; then
+  passed=$((passed + 1))
+else
+  failed=$((failed + 1))
+  echo "FAIL: a spec edit should report spec-lint findings: $out"
+fi
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

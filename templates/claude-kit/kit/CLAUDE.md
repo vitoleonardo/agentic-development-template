@@ -17,11 +17,12 @@ Rules in `.claude/rules/` load automatically. Stack rules from the adapter load 
 
 Every feature goes through the same steps. Each step leaves a file behind, so a new session can pick up without the chat history.
 
-1. **Spec** (`/spec-feature`): `specs/<feature>.md` states what "done" means as numbered acceptance criteria (`<FEATURE>-AC<n>`). One feature, one spec; extend it instead of creating a second one. A human approves it.
-2. **Plan** (`/plan-feature`): files touched, tests, risks, and which criterion each step covers. A human approves it before any code is written.
+1. **Spec** (`/spec-feature`): `specs/<feature>.md` holds the user flow and what "done" means as numbered acceptance criteria (`<FEATURE>-AC<n>`). One feature, one spec; extend it instead of creating a second one. `.claude/bin/spec-lint` must pass, then a human approves it.
+2. **Plan** (`/plan-feature`): the technical design (data, contract, permissions, decisions), then tasks with files, tests and the criteria each covers. A human approves it before any code is written.
 3. **Build**: implement against the plan. Every criterion gets a test that failed before the code made it pass. Progress and evidence go to `.work/<branch>.md`.
 4. **Review** (`/review-diff`): an independent reviewer that did not write the code checks the diff against the spec and these rules.
 5. **PR** (`/pr-description`): what, why, and an evidence table (criterion → test → result).
+6. **Acceptance**: the user checks the result and marks the feature `done`. Claude never sets `done`.
 
 `/ship-feature` runs all five steps with the approval gates. Small fixes can skip the spec but not the test.
 

@@ -129,7 +129,7 @@ Decision key: **Include** (take the pattern as is) · **Adapt** (take the idea, 
 | G4 | CI workflow: typecheck, lint, tests, coverage on changed files, diff-size warning. Both reference projects' CI runs **no tests** | Spec 5.7 |
 | G5 | `test-writer` limited to test folders: no reference restricts edit paths | Spec 5.6 |
 | G6 | Standalone `/write-tests` and `/pr-description` commands outside a full pipeline | Spec 5.5 |
-| G7 | Stable criterion IDs that survive spec edits; tests and the review report reference them | Blueprint (traceability) |
+| G7 | Stable criterion IDs that survive spec edits; tests and the review report reference them | Blueprint (traceability). Built: IDs, `spec-lint`, reviewer verdict per criterion |
 | G8 | Red-before-green: evidence that a new test failed before the fix | Blueprint (build) |
 | G9 | One spec per feature, committed, with decisions and open questions; extended, not duplicated | Blueprint (spec) |
 | G10 | Feature status overview (one line per feature, current state only) | Blueprint (project memory) |
