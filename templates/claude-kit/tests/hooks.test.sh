@@ -135,6 +135,17 @@ case $out in
   *) failed=$((failed + 1)); echo "FAIL: summary should report after the retry: $out" ;;
 esac
 
+# A check that was red in the log but passes when re-run does not hold the turn.
+printf '{"session_id":"s3","tool_name":"Edit","tool_input":{"file_path":"%s/src/a b.ts"}}' "$project" |
+  "$project/.claude/hooks/record-edit"
+printf 'typecheck fail 1s\n' >"$project/.work/session-s3.checks"
+printf 'KIT_SOURCE_PATTERNS="*.ts"\nKIT_TYPECHECK="true"\n' >"$project/.claude/kit.conf"
+out=$(printf '{"session_id":"s3","stop_hook_active":false}' | "$project/.claude/hooks/summary")
+case $out in
+  *systemMessage*'typecheck pass (2 runs)'*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: summary should re-run a red check and not block once it passes: $out" ;;
+esac
+
 # A spec edit runs spec-lint and reports its findings to Claude.
 printf '# X\n\nID prefix: X\n\n## Acceptance criteria\n- **X-AC1**: it works fast\n' >"$project/specs/x.md"
 printf '{"session_id":"s2","tool_name":"Write","tool_input":{"file_path":"%s/specs/x.md"}}' "$project" |

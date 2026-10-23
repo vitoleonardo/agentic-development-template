@@ -2,6 +2,16 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 23.10.2026: leftovers (interactive run, GIF, repository CI)
+
+- **Interactive run in a trusted folder** (Claude Code 2.1.309, manual permission mode). The trust dialog listed the kit's 9 allow rules. `.claude/bin/check test` ran without a prompt, `cat .env` was refused with the security rule as the reason, and `git push` stopped for approval. An edit that broke SPLIT-AC2 was formatted, typechecked and tested by the hooks; the Stop hook held the turn once and the summary listed the red check.
+- **The rules work before the hooks do.** For the GIF (Sonnet, user settings left out), Claude refused the breaking edit at first and quoted SPLIT-AC1 and SPLIT-AC2. Only after "make the edit anyway" did the hook clip happen. The guard then blocked `sh -c "rm -rf src"` and Claude declined to work around it.
+- **The recording found a CI failure in waiting.** `biome check` in the demo flagged the installed `.mcp.example.json` and the coverage script. The JSON now ships wrapped so any formatter accepts it. The script's line width is the project's choice, so the demo README and CI run the formatter once, as installer step 2 says.
+- **`/ship-feature` end to end through the plugin** (Sonnet, headless, three turns, `--plugin-dir`). It extended the spec with SPLIT-AC7 to AC9, and the reviewer's spec pass led to four fixes. It wrote the plan and, after approval, built it on a branch with `agentic-workflow:implementer` subagents, one commit per task. It ran the reviewer, set the status to `in-review`, and stopped before pushing.
+- **The Stop hook trusted stale results.** In that run the last hook-run typecheck was the intended red one (a test importing a function that did not exist yet), so Stop kept reporting it as failing after Claude's own runs were green. Stop now re-runs each red check once on the turn's files and blocks only if it is still red. New test; its timeout went from 10 to 300 seconds.
+- **Small fix:** the Stop message said "still failing: test-related ." and now lists checks with commas.
+- **Repository CI** (`.github/workflows/claude-kit.yml`): ShellCheck, the three test suites (also under `dash`), and the TypeScript gates on the demo app with the kit installed. Simulated locally first; actionlint and ShellCheck are clean.
+
 ## 23.10.2026: Phase 4 (plugin, docs, MCP example)
 
 - **`kit/.claude` is the plugin.** It needed only `.claude-plugin/plugin.json` and `hooks/hooks.json`, so nothing is duplicated. `claude plugin validate` passes for the plugin and for the repository's marketplace. `install.sh --plugin` installs only the project files and removes the hooks from `settings.json`, so they do not run twice. Installer tests: `tests/install.test.sh`, 13 cases.
@@ -10,7 +20,7 @@ What the workflow and its tests caught while building the kit. Newest first.
 - **Also verified through the plugin:** the guard blocked `rm -r -f src/app`, and a broken edit was caught by the check hooks. The Stop hook then made Claude explain why the test stayed red.
 - **Writing the README found a guard gap.** `git push -f origin main`, `git push -uf` and `git -C x push -f` passed the guard, because the pattern expected a second space before the flag. The deny list caught the plain form, but not the other two. Fixed, with 4 new tests (65 in total).
 - **`/ship-feature` read its sub-steps from `.claude/skills/...`,** which does not exist in plugin installs. It now uses `${CLAUDE_SKILL_DIR}/../<skill>/SKILL.md`, which works in both.
-- **Not done:** the README GIF (no recorder installed; steps in `team-playbook.md`), a real GitHub Actions run, an interactive run in a trusted folder, and an end-to-end `/ship-feature` through the plugin.
+- **Not done in this phase:** the README GIF, a real GitHub Actions run, an interactive run in a trusted folder, and an end-to-end `/ship-feature` through the plugin. See the entry above.
 
 ## 23.10.2026: acceptance-criteria gate, user flow, technical design
 

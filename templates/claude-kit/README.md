@@ -2,7 +2,7 @@
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
-<!-- GIF: /ship-feature on the demo app: spec, plan approval, test-first build, review, PR text. Record with docs/team-playbook.md "Record the demo". -->
+![Claude Code with the kit: it pushes back on an edit that breaks an acceptance criterion, the hooks catch the failing test, and the guard blocks rm -rf](docs/assets/demo.gif)
 
 ## Before and after
 
