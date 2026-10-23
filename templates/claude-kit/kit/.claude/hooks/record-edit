@@ -1,0 +1,13 @@
+#!/bin/sh
+# PostToolUse (Edit|Write): queue the edited file for check-edits and the turn summary.
+# Kept tiny because it runs once per edit, possibly in parallel.
+. "$(dirname -- "$0")/lib.sh"
+
+rel=$(relative_path "$(json_string file_path)")
+[ -n "$rel" ] || exit 0
+
+printf '%s\n' "$rel" >>"$(state_file turn-files)"
+if matches_any "$rel" "${KIT_SOURCE_PATTERNS:-}"; then
+  printf '%s\n' "$rel" >>"$(state_file pending)"
+fi
+exit 0

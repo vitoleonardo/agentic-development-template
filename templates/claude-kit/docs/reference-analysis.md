@@ -33,7 +33,7 @@ Decision key: **Include** (take the pattern as is) · **Adapt** (take the idea, 
 | P5 | Each plan step names its files and the criterion it satisfies | project-a, project-b | Coverage of every criterion | Include | This is the plan link in the traceability chain |
 | P6 | Explicit edge-case test list per step (invalid input, empty, duplicate, auth denied) | project-a | Better tests than "write a spec" | Include | Goes into the plan template and the `test-writer` prompt |
 | P7 | Contract between frontend and backend written down before parallel work | project-a, project-b | Prevents drift | Adapt | Optional plan section, used only when a change spans a Next.js app and an API. The demo app exercises it |
-| P8 | Per-task state file outside the repo, read by every subagent, survives compaction | project-a, project-b, builder | Resume after a crash or compaction; shared context | Adapt | `.claude/state/<branch>.md`, gitignored, holds plan progress and the verify log. The spec itself is committed separately |
+| P8 | Per-task state file outside the repo, read by every subagent, survives compaction | project-a, project-b, builder | Resume after a crash or compaction; shared context | Adapt | `.work/<branch>.md`, gitignored, holds plan progress and the verify log. The spec itself is committed separately |
 | P9 | Verify log: one row per criterion with the evidence and pass/fail | project-a, project-b, builder | Proof instead of claims | Include | Feeds the reviewer report and the PR description's evidence table |
 | P10 | "What does green really mean" check: are tests real or stubs, does CI run them, can a command exit 0 on failure | builder, project-a, project-b | Stops "pipeline green" being read as "verified" | Include | Becomes an install checklist item and a reviewer check ("0 tests ran" counts as a failure) |
 | P11 | Runtime verification: run the app, smoke an endpoint, check the boot log | project-a, project-b | Primary gate when tests are weak | Adapt | Optional `/ship-feature` step. Generic `next build` plus a smoke check. Drop the project-specific scripts |
@@ -163,7 +163,7 @@ Decided 23.10.2026. The kit splits into a core that works in any language and st
 
 ## 7. Decisions for approval
 
-1. Specs live in `specs/<feature>.md` (committed). Plan progress and the verify log live in `.claude/state/<branch>.md` (gitignored).
+1. Specs live in `specs/<feature>.md` (committed). Plan progress and the verify log live in `.work/<branch>.md`, which ignores itself through `.work/.gitignore`. (First planned as `.claude/state/`, but Claude Code protects `.claude/` against writes; see the build log.)
 2. Criterion IDs are `<FEATURE>-AC<n>` (for example `INVITE-AC3`). IDs are never reused after deletion. Test names include the ID.
 3. Three agents (`reviewer`, `test-writer`, `implementer`). The simplifier is a step, not an agent.
 4. Retro ledger and evals are deferred to v2 (P16, A9).

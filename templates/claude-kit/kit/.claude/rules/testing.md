@@ -1,7 +1,7 @@
 # Testing
 
 - New behaviour needs tests in the same change. A bug fix needs a regression test that reproduces the bug.
-- Red before green: run each new test before the code that makes it pass, and see it fail for the expected reason. Record the failing and the passing run in `.claude/state/<branch>.md`. A test that never failed proves nothing.
+- Red before green: run each new test before the code that makes it pass, and see it fail for the expected reason. Record the failing and the passing run in `.work/<branch>.md`. A test that never failed proves nothing.
 - Test names start with the acceptance criterion they prove, for example `INVITE-AC3: rejects a duplicate email`. Every criterion in the spec has at least one test, or the plan says why it is checked another way.
 - Cover more than the happy path. For each criterion, test the cases the plan lists: invalid input, empty data, duplicates, missing permission, and the error path of every external call.
 - Never delete, skip, focus (`.skip`, `.only`, `@pytest.mark.skip`, `@Disabled`, ...) or weaken a test to make a run pass. If a test looks wrong, say so and ask.
