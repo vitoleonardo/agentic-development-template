@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run one project check as defined by the stack adapter in .claude/kit.conf.
-# Usage: .claude/bin/check <typecheck|lint|test|test-related|format|build> [files...]
+# Usage: .claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files...]
 # Exit codes: the check's own code, 2 for usage or setup errors, 3 when the check is not configured.
 set -u
 
@@ -22,10 +22,11 @@ case $name in
   lint) cmd=${KIT_LINT:-} ;;
   test) cmd=${KIT_TEST:-} ;;
   test-related) cmd=${KIT_TEST_RELATED:-} ;;
+  coverage) cmd=${KIT_COVERAGE:-} ;;
   format) cmd=${KIT_FORMAT:-} ;;
   build) cmd=${KIT_BUILD:-} ;;
   *)
-    echo "usage: .claude/bin/check <typecheck|lint|test|test-related|format|build> [files...]" >&2
+    echo "usage: .claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files...]" >&2
     exit 2
     ;;
 esac

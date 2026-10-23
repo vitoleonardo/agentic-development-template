@@ -2,6 +2,24 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 23.10.2026: Phase 3 (CI gates, installer, demo app)
+
+- **CI ran as designed.** The TypeScript adapter ships `quality-gates.yml`, which `actionlint` reports as clean. Locally simulated pull requests on the demo app:
+  - a tested change passed (100% of changed lines covered);
+  - a new untested file was blocked (0%);
+  - a failing test was blocked and the 452-line diff got a warning.
+- **One confusing error removed.** Vitest writes no coverage report when tests fail, so the changed-files step added a "summary not found" error on top. It now runs only after the tests pass.
+- **`pnpm/action-setup` v6 now requires pnpm 11+.** The workflow installs the version from `packageManager` with npm instead, which is also one fewer third-party action.
+- **Projects reformat the kit's files.** Biome 2.6 also formats Markdown and wanted to rewrite the kit's `CLAUDE.md`, and the project's line width flagged the CI script. The demo limits Biome to code files, the script ships Prettier-style, and the installer now says to run the formatter once.
+- **`next build` rewrites `tsconfig.json`.** The demo ships the keys Next adds, so the tree stays clean.
+- **Install from a copy took 0.1 seconds** and kept the demo's own `specs/README.md`.
+- **`/ship-feature` ran end to end** (Sonnet, headless, four turns):
+  - It extended the existing spec with SPLIT-AC7 to AC11 and asked two real questions.
+  - After approval it wrote the plan; after that approval, two implementer subagents built the feature test first.
+  - The verify log shows real red messages before green. One commit per task; then review, full checks, and a PR description. It stopped before pushing.
+  - It reported honestly: AC10's tests were green before the change (unchanged error path), and the page layout was not checked.
+- **Untrusted folders ignore command-line allowances.** In an untrusted folder `--allowedTools` was ignored like the allow list, so the build turns used `bypassPermissions` to stand in for a user approving the git prompts. The guard hook still ran. An interactive run in a trusted folder is still to do.
+
 ## 23.10.2026: Phase 2 (hooks, commands, agents)
 
 Unit tests: `tests/hooks.test.sh`, 59 cases. End to end: Claude Code 2.1.309 (Haiku) on a scratch TypeScript project.

@@ -5,7 +5,7 @@ Templates for building software with AI coding agents. Each template is self-con
 | Template | For | Status |
 |----------|-----|--------|
 | [greenfield-nextjs](./templates/greenfield-nextjs/) | New Next.js apps built by agents in parallel tracks, contract-first | Usable |
-| [claude-kit](./templates/claude-kit/) | Existing projects in any language: spec-driven workflow, rules, permissions, hooks, subagents and CI gates for Claude Code. Ships a TypeScript adapter | Phase 1 done (rules, permissions, adapter) |
+| [claude-kit](./templates/claude-kit/) | Existing projects in any language: spec-driven workflow, rules, permissions, hooks, subagents and CI gates for Claude Code. Ships a TypeScript adapter | Phase 3 done (workflow, hooks, CI gates, demo app) |
 
 ## Repository layout
 
