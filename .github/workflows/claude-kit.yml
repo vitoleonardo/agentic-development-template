@@ -2,12 +2,12 @@
 # TypeScript adapter's quality gates run on the demo app with the kit installed.
 name: claude-kit
 
+# No path filters: the jobs are required status checks, and a filtered required check
+# would leave pull requests that do not touch the kit waiting forever.
 on:
   pull_request:
-    paths: ["templates/claude-kit/**", ".claude-plugin/**", ".github/workflows/claude-kit.yml"]
   push:
     branches: [main]
-    paths: ["templates/claude-kit/**", ".claude-plugin/**", ".github/workflows/claude-kit.yml"]
 
 permissions:
   contents: read
