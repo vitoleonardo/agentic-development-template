@@ -17,11 +17,11 @@ Run `git branch --show-current`. If `.work/<branch>.md` exists, read its Progres
 
 ## 1. Spec (gate: user approves)
 
-If the feature has no approved spec, follow `.claude/skills/spec-feature/SKILL.md`. Do not continue until the user approves the spec.
+If the feature has no approved spec, follow `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md`. Do not continue until the user approves the spec.
 
 ## 2. Plan (gate: user approves)
 
-Follow `.claude/skills/plan-feature/SKILL.md` and wait for approval. Then create the branch (`git checkout -b <issue>-<slug>`) and move the state file to the branch name if it differs.
+Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` and wait for approval. Then create the branch (`git checkout -b <issue>-<slug>`) and move the state file to the branch name if it differs.
 
 ## 3. Build, one task at a time
 
@@ -50,6 +50,6 @@ Run `.claude/bin/check typecheck`, `lint`, `test` and `build`. Every check must 
 
 ## 7. PR (gate: user approves the push)
 
-Follow `.claude/skills/pr-description/SKILL.md`. Set the feature's status in `specs/README.md` to `in-review`. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
+Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`. Set the feature's status in `specs/README.md` to `in-review`. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
 
 Finally, report the branch, the commits, the review verdict, the checks, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.

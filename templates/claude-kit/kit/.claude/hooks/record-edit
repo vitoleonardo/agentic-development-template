@@ -2,6 +2,8 @@
 # PostToolUse (Edit|Write): queue the edited file for check-edits and the turn summary.
 # Kept tiny because it runs once per edit, possibly in parallel.
 . "$(dirname -- "$0")/lib.sh"
+# As a plugin the hooks can run in projects without the kit's project files; only the guard applies there.
+[ -x .claude/bin/check ] || exit 0
 
 rel=$(relative_path "$(json_string file_path)")
 [ -n "$rel" ] || exit 0

@@ -1,0 +1,8 @@
+{
+  "name": "agentic-workflow",
+  "version": "0.1.0",
+  "description": "Spec-driven workflow for Claude Code: spec, plan, test-first build, independent review and PR, with guard and check hooks. Run install.sh --plugin in each project for the rules, permissions and check commands.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "keywords": ["workflow", "spec-driven", "hooks", "subagents", "quality-gates"]
+}

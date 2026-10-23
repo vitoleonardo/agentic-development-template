@@ -2,6 +2,16 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 23.10.2026: Phase 4 (plugin, docs, MCP example)
+
+- **`kit/.claude` is the plugin.** It needed only `.claude-plugin/plugin.json` and `hooks/hooks.json`, so nothing is duplicated. `claude plugin validate` passes for the plugin and for the repository's marketplace. `install.sh --plugin` installs only the project files and removes the hooks from `settings.json`, so they do not run twice. Installer tests: `tests/install.test.sh`, 13 cases.
+- **The name `claude-kit` is reserved for plugins.** The validator refuses names starting with `claude-`, so the plugin is called `agentic-workflow`. The template folder keeps its name for now.
+- **Forked skills lost their agent inside the plugin.** Headless with `--plugin-dir`: `/review-diff` ran as `general-purpose`, not as the read-only reviewer, because a plugin's agents are named `agentic-workflow:reviewer`. With the prefixed name in the skill, the reviewer ran, and the guard blocked its chained commands 8 times. The installer rewrites the names back to plain ones for project installs.
+- **Also verified through the plugin:** the guard blocked `rm -r -f src/app`, and a broken edit was caught by the check hooks. The Stop hook then made Claude explain why the test stayed red.
+- **Writing the README found a guard gap.** `git push -f origin main`, `git push -uf` and `git -C x push -f` passed the guard, because the pattern expected a second space before the flag. The deny list caught the plain form, but not the other two. Fixed, with 4 new tests (65 in total).
+- **`/ship-feature` read its sub-steps from `.claude/skills/...`,** which does not exist in plugin installs. It now uses `${CLAUDE_SKILL_DIR}/../<skill>/SKILL.md`, which works in both.
+- **Not done:** the README GIF (no recorder installed; steps in `team-playbook.md`), a real GitHub Actions run, an interactive run in a trusted folder, and an end-to-end `/ship-feature` through the plugin.
+
 ## 23.10.2026: acceptance-criteria gate, user flow, technical design
 
 - **The gate has two layers.**

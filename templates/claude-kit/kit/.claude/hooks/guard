@@ -77,7 +77,7 @@ check() {
   printf '%s' "$flat" | grep -Eiq "$1" && block "$2"
 }
 check "${git}reset[[:space:]]([^;&|]*[[:space:]])?--hard" "git reset --hard discards work."
-check "${git}push[[:space:]][^;&|]*(--force|[[:space:]]-[[:alnum:]]*f[[:alnum:]]*([[:space:]]|$)|[[:space:]]\+[^[:space:]]+)" "force push rewrites shared history."
+check "${git}push([[:space:]][^;&|]*)?[[:space:]](--force|-[[:alnum:]]*f[[:alnum:]]*([[:space:]]|$)|\+[^[:space:]]+)" "force push rewrites shared history."
 check "${git}clean[[:space:]][^;&|]*-[[:alnum:]]*f" "git clean -f deletes untracked files."
 check "${git}(checkout|restore)[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)" "this discards all uncommitted changes."
 check "${git}branch[[:space:]][^;&|]*-D" "force-deleting a branch loses unmerged work."
