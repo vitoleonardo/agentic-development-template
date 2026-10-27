@@ -213,6 +213,10 @@ expect_code 0 "overall coverage within the tolerance passes" .claude/bin/check -
 printf '79.4\n' >root.pct
 expect_code 1 "overall coverage below the tolerance fails" .claude/bin/check --against-baseline coverage
 printf '80\n' >root.pct
+seq 1 5 | sed 's/^/export const b/;s/$/ = 1/' >src/b.ts
+expect_code 1 "a changed file missing from the coverage report counts as 0%" .claude/bin/check --against-baseline coverage
+expect_out "| src/b.ts | 0/5 (not in the coverage report) |" "the missing file is listed with its line count"
+rm src/b.ts
 
 # --- loosened baselines ---------------------------------------------------------
 
