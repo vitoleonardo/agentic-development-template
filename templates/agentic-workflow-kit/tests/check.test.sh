@@ -217,6 +217,10 @@ seq 1 5 | sed 's/^/export const b/;s/$/ = 1/' >src/b.ts
 expect_code 1 "a changed file missing from the coverage report counts as 0%" .claude/bin/check --against-baseline coverage
 expect_out "| src/b.ts | 0/5 (not in the coverage report) |" "the missing file is listed with its line count"
 rm src/b.ts
+mkdir -p tests && printf 'export const helper = 1\n' >tests/helper.ts
+out=$(.claude/bin/check --against-baseline coverage 2>&1)
+case $out in *tests/helper.ts*) fail "a file in a top-level tests/ folder is not a source file: $out" ;; *) ok ;; esac
+rm -r tests
 
 # --- loosened baselines ---------------------------------------------------------
 

@@ -89,7 +89,7 @@ CI runs the same `--against-baseline` checks (the adapters' `quality-gates.yml` 
 
 ### 3.5 Python adapter
 
-`adapters/python/.claude/kit.conf`: `uv run` for every command. Typecheck with mypy or pyright, whichever the project configures. Lint with `ruff check`. Format with `ruff format`. Tests with `pytest`, which writes JUnit through `--junitxml`. Coverage with `pytest --cov`, writing coverage.py JSON. Changed-files coverage reads that JSON, the equivalent of `changed-coverage.mjs` for Istanbul. `KIT_SOURCE_PATTERNS="*.py"`. `KIT_TEST_PATTERNS="test_*.py *_test.py conftest.py */tests/*"`.
+`adapters/python/.claude/kit.conf`: `uv run` for every command. Typecheck with mypy or pyright, whichever the project configures. Lint with `ruff check`. Format with `ruff format`. Tests with `pytest`, which writes JUnit through `--junitxml`. Coverage with `pytest --cov`, writing coverage.py JSON. Changed-files coverage reads that JSON, the equivalent of `changed-coverage.mjs` for Istanbul. `KIT_SOURCE_PATTERNS="*.py"`. `KIT_TEST_PATTERNS="test_*.py *_test.py conftest.py tests/*"`.
 
 ### 3.6 Acceptance
 
