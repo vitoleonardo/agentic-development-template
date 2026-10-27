@@ -35,16 +35,18 @@ jobs:
         run: sh tests/spec-lint.test.sh
       - name: Installer
         run: sh tests/install.test.sh
-      - name: Hooks under dash
-        run: dash tests/hooks.test.sh
+      - name: Check and baseline
+        run: sh tests/check.test.sh
+      - name: Hooks and check under dash
+        run: dash tests/hooks.test.sh && dash tests/check.test.sh
 
   demo:
     name: Demo app gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      COVERAGE_THRESHOLD: "70"
       NO_COLOR: "1"
+      KIT_BASE: main
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -58,7 +60,6 @@ jobs:
           ./install.sh "$demo" --adapter typescript --preset nextjs
           cd "$demo"
           npm ci
-          .claude/bin/check format .github/scripts/changed-coverage.mjs
           git init -q -b main
           git -c user.name=ci -c user.email=ci@example.invalid commit -qm base --allow-empty
           git checkout -q -b change
@@ -70,18 +71,16 @@ jobs:
         run: .claude/bin/spec-lint
       - name: Typecheck
         working-directory: ${{ env.DEMO }}
-        run: .claude/bin/check typecheck
+        run: .claude/bin/check --against-baseline typecheck
       - name: Lint
         working-directory: ${{ env.DEMO }}
-        run: .claude/bin/check lint
-      - name: Tests with coverage
+        run: .claude/bin/check --against-baseline lint
+      - name: Tests
         working-directory: ${{ env.DEMO }}
-        run: .claude/bin/check coverage
-      - name: Coverage on changed files
+        run: .claude/bin/check --against-baseline test
+      - name: Coverage
         working-directory: ${{ env.DEMO }}
-        env:
-          BASE_REF: main
-        run: node .github/scripts/changed-coverage.mjs
+        run: .claude/bin/check --against-baseline coverage
       - name: Build
         working-directory: ${{ env.DEMO }}
         run: .claude/bin/check build
