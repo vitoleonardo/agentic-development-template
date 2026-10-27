@@ -22,9 +22,17 @@ Write rules as instructions that can be checked ("amounts are integers in cents"
 
 `output.md` keeps answers, summaries and PR descriptions short. Edit or delete it if your team wants longer prose.
 
+## Change the structure map
+
+`.claude/rules/structure.md` says where each kind of code lives. Its `## Map` table is read by `.claude/bin/structure`: the backticked paths in the Home column are the homes, `<name>` stands for any name, a trailing `/` covers the folder, and a pattern without `/` (`*.test.*`) matches the file name anywhere. Only new files matching `KIT_SOURCE_PATTERNS` are checked, so legacy code never blocks.
+
+`/onboard` writes the Map from the repository: it copies the homes the code already uses, puts the extra homes of a kind under `## Legacy` (no new files there), and keeps the kit's default where the repository has none. Add a home through a pull request, in the same change as the first file that needs it. The Python adapter ships its own map.
+
+Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out.
+
 ## Add a stack preset
 
-Presets are rules for one framework, in `adapters/<adapter>/presets/<name>.md`, with a `paths:` header for the framework's files. `install.sh --preset <name>` copies them to `.claude/rules/`. The TypeScript adapter has `nextjs`, `nestjs` and `node`.
+Presets are rules for one framework, in `adapters/<adapter>/presets/<name>.md`, with a `paths:` header for the framework's files. `install.sh --preset <name>` copies them to `.claude/rules/`. The TypeScript adapter has `nextjs`, `nestjs` and `node`. A preset whose framework needs its own homes (`proxy.ts`, NestJS modules) adds a `## Map` table like the one in `structure.md`; `.claude/bin/structure` reads every Map in `.claude/rules/`.
 
 Write down what the model gets wrong for your version of the framework, not a tutorial. The Next.js preset, for example, says that request APIs such as `cookies()` are async and that `middleware.ts` is now `proxy.ts`, because models trained on older versions get both wrong.
 
@@ -48,6 +56,9 @@ An adapter tells the kit how your stack typechecks, lints, tests and formats. It
 | `KIT_COVERAGE_THRESHOLD`, `KIT_COVERAGE_TOLERANCE` | coverage gate | percent of the lines in the changed source files that must be covered (70), and how far overall coverage may drop below the baseline (0.5 points) |
 | `KIT_FORMAT` | hooks | the edited files |
 | `KIT_BUILD` | `/ship-feature`, CI | nothing |
+| `KIT_DUPLICATES` | `/verify-feature`, reviewer, simplify step, CI | nothing; fails on clones the branch adds against `$KIT_BASE`, never on legacy ones |
+| `KIT_DUPLICATES_RELATED` | hooks | the edited files; the same for uncommitted files only |
+| `KIT_SIMILAR` | simplify step, reviewer | nothing; lists similar functions and never fails |
 | `KIT_SOURCE_PATTERNS` | hooks | shell patterns of files that trigger the checks, for example `*.py` |
 | `KIT_TEST_PATTERNS` | guard | shell patterns of the files the test-writer may edit |
 | `KIT_DANGEROUS_PATTERNS` | guard | extra commands to block, one extended regex per line |

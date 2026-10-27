@@ -9,7 +9,7 @@ Rules in `.claude/rules/` load automatically. Stack rules from the adapter load 
 - Product: <one sentence: who uses it and what problem it solves>
 - Stack: <framework, database, auth, hosting>
 - Install and dev server: `<install command>`, `<dev server command>`
-- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf` (a package can have its own `<package>/.claude/kit.conf`); a check that reports "not configured" or "n/a" does not exist in this project. Never invent commands. Full runs before a PR use `.claude/bin/check --against-baseline <test|lint|typecheck|coverage>`, which blocks only failures that are not in `.claude/baseline.tsv`.
+- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build|duplicates> [files]`. The stack adapter defines each one in `.claude/kit.conf` (a package can have its own `<package>/.claude/kit.conf`); a check that reports "not configured" or "n/a" does not exist in this project. Never invent commands. Full runs before a PR use `.claude/bin/check --against-baseline <test|lint|typecheck|coverage>`, which blocks only failures that are not in `.claude/baseline.tsv`.
 - What CI runs on every PR: <the workflow file and its checks>
 - Things only a human can do: <dashboards, API keys, DNS, third-party accounts>
 
@@ -30,6 +30,7 @@ Every feature goes through the same steps. Each step leaves a file behind, so a 
 
 Where things live:
 
+- Code: the Map in `.claude/rules/structure.md`, one home per kind. `.claude/bin/structure` blocks a new source file outside it.
 - `specs/README.md`: one row per feature with its current status. Update the row when the status changes; it is not a log.
 - `specs/<feature>.md`: the contract. Do not change it during the build. If it is wrong, stop and say so; once the user has decided, amend it through `/spec-feature` (new criterion IDs, a Decisions entry, approval again) and update the plan.
 - `.work/`: plan progress, verify logs, notes that tasks leave for later tasks, and evidence packs. Gitignored, never committed; packs go to the `kit-evidence` branch instead.

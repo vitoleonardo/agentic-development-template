@@ -93,17 +93,6 @@ run_cmd() {
   printf '%s' "$?"
 }
 
-base_ref() {
-  if [ -n "${KIT_BASE:-}" ]; then printf '%s' "$KIT_BASE"; return; fi
-  ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) && { printf '%s' "$ref"; return; }
-  printf 'main'
-}
-
-# The point the branch left the base; the working tree is compared with it.
-merge_base() {
-  git merge-base "$(base_ref)" HEAD 2>/dev/null || git rev-parse "$(base_ref)" 2>/dev/null || git rev-parse HEAD
-}
-
 # changed_in <package>: files changed since the merge base (committed, staged, unstaged, untracked), relative to the package.
 changed_in() {
   { git diff --name-only "$(merge_base)" -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } |
