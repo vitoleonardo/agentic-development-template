@@ -46,6 +46,17 @@ expect "plugin: no hooks, skills or agents" test ! -e "$plugin/.claude/hooks" -a
 expect "plugin: project files installed" test -x "$plugin/.claude/bin/check" -a -f "$plugin/CLAUDE.md" -a -f "$plugin/specs/README.md" -a -f "$plugin/.claude/kit.conf"
 expect "plugin: settings.json has no hooks" sh -c "! grep -q '\"hooks\"' '$plugin/.claude/settings.json'"
 expect "plugin: settings.json keeps the deny rules" grep -q '"deny"' "$plugin/.claude/settings.json"
+read_denies=$(sed -n 's/^ *"Read(\(.*\))",*$/\1/p' "$full/.claude/settings.json")
+env_example_readable() {
+  name=.env.example
+  printf '%s\n' "$read_denies" | while IFS= read -r pattern; do
+    # shellcheck disable=SC2254 # the deny rule is a glob
+    case $name in $pattern) exit 1 ;; esac
+  done
+}
+expect "settings.json: no ! exception in Read denies, because the sandbox ignores them" sh -c "! printf '%s\n' \"\$1\" | grep -q '^!'" _ "$read_denies"
+expect "settings.json: no Read deny matches .env.example, so git works inside the sandbox" env_example_readable
+expect "settings.json: .env and .env.local are denied" sh -c "printf '%s\n' \"\$1\" | grep -qx .env && printf '%s\n' \"\$1\" | grep -qx .env.local" _ "$read_denies"
 if command -v node >/dev/null 2>&1; then
   expect "plugin: settings.json is valid JSON" node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$plugin/.claude/settings.json"
 fi
