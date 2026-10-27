@@ -18,7 +18,7 @@ fi
 # this turn's files and trust the new result.
 if [ -n "$red" ] && ! json_bool stop_hook_active; then
   sources=$(sort -u "$turn_files" 2>/dev/null | while IFS= read -r f; do
-    [ -f "$f" ] && matches_any "$f" "${KIT_SOURCE_PATTERNS:-}" && printf '%s\n' "$f"
+    [ -f "$f" ] && matches_any "$f" "$(file_value "$f" KIT_SOURCE_PATTERNS)" && printf '%s\n' "$f"
   done)
   specs=$(sort -u "$turn_files" 2>/dev/null | while IFS= read -r f; do
     case $f in specs/README.md) ;; specs/*.md) [ -f "$f" ] && printf '%s\n' "$f" ;; esac

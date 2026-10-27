@@ -62,6 +62,8 @@
       "Edit(terraform/**)",
       "Edit(.claude/settings.json)",
       "Edit(.claude/kit.conf)",
+      "Edit(**/.claude/kit.conf)",
+      "Edit(.claude/baseline.tsv)",
       "Edit(.claude/bin/**)",
       "Edit(.claude/hooks/**)",
       "Edit(.claude/rules/**)"
@@ -105,7 +107,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Read|Edit|Write",
+        "matcher": "Bash|Read|Edit|Write|Grep|Glob",
         "hooks": [
           {
             "type": "command",

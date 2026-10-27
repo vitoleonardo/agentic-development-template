@@ -4,10 +4,18 @@
 KIT_ROOT=${CLAUDE_PROJECT_DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)}
 cd "$KIT_ROOT" || exit 1
 
+# shellcheck source=../bin/conf.sh
+. "$(dirname -- "$0")/../bin/conf.sh"
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
   . ./.claude/kit.conf
 fi
+
+# file_value <path relative to the root> <variable>: the variable from the config of the file's package.
+# In a monorepo a package's .claude/kit.conf decides its own source and test patterns.
+file_value() {
+  conf_value "$(package_of "$1")" "$2"
+}
 
 # Hook input arrives as one JSON document on stdin.
 HOOK_INPUT=$(cat)
@@ -51,18 +59,4 @@ relative_path() {
     /*) ;;
     *) printf '%s' "$1" ;;
   esac
-}
-
-# True if $1 matches one of the space-separated shell patterns in $2.
-matches_any() {
-  file=$1
-  set -f
-  for pattern in $2; do
-    # shellcheck disable=SC2254
-    case $file in
-      $pattern | */$pattern) set +f; return 0 ;;
-    esac
-  done
-  set +f
-  return 1
 }
