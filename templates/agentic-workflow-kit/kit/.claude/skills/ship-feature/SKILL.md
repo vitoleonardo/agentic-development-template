@@ -38,7 +38,7 @@ For each task in the plan's order:
 3. Update the state file: tick the task in Progress, add the evidence to the Verify log, and add one or two lines to Notes: its deviations, open issues, and any new helper or interface a later task needs (`path:line`).
 4. Commit the task (one logical change per commit), so every finished task is a safe point to stop.
 
-If a task fails its checks once, dispatch it again one tier higher (`.claude/bin/route up <tier>`; a deep task stays on deep) and say so in the description (`task 3 retry deep: ...`). If it fails again, stop and ask the user. If the implementer reports that the spec is wrong, stop and ask; never change an approved spec on your own. Once the user has decided, amend the spec through `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md` (new criterion IDs or a `removed` mark, a Decisions entry, `spec-lint`, approval again), update the affected tasks in the plan, and continue with the task.
+If a task fails its checks once, dispatch it again one tier higher (`.claude/bin/route up <tier>`; a deep task stays on deep) and say so in the description (`task 3 retry deep: ...`). If it fails again, stop and ask the user. If the implementer reports that the spec is wrong, stop and ask; never change an approved spec on your own. See "When something does not work" below.
 
 ## 4. Simplify
 
@@ -54,6 +54,22 @@ Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case m
 
 ## 7. PR (gate: user approves the push)
 
-Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`, and add the line from `.claude/bin/usage line` (tokens per tier, review rounds, escalations). The description is a file in `.work/`, so write it without asking; it changes no commit. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
+Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`, and add the line from `.claude/bin/usage line` (tokens per tier, review rounds, escalations). The description is a file in `.work/`, so write it without asking; it changes no commit. Run `.claude/bin/runs record`; when run records are on (`KIT_IMPROVE` in `.claude/kit.conf`), it writes `reports/runs/<branch>.tsv` for `/improve-kit`; commit that file. When they are off, it says so and writes nothing. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
 
 Finally, report the branch, the commits, the review verdict, the checks, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.
+
+## When something does not work
+
+The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier higher, two review rounds, two verify rounds, and a stop when the same fix failed twice. Every retry and every stop, including a review round with open high findings and a failed verify round, gets one line under Stops in the state file:
+
+`- <step> | <class> | <trigger> | <what was tried> | <resolution>`
+
+Pick the class by the cause, not the symptom, and fix it where it belongs:
+
+- `spec`: the spec is wrong, unclear or untestable. Stop and ask. Once the user has decided, amend it through `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md` (new criterion IDs or a `removed` mark, a Decisions entry, `spec-lint`, approval again), update the affected tasks, and continue.
+- `plan`: a task is too big, in the wrong order, or misses an anchor. Propose the change to the plan and continue once the user approves it.
+- `tier`: the model was too weak for the task. Retry a tier higher as in step 3.
+- `test`: a test is flaky or tests the wrong thing. Dispatch the `test-writer`; never weaken the test.
+- `kit`: a hook, the guard, a check command or a rule is wrong, too slow, or blocks something harmless. Never edit `.claude/` to get past it; ask the user, and write the fix you would propose into the resolution.
+- `env`: a dependency, the network, credentials or a step only a human can do. Ask, and add it to the plan's Human-only steps.
+- `budget`: the token budget blocked a dispatch. Ask whether to raise it or stop.

@@ -43,8 +43,10 @@ jobs:
         run: sh tests/usage.test.sh
       - name: Lead time
         run: sh tests/leadtime.test.sh
+      - name: Run records
+        run: sh tests/runs.test.sh
       - name: All suites under dash
-        run: for t in hooks check evidence usage leadtime; do dash "tests/$t.test.sh" || exit 1; done
+        run: for t in hooks check evidence usage leadtime runs; do dash "tests/$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates

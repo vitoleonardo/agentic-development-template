@@ -4,6 +4,8 @@
 #   .claude/bin/usage total     tokens counted against KIT_BUDGET_TOKENS
 #   .claude/bin/usage report    per tier and per agent, escalations and review rounds
 #   .claude/bin/usage line      the one line for the PR description
+#   .claude/bin/usage tsv       one line for .claude/bin/runs: total, fast, standard, deep, main, other tokens,
+#                               review rounds, escalations, tasks (TAB separated)
 #   .claude/bin/usage adopt <branch>   move another branch's record here (spec and plan run before the branch exists)
 # usage.tsv:  <agent id or main:<session id>> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
 # agents.tsv: <agent id> TAB <description> TAB <agent type> TAB <requested model> TAB <resolved model>
@@ -30,8 +32,11 @@ case ${1:-} in
     [ -f "$usage" ] || { echo 0; exit 0; }
     awk -F '\t' '{ s += $3 + $4 + $6 } END { print s + 0 }' "$usage"
     ;;
-  report | line)
-    [ -f "$usage" ] || { echo "No usage recorded for ${branch:-this branch} yet."; exit 0; }
+  report | line | tsv)
+    if [ ! -f "$usage" ]; then
+      [ "$1" = tsv ] && printf '0\t0\t0\t0\t0\t0\t0\t0\t0\n' || echo "No usage recorded for ${branch:-this branch} yet."
+      exit 0
+    fi
     awk -F '\t' -v tiers="$tiers" -v mode="$1" -v agents="$agents" '
       BEGIN {
         n = split(tiers, t, " ")
@@ -40,6 +45,7 @@ case ${1:-} in
           split(line, a, "\t"); desc[a[1]] = a[2]
           if (tolower(a[2]) ~ /(retry|escalat)/) esc++
           if (tolower(a[3]) ~ /reviewer$/ && tolower(a[2]) !~ /screenshot/) rounds++
+          if (match(tolower(a[2]), /^task [0-9]+/) && !((k = substr(tolower(a[2]), 1, RLENGTH)) in task)) { task[k] = 1; tasks++ }
         }
       }
       function tier(model, agent,    i) {
@@ -53,6 +59,10 @@ case ${1:-} in
         if ($1 !~ /^main(:|$)/) rows = rows sprintf("| %s | %s | %s | %d | %d | %d | %d |\n", $1, (desc[$1] == "" ? "–" : desc[$1]), $2, $3, $4, $5, $6)
       }
       END {
+        if (mode == "tsv") {
+          printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", total, by["fast"], by["standard"], by["deep"], by["main"], by["other"], rounds, esc, tasks
+          exit
+        }
         line = "Tokens (input + output + cache writes): " total + 0
         for (i = 1; i <= n; i++) if (by[order[i]] > 0) line = line ", " order[i] " " by[order[i]]
         if (by["main"] > 0) line = line ", main session " by["main"]
@@ -83,5 +93,5 @@ case ${1:-} in
     done
     echo "Moved the usage record of ${2} to ${branch}."
     ;;
-  *) sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

@@ -51,6 +51,9 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 | Criterion | Test | Red seen | Green | Notes |
 |-----------|------|----------|-------|-------|
 
+## Stops
+- <step> | <class> | <trigger> | <what was tried> | <resolution>
+
 ## Notes
 - <Per finished task, one or two lines that later tasks need: deviations from the plan, open issues, new helpers or interfaces with path:line.>
 ```
