@@ -26,7 +26,7 @@ cd agentic-development-template/templates/agentic-workflow-kit
 ./install.sh ~/code/my-app --adapter typescript --preset nextjs
 ```
 
-The installer never overwrites a file that is already in your project; it lists them so you can merge by hand (or rerun with `--force`). Then:
+The installer never overwrites a file that is already in your project; it lists them so you can merge by hand (or rerun with `--force`, or with `--update`, see [Updating](#updating)). Then:
 
 1. Fill in the "Project facts" section of `CLAUDE.md`.
 2. Run `.claude/bin/check typecheck` (and `lint`, `test`, `build`) once to see that the adapter found your commands.
@@ -49,6 +49,16 @@ For teams with many repositories, the skills, agents and hooks can come from a p
 ```
 
 Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/agentic-workflow-kit:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
+
+### Updating
+
+Pull the kit's repository, then run `./install.sh ~/code/my-app --update`. It uses the options of the last install, saved in `.claude/kit.manifest` with a checksum of every file the kit installed:
+
+- A file the project has not changed is replaced with the kit's new version.
+- A file the project has changed and the kit has too is kept. The kit's version goes to `.work/kit-update/`, and the installer prints a `diff` command for each one to merge by hand. `/onboard` writes `settings.json`, `kit.conf` and `CLAUDE.md`, so expect those there.
+- A file the kit has not changed is left alone, changed or not.
+
+Projects installed before the manifest existed have no checksums yet. Their first update overwrites nothing and stages every file that differs from the kit. Commit `.claude/kit.manifest` with the update.
 
 ## How a feature flows
 
