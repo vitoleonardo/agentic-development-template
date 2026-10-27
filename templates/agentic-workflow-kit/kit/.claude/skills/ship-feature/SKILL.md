@@ -46,7 +46,7 @@ Run `/review-diff`. It uses the read-only reviewer in a fresh context. Fix every
 
 ## 6. Full verification
 
-Run `.claude/bin/check typecheck`, `lint`, `test` and `build`. Every check must pass, and the test run must execute more than zero tests. Report any check that is not configured.
+Run `.claude/bin/check --against-baseline typecheck`, `--against-baseline lint`, `--against-baseline test` and `.claude/bin/check build`. Every check must pass, and the test run must execute more than zero tests. Report legacy failures and flaky tests as the check lists them, and any check that is not configured or `n/a`.
 
 ## 7. PR (gate: user approves the push)
 

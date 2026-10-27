@@ -1,6 +1,7 @@
 #!/bin/sh
 # PreToolUse guard: a second layer behind the deny list in settings.json.
-# Blocks dangerous shell commands, secret files, and edits outside an agent's allowed scope.
+# Blocks dangerous shell commands, secret files, protected paths (KIT_PROTECTED_PATHS) and edits
+# outside an agent's allowed scope. For protected paths the sandbox is the enforcement; this is best effort.
 # Exit 2 blocks the tool call; the message on stderr goes to Claude.
 . "$(dirname -- "$0")/lib.sh"
 
@@ -12,16 +13,39 @@ block() {
 
 tool=$(json_string tool_name)
 agent=$(json_string agent_type)
-test_patterns=${KIT_TEST_PATTERNS:-"*.test.* *.spec.* *_test.* test_*.* */__tests__/* */test/* */tests/* */e2e/* */spec/*"}
+default_test_patterns="*.test.* *.spec.* *_test.* test_*.* */__tests__/* */test/* */tests/* */e2e/* */spec/*"
+protected=${KIT_PROTECTED_PATHS:-}
 
 is_secret_name() {
   printf '%s\n' "$1" | grep -oE '(^|[^[:alnum:]_])\.env(\.[[:alnum:]_-]+)*' |
     grep -vE '\.env\.(example|sample|template)$' | grep -q .
 }
 
+# in_protected <path relative to the root, or absolute>: true if it lies in a protected path.
+in_protected() {
+  target=$(relative_path "$1")
+  [ -n "$target" ] || target=$1
+  target=${target#./}
+  for p in $protected; do
+    p=${p%/}
+    case $target in "$p" | "$p"/*) return 0 ;; esac
+  done
+  return 1
+}
+
 case $tool in
+  Grep | Glob)
+    # Grep's pattern is a regex, Glob's is a path.
+    pattern=""
+    [ "$tool" = Glob ] && pattern=$(json_string pattern)
+    for value in "$(json_string path)" "$pattern"; do
+      [ -n "$value" ] && in_protected "$value" && block "$value is a protected path (KIT_PROTECTED_PATHS in .claude/kit.conf)."
+    done
+    exit 0
+    ;;
   Read | Edit | Write)
     path=$(json_string file_path)
+    in_protected "$path" && block "$path is in a protected path (KIT_PROTECTED_PATHS in .claude/kit.conf)."
     case ${path##*/} in
       *.pem | *.key | *.p12 | .npmrc | .pypirc) block "$path may contain secrets." ;;
     esac
@@ -32,6 +56,8 @@ case $tool in
       *reviewer) block "the reviewer is read-only and never edits files." ;;
       *test-writer)
         rel=$(relative_path "$path")
+        test_patterns=$(file_value "$rel" KIT_TEST_PATTERNS)
+        test_patterns=${test_patterns:-$default_test_patterns}
         matches_any "$rel" "$test_patterns" ||
           block "the test-writer may only edit test files ($test_patterns), not $rel."
         ;;
@@ -45,6 +71,39 @@ esac
 cmd=$(json_string command)
 # Quotes are removed so commands hidden in sh -c '...' are checked too.
 flat=$(printf '%s' "$cmd" | tr "\"'\`" '   ')
+
+# Protected paths: a command may not name one, except in a git exclude pathspec, and git commands that
+# print file contents must exclude every protected path.
+if [ -n "$protected" ]; then
+  named=$(printf '%s' "$flat" | sed -E 's/:(\([^)]*exclude[^)]*\)|!|\^)[^[:space:]]*//g')
+  missing=""
+  for p in $protected; do
+    p=${p%/}
+    re=$(printf '%s' "$p" | sed 's/[].[\*^$()+?{|]/\\&/g')
+    printf '%s' "$named" | grep -Eq "(^|[[:space:]=/:])(\./)?$re(/|[[:space:]]|$)" &&
+      block "the command names the protected path $p (KIT_PROTECTED_PATHS in .claude/kit.conf)."
+    printf '%s' "$flat" | grep -Eq ":(\([^)]*exclude[^)]*\)|!|\^)(\./)?$re/?([[:space:]]|$)" || missing="$missing ':(exclude)$p'"
+  done
+  if [ -n "$missing" ] && printf '%s' "$flat" | awk '
+    {
+      n = split($0, t, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) if (t[i] == "git" || t[i] ~ /\/git$/) break
+      if (i > n) exit 1
+      for (j = i + 1; j <= n; j++) {
+        if (t[j] == "-C" || t[j] == "-c") { j++; continue }
+        if (t[j] !~ /^-/) break
+      }
+      sub_ = t[j]; rest = ""
+      for (k = j + 1; k <= n; k++) rest = rest " " t[k]
+      quiet = rest ~ / (--name-only|--name-status|--stat|--numstat|--shortstat|--no-patch|-s|--quiet)( |$)/
+      if (sub_ == "diff" || sub_ == "show" || sub_ == "format-patch") exit quiet
+      if (sub_ == "log" || sub_ == "whatchanged") exit !(rest ~ / (-p|-u|--patch|-L[^ ]*)( |$)/)
+      if (sub_ == "grep" || (sub_ == "stash" && rest ~ /^ show/)) exit 0
+      exit 1
+    }'; then
+    block "git would print protected files. Add the pathspec -- .$missing to the command."
+  fi
+fi
 
 # Reviewer and test-writer may only read git history and run the project's checks.
 case $agent in
@@ -94,7 +153,8 @@ set -f
 old_ifs=$IFS
 IFS='
 '
-for pattern in ${KIT_DANGEROUS_PATTERNS:-}; do
+# shellcheck disable=SC2046
+for pattern in $(for pkg in $(packages); do conf_value "$pkg" KIT_DANGEROUS_PATTERNS; printf '\n'; done); do
   check "$pattern" "matches a destructive command listed in .claude/kit.conf."
 done
 IFS=$old_ifs

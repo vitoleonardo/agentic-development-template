@@ -1,5 +1,7 @@
 # Quality gates for every pull request, whoever wrote the code.
-# Every check goes through .claude/bin/check, so .claude/kit.conf decides what runs.
+# Every check goes through .claude/bin/check, so .claude/kit.conf decides what runs. With a .claude/baseline.tsv
+# (written by /onboard), legacy failures are reported but do not block; new failures always do.
+# A check that kit.conf marks "n/a: <reason>" exits 4 and passes with the reason in the log.
 # Make "Quality gates" a required status check in the branch protection rules, so a red run blocks the merge.
 name: Quality gates
 
@@ -14,9 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COVERAGE_THRESHOLD: "70" # percent of changed lines that tests must cover
   MAX_CHANGED_LINES: "400" # above this the PR gets a warning to split it
   NO_COLOR: "1"
+  KIT_BASE: origin/${{ github.base_ref }}
 
 jobs:
   gates:
@@ -64,23 +66,21 @@ jobs:
 
       - name: Typecheck
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: .claude/bin/check typecheck
+        run: .claude/bin/check --against-baseline typecheck || [ $? -eq 4 ]
 
       - name: Lint
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: .claude/bin/check lint
+        run: .claude/bin/check --against-baseline lint || [ $? -eq 4 ]
 
-      - name: Tests with coverage
-        id: coverage
+      - name: Tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: .claude/bin/check coverage
+        run: .claude/bin/check --against-baseline test || [ $? -eq 4 ]
 
-      - name: Coverage on changed files
-        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
-        env:
-          BASE_REF: origin/${{ github.base_ref }}
-        run: node .github/scripts/changed-coverage.mjs
+      # Coverage of the changed source files (KIT_COVERAGE_THRESHOLD) and overall coverage against the baseline.
+      - name: Coverage
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: .claude/bin/check --against-baseline coverage || [ $? -eq 4 ]
 
       - name: Build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: .claude/bin/check build
+        run: .claude/bin/check build || [ $? -eq 4 ]

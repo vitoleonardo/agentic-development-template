@@ -1,0 +1,7 @@
+node_modules/
+coverage/
+.work/
+.venv/
+__pycache__/
+.coverage
+coverage.json

@@ -11,7 +11,6 @@ The kit is not committed here, so you install it the way you would in your own p
 cp -R examples/demo-app /tmp/demo
 ./install.sh /tmp/demo --adapter typescript --preset nextjs
 cd /tmp/demo && npm ci
-.claude/bin/check format .github/scripts/changed-coverage.mjs   # installer step 2: your formatter's style
 git init -q -b main && git add -A && git commit -qm "Demo with kit"
 .claude/bin/check test        # 12 tests, all green
 claude                        # accept the trust prompt once

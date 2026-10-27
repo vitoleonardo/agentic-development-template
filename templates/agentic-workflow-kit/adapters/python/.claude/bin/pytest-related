@@ -1,0 +1,28 @@
+#!/bin/sh
+# Tests related to the given files, for KIT_TEST_RELATED: test files run as they are, a source file
+# src/pkg/foo.py runs every test_foo.py or foo_test.py in the package. If a source file has no such
+# test, the whole suite runs, so nothing is skipped silently.
+set -u
+tests=""
+for file in "$@"; do
+  name=$(basename -- "$file" .py)
+  case $name in
+    test_* | *_test | conftest) tests="$tests
+$file"; continue ;;
+  esac
+  found=$(find . \( -name .venv -o -name .git -o -name node_modules \) -prune -o \
+    \( -name "test_$name.py" -o -name "${name}_test.py" \) -type f -print)
+  [ -n "$found" ] || exec uv run pytest -q
+  tests="$tests
+$found"
+done
+[ -n "$tests" ] || exec uv run pytest -q
+old_ifs=$IFS
+IFS='
+'
+set -f
+# shellcheck disable=SC2046
+set -- $(printf '%s\n' "$tests" | grep . | sort -u)
+set +f
+IFS=$old_ifs
+exec uv run pytest -q "$@"
