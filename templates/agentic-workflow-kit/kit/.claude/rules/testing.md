@@ -8,5 +8,5 @@
 - Mock at the boundaries (network, clock, randomness, file system), not the module under test or its internal helpers.
 - Do not use a snapshot as the only assertion for logic.
 - "Tests pass" means the runner executed more than zero tests and all of them passed. Report the count. A run that collected no tests is a failure.
-- While working, run `.claude/bin/check test-related <files>`. Run `.claude/bin/check test` before opening a PR.
+- While working, run `.claude/bin/check test-related <files>`. Run `.claude/bin/check --against-baseline test` before opening a PR; with a `.claude/baseline.tsv` it reports known legacy failures without blocking on them, and blocks on every new one.
 - Follow the project's existing test location and naming.

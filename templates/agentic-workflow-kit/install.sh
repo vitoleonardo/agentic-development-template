@@ -94,13 +94,14 @@ if [ -s "$skipped" ]; then
   sed 's/^/  /' "$skipped"
 fi
 [ -z "$adapter" ] && echo "
-No adapter installed: fill in .claude/kit.conf so the hooks know how to typecheck, test and format."
+No adapter installed: fill in .claude/kit.conf so the hooks know how to typecheck, test and format,
+or run /onboard in Claude Code to have it proposed from the repository (existing repositories)."
 
 cat <<'EOF'
 
 Next steps:
   1. Fill in the "Project facts" section of CLAUDE.md.
-  2. Run your formatter once over the installed code, for example: .claude/bin/check format .github/scripts/*.mjs
+  2. If your formatter or linter also checks .claude/, run it once over the adapter helpers, for example: .claude/bin/check format .claude/bin/*.mjs
   3. Make sure every check in .claude/kit.conf works: .claude/bin/check typecheck (and lint, test, coverage, build).
   4. Start Claude Code in the project and accept the trust prompt once; until then the hooks and allow rules stay off.
      With --plugin: /plugin marketplace add vitoleonardo/agentic-development-template

@@ -101,6 +101,55 @@ expect block Bash command "sed -i s/a/b/ src/app.ts" test-writer
 expect block Bash command "git diff > out.txt" reviewer
 expect block Bash command "git status && rm x" reviewer
 
+# Protected paths (KIT_PROTECTED_PATHS); the sandbox is the enforcement, these are the guard's layers.
+cp "$project/.claude/kit.conf" "$project/kit.conf.orig"
+printf '\nKIT_PROTECTED_PATHS="apps/server/src/ee packages/ee"\n' >>"$project/.claude/kit.conf"
+expect block Read file_path "$project/apps/server/src/ee/license.ts"
+expect block Edit file_path "$project/packages/ee/index.ts"
+expect allow Read file_path "$project/apps/server/src/eel.ts"
+expect block Grep path "$project/apps/server/src/ee"
+expect block Grep path "packages/ee/src"
+expect block Glob pattern "apps/server/src/ee/**/*.ts"
+expect allow Grep path "$project/apps/server/src"
+expect block Bash command "cat apps/server/src/ee/license.ts"
+expect block Bash command "rg secret ./packages/ee"
+expect block Bash command "find apps/server/src/ee -name '*.ts' -exec cat {} +"
+expect block Bash command "git show HEAD:packages/ee/index.ts"
+expect block Bash command "git diff main...HEAD"
+expect block Bash command "git log -p -3"
+expect block Bash command "git diff main...HEAD -- . ':(exclude)apps/server/src/ee'"
+expect allow Bash command "git diff main...HEAD -- . ':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"
+expect allow Bash command "git diff main...HEAD -- . :!apps/server/src/ee :!packages/ee" reviewer
+expect allow Bash command "git diff --name-only main...HEAD"
+expect allow Bash command "git log --oneline -5"
+expect allow Bash command "git status --porcelain"
+expect allow Bash command "cat apps/server/src/eel.ts"
+reason=$(printf '{"tool_name":"Bash","tool_input":{"command":"git show HEAD"}}' | "$project/.claude/hooks/guard" 2>&1)
+case $reason in
+  *"':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: the git block should name the pathspecs to add: $reason" ;;
+esac
+mv "$project/kit.conf.orig" "$project/.claude/kit.conf"
+expect allow Bash command "git diff main...HEAD"
+
+# Packages with their own .claude/kit.conf bring their own source, test and dangerous patterns.
+mkdir -p "$project/ai-service/.claude"
+printf '%s\n' 'KIT_SOURCE_PATTERNS="*.py"' 'KIT_TEST_PATTERNS="test_*.py conftest.py"' \
+  "KIT_DANGEROUS_PATTERNS='alembic[[:space:]]+downgrade[[:space:]]+base'" >"$project/ai-service/.claude/kit.conf"
+expect allow Edit file_path "$project/ai-service/conftest.py" test-writer
+expect block Edit file_path "$project/ai-service/app/main.py" test-writer
+expect block Bash command "uv run alembic downgrade base"
+expect block Bash command "npx prisma migrate reset"
+printf '{"session_id":"pk","tool_name":"Edit","tool_input":{"file_path":"%s/ai-service/app/main.py"}}' "$project" |
+  "$project/.claude/hooks/record-edit"
+if grep -qx 'ai-service/app/main.py' "$project/.work/session-pk.pending" 2>/dev/null; then
+  passed=$((passed + 1))
+else
+  failed=$((failed + 1))
+  echo "FAIL: record-edit should use the package's source patterns"
+fi
+rm -rf "$project/ai-service" "$project/.work/session-pk."*
+
 # The reason must name the real problem.
 reason=$(printf '{"tool_name":"Bash","tool_input":{"command":"head -n 1 .env"}}' | "$project/.claude/hooks/guard" 2>&1)
 case $reason in

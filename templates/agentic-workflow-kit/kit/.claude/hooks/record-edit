@@ -12,6 +12,6 @@ printf '%s\n' "$rel" >>"$(state_file turn-files)"
 case $rel in
   specs/README.md) ;;
   specs/*.md) printf '%s\n' "$rel" >>"$(state_file pending)" ;;
-  *) matches_any "$rel" "${KIT_SOURCE_PATTERNS:-}" && printf '%s\n' "$rel" >>"$(state_file pending)" ;;
+  *) matches_any "$rel" "$(file_value "$rel" KIT_SOURCE_PATTERNS)" && printf '%s\n' "$rel" >>"$(state_file pending)" ;;
 esac
 exit 0

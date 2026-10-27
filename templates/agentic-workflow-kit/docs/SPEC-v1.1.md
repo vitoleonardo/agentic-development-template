@@ -1,6 +1,6 @@
 # Agentic Workflow Kit: Specification v1.1
 
-Status: draft, reviewed 27.10.2026 (decisions recorded in section 11). There is no written v1 specification in this repository; v1 is the shipped kit (`kit/`, `adapters/typescript/`, `install.sh`, `tests/`) and its history in `docs/build-log.md`. Everything v1 does stays valid unless this file says otherwise.
+Status: implemented 27.10.2026 (decisions in section 11; what was built and proven in `docs/build-log.md`). There is no written v1 specification in this repository; v1 is the shipped kit (`kit/`, `adapters/typescript/`, `install.sh`, `tests/`) and its history in `docs/build-log.md`. Everything v1 does stays valid unless this file says otherwise.
 
 ## 1. Why v1.1
 
@@ -138,14 +138,15 @@ evidence/
   "base": "main",
   "base_sha": "<sha>",
   "created": "2026-10-27T14:03:00Z",
-  "gates": [{"name": "typecheck", "result": "pass", "ms": 8123},
-            {"name": "build", "result": "n/a", "reason": "library, no build step"}],
+  "gates": [{"name": "typecheck", "result": "pass", "seconds": 8, "detail": "typecheck in .: clean"},
+            {"name": "build", "result": "n/a", "seconds": 0, "detail": "n/a: library, no build step"}],
   "criteria": [
     {"id": "SHARE-AC1", "tests": ["SHARE-AC1 shares a page by link"], "edge_cases": 4,
      "edge_cases_passed": 4, "screenshots": ["SHARE-AC1-1-desktop.png"], "seeded": "pass", "mocked": "pass"}
   ],
   "flaky": [],
   "review": {"verdict": "ready", "high": 0, "medium": 1, "low": 2},
+  "screenshots": "taken",
   "usage": "usage.tsv"
 }
 ```
@@ -171,7 +172,8 @@ The pack is valid only for the commit in `head`. Any push after verify (a review
 
 - Seeded: `KIT_SEED` resets and seeds a local database (docker compose, the project's seed script). `KIT_E2E` runs the e2e suite against it. Seed data is fixed and versioned.
 - Mocked: `KIT_TEST_MOCKED` runs the suite with external dependencies replaced (MSW for HTTP in TypeScript, `respx` or fakes in Python, a fake LLM provider for the ai-service). Each run records which dependencies were mocked.
-- Both runs record the seed version or mock set in `data-runs.md`.
+- Both runs record the seed version or mock set in `data-runs.md`: the last `seed:` and `mocked:` line the commands print.
+- The demo app stores nothing and calls no external service, so it has no seed script and no mocked run; its pack records both as "not configured". Its fixed e2e input lives in `e2e/fixtures.ts`. A seed script or MSW mocks there would test nothing.
 
 **Screenshots.** `KIT_SCREENSHOTS` starts the app on seeded data and runs a Playwright script per criterion that has a UI. The steps come from the spec's user flow.
 
