@@ -105,6 +105,22 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `KIT_BUDGET_TOKENS` sets a budget per branch, counted as input, output and cache writes (cache reads are cheap and would dwarf everything else). At 80 percent the hook tells Claude to report it; at 100 percent it blocks the next dispatch, and `/ship-feature` stops and asks.
 
+## Measure lead time
+
+`.claude/bin/leadtime` reads merged pull requests through `gh` (one GraphQL query, its built-in `--jq`) and `git`, and reports the median and p75 per period:
+
+| Metric | From | To |
+|---|---|---|
+| Lead time for changes | first commit of the PR | merge |
+| PR cycle time | ready for review (drafts count from then) | merge |
+| Time to first review | ready for review | first review or comment by someone other than the author or a bot |
+| Review rounds | | "changes requested" plus commits after the first review |
+| Spec to merge | the spec's first `approved` in `specs/README.md` (matched by the Branch column) | merge |
+| Rework rate | | share of PRs followed within 14 days by a fix PR (label `bug` or `fix`, or a title starting with `fix` or `revert`) touching the same files |
+| PR size | | changed lines |
+
+`/onboard` runs `leadtime --baseline` once, which freezes the 90 days before that day in `reports/lead-time-baseline.md` and `.csv`. Later runs cover the time since then and show the baseline and the change next to each number. `--split-by kit` compares PRs with an evidence pack against PRs without, in the same period, which is the fair comparison for a repository without history. Bots and dependency PRs are left out; below ten PRs the report says the comparison is not reliable; with one contributor the review metrics are "n/a". The report names no PRs or people unless you pass `--with-titles`, and it says what changed, not why.
+
 ## Block more commands
 
 Add stack-specific destructive commands to `KIT_DANGEROUS_PATTERNS`, one extended regex per line. The guard removes quotes before matching, so `sh -c 'prisma migrate reset'` is caught as well.
