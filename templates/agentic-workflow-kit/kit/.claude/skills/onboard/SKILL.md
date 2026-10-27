@@ -63,6 +63,7 @@ Write `.work/onboard/proposal.md` and stage the files it describes:
 3. **Rules** derived from the repository's own conventions: folder structure, naming, error handling, test file placement, import style. Each rule cites the two or three files it was derived from. Stage them as `dot-claude/rules/project.md` (or one file per area). Do not restate what the kit's rules already say.
 4. **Protected paths** in the staged `dot-claude/settings.json`, merged with the kit's settings:
    - `sandbox.enabled: true` and `sandbox.filesystem.denyRead` with each path (`./apps/server/src/ee`). The sandbox is what enforces it, for every process a command starts.
+   - `"gh *"` in `sandbox.excludedCommands`. On macOS, `gh` cannot verify GitHub's TLS certificate inside the sandbox (`x509: OSStatus -26276`), so `gh pr create` fails. `gh pr create` and `gh pr merge` still ask in `permissions.ask`.
    - `Read(./<path>/**)` and `Edit(./<path>/**)` in `permissions.deny`. The sandbox merges Read denies, and Claude Code applies them to Read, Grep and Glob as well.
    - `KIT_PROTECTED_PATHS` in the root config, which the guard uses for commands that name the path and for git commands that would print it.
    Say plainly in the proposal that without the sandbox these layers are best effort.

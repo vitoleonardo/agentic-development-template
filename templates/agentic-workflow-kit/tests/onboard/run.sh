@@ -84,6 +84,7 @@ if [ "$fixture" = pnpm-monorepo ]; then
   check "CLAUDE.md imports AGENTS.md (ONBOARD-AC5)" 'grep -q "^@AGENTS.md" CLAUDE.md'
   check "packages/ee is protected in kit.conf" 'grep -q "KIT_PROTECTED_PATHS=.*packages/ee" .claude/kit.conf'
   check "the sandbox denies reading packages/ee (ONBOARD-AC3)" 'grep -q "denyRead" .claude/settings.json && grep -q "packages/ee" .claude/settings.json'
+  check "gh runs outside the sandbox so it can verify TLS on macOS" 'jq -e ".sandbox.excludedCommands | index(\"gh *\")" .claude/settings.json >/dev/null'
   check "the protected file never reached the model (ONBOARD-AC3)" '! grep -q "ee-canary-7f3a" "$log"'
 fi
 

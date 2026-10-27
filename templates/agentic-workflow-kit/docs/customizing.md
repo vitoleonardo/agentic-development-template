@@ -182,7 +182,7 @@ The guard and the deny rules match patterns, so a command that is written differ
 claude --settings '{"sandbox": {"enabled": true, "allowUnsandboxedCommands": false}}'
 ```
 
-`allowUnsandboxedCommands: false` stops Claude from retrying a blocked command outside the sandbox. By default Claude Code also runs commands without the sandbox when it cannot start (a missing dependency or an unsupported platform). Set `sandbox.failIfUnavailable` to `true` if the sandbox is meant as a hard boundary. When it works for your stack, move the settings into `.claude/settings.json`. See the [sandboxing docs](https://code.claude.com/docs/en/sandboxing).
+`allowUnsandboxedCommands: false` stops Claude from retrying a blocked command outside the sandbox. By default Claude Code also runs commands without the sandbox when it cannot start (a missing dependency or an unsupported platform). Set `sandbox.failIfUnavailable` to `true` if the sandbox is meant as a hard boundary. On macOS, Go-based CLIs such as `gh` fail TLS verification inside the sandbox (`x509: OSStatus -26276`); `/onboard` adds `"gh *"` to `sandbox.excludedCommands` so `gh` runs outside it, and `gh pr create` still asks first. When it works for your stack, move the settings into `.claude/settings.json`. See the [sandboxing docs](https://code.claude.com/docs/en/sandboxing).
 
 ## Connect MCP servers
 
