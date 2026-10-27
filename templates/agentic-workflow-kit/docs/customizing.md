@@ -140,7 +140,7 @@ Off by default. Set `KIT_IMPROVE="1"` in `.claude/kit.conf` to turn it on.
 
 Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`. `/ship-feature` describes how each class is fixed.
 
-With `KIT_IMPROVE` on, `/ship-feature` runs `.claude/bin/runs record` before the PR. It writes `reports/runs/<branch>.tsv`, which is committed with the PR: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
+With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before the gates and commits `reports/runs/<branch>.tsv` together with the `in-review` status, so the evidence pack stays valid for that commit. The record holds: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
 
 `.claude/bin/runs report` combines all records into `reports/runs.md`: median and p75 of tokens per run, tokens per task, the main session's share and review rounds, the escalation rate, and the stops by class with their text. Below five runs it says the numbers are not reliable. Cost is shown as tokens per tier, not money.
 

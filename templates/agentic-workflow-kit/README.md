@@ -33,6 +33,7 @@ The installer never overwrites a file that is already in your project; it lists 
 2. Run `.claude/bin/check typecheck` (and `lint`, `test`, `build`, `duplicates`) once to see that the adapter found your commands.
 3. Start `claude` in the project and accept the trust prompt. Until then Claude Code ignores the project's hooks and allow rules.
 4. Make the `quality-gates` workflow a required status check.
+5. TypeScript adapter only: `evidence.yml` fails a pull request whose head commit has no evidence pack from `/verify-feature` (bot PRs are skipped). Delete the file, or do not make it required, if not every PR goes through the kit.
 
 Adapters: `typescript` and `python`. Projects in another language: install without `--adapter` and fill in the commands in `.claude/kit.conf`. See [docs/customizing.md](docs/customizing.md#add-an-adapter).
 

@@ -46,6 +46,7 @@ Done when: the pull request is open with the PR description, and CI is green.
 1. Review the pull request as a human. Check it against the acceptance criteria, not just the code. Try the feature.
 2. Merge, then set the feature to `done` in `specs/README.md`. Only a person who checked it does that.
 3. In the repository settings, make the `quality-gates` workflow a required status check on `main`.
+   With the TypeScript adapter, `evidence.yml` fails any pull request whose head commit has no pack from `/verify-feature`; bot PRs are skipped. Make it required only if every PR goes through the kit, otherwise delete it.
 4. Collect what got in the way during the first three days: commands the guard blocked that were fine, permission prompts that came too often, checks that were too slow. Fix them in one pull request (see [customizing.md](customizing.md)). Each fix to the guard gets a test.
 
 Done when: branch protection requires the gates, and the first round of fixes is merged.

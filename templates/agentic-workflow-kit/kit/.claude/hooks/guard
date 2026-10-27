@@ -13,7 +13,7 @@ block() {
 
 tool=$(json_string tool_name)
 agent=$(json_string agent_type)
-default_test_patterns="*.test.* *.spec.* *_test.* test_*.* */__tests__/* */test/* */tests/* */e2e/* */spec/*"
+default_test_patterns="*.test.* *.spec.* *_test.* test_*.* __tests__/* test/* tests/* e2e/* spec/*"
 protected=${KIT_PROTECTED_PATHS:-}
 
 is_secret_name() {
