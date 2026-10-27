@@ -145,6 +145,16 @@ Hooks registered for the same event run in parallel. Anything that must run in o
 
 Hook scripts receive JSON on stdin. `lib.sh` has helpers to read it without `jq`. Keep the scripts POSIX `sh` so they work on macOS, Linux and in CI images.
 
+## Run only the affected e2e tests
+
+A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), `/verify-feature` and the CI `evidence` job run only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
+
+- **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
+- **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), or code changed that no e2e test maps to.
+- **none**: only tests and docs changed.
+
+The selection can miss a feature whose code a change breaks without naming it. The `Full e2e` job in `evidence.yml` covers that: it runs `evidence data --all` after every merge to `main`, one run per merge, so a failure points at the merge that caused it. Add files your e2e tests share (helpers, page objects, global setup) to `KIT_E2E_FULL_PATTERNS`. For other runners, set `KIT_E2E_RELATED` to a command that takes test files as arguments (`uv run pytest`, `cypress run --spec` needs a comma list, so wrap it in a script).
+
 ## Change the CI thresholds
 
 - `KIT_COVERAGE_THRESHOLD` in `.claude/kit.conf` (default 70): minimum line coverage of the source files a pull request changes. The same value applies locally and in CI.

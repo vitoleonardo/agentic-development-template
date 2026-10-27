@@ -2,11 +2,15 @@
 # <pr-N|branch>/<head sha>/. This job fails when the PR's head commit has no pack (stale evidence counts as no
 # evidence), reruns the deterministic parts (seed, e2e, screenshots) so they do not depend on one machine,
 # uploads them, and keeps one comment on the PR with the gate table, the matrix summary and the screenshots.
+# A pull request runs only the e2e tests its change affects (see KIT_E2E_RELATED in kit.conf); after every merge the
+# "Full e2e" job runs the whole suite on the default branch, so a test the selection skipped fails there.
 # Make "Evidence" a required status check next to "Quality gates".
 name: Evidence
 
 on:
   pull_request:
+  push:
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -14,7 +18,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # On main every merge gets its own full run, so a failure points at one merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NO_COLOR: "1"
@@ -23,6 +28,7 @@ env:
 jobs:
   evidence:
     name: Evidence
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -97,3 +103,38 @@ jobs:
           else
             gh api --method POST "repos/$REPO/issues/$PR/comments" -F "body=@$RUNNER_TEMP/comment.md" >/dev/null
           fi
+
+  full-e2e:
+    name: Full e2e
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
+            npm install --global "pnpm@$version"
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+          if [ -f playwright.config.ts ] || [ -f playwright.config.js ]; then
+            npx --no-install playwright install --with-deps chromium
+          fi
+
+      - name: Seed and the whole e2e suite
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/full-e2e
+        run: |
+          status=0
+          .claude/bin/evidence data --all || status=1
+          cat "$EVIDENCE_DIR/data-runs.md" >>"$GITHUB_STEP_SUMMARY"
+          exit "$status"

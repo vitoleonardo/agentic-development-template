@@ -2,6 +2,15 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 27.10.2026: only the affected e2e tests on pull requests
+
+`evidence e2e-select`, `evidence data --all`, the `Full e2e` job in the TypeScript adapter's `evidence.yml`, and `tests/evidence.test.sh` (65 cases, 20 new).
+
+- **The selection works from criterion IDs, not import graphs.** E2E tests drive a browser and import no application code, so tools like Playwright's `--only-changed` see only changed test files. The kit already requires test names to start with their criterion, so the diff's criterion IDs name the features whose e2e tests must run. That works for any runner that takes test files as arguments.
+- **Anything it cannot vouch for runs everything.** Shared setup (lockfile, config, fixtures) and code that no e2e test maps to fall back to the whole suite; only tests and docs run none. The whole suite runs again after every merge to `main`, without cancelling, so a miss shows up on the merge that caused it.
+- **A new e2e file was invisible at first.** `git diff --no-index --name-only` prints nothing for an untracked file, so a test written but not yet committed (the normal state during `/verify-feature`) was not selected. `changed_files` lists untracked files separately; a test covers it.
+- **On the demo with real Playwright:** a README change selected nothing, a `settle.ts` change with a new `SPLIT-AC5` test selected `e2e/split.spec.ts` (passed in 16 s, including the Next build), a source change without a criterion ran everything. Screenshots ran on the same selection.
+
 ## 27.10.2026: v1.1 part D (lead time)
 
 `.claude/bin/leadtime`, `tests/leadtime.test.sh` (24 cases, also under `dash`).
