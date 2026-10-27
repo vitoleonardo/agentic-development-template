@@ -37,6 +37,9 @@ Write:
 ## Risks and rollout
 <Migrations, feature flags, config the deployment needs, human-only steps.>
 
+## Cost
+<The line from `.claude/bin/usage line`, if the branch has a usage record.>
+
 ## Notes for reviewers
 <Where to start reading; anything deliberately left out.>
 ```
