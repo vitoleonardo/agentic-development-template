@@ -75,6 +75,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. `record-edit` and `check-edits` run format, typecheck and related tests after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
 | Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`, `/onboard` |
 | Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
+| Lead time | `.claude/bin/leadtime` | Lead time, cycle time, time to first review, review rounds, spec to merge, rework and PR size from GitHub, before and after the kit, without names by default |
 | Model routing | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`; tokens per agent and an optional budget per branch |
 | Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build. The adapter fills in the commands; a package in a monorepo can have its own config |
 | Baseline | `.claude/bin/baseline`, `.claude/baseline.tsv` | `check --against-baseline` blocks only new failures: tests by ID, lint and type errors per file, coverage. `/onboard` records it for existing repositories |

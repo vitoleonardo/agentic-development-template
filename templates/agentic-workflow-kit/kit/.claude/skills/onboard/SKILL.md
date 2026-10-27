@@ -79,6 +79,6 @@ Then prove the configuration:
 
 - For each package, `.claude/bin/check test-related <one source file>` and `.claude/bin/check format <one source file>` (these take files), then `.claude/bin/check typecheck` and `.claude/bin/check build` (these take none).
 - The full gates: `.claude/bin/check --against-baseline test`, `lint`, `typecheck` and `coverage`. On the unchanged default branch every one must pass; a failure here means the baseline or a command is wrong.
-- If the repository has PR history on GitHub, `.claude/bin/leadtime --baseline` (when the kit has it) to freeze the "before" numbers.
+- If the repository has PR history on GitHub, run `.claude/bin/leadtime --baseline` to freeze the "before" numbers (the 90 days before today) in `reports/`. With fewer than ten merged PRs it says so; a fresh fork has none, and then the comparison has to come from `--split-by kit` later.
 
 Finish with a summary: packages and their checks (configured, `n/a`, not configured), legacy failures, protected paths and which layers protect them, the files written, and what the user still has to do (commit the files, accept the trust prompt, make CI a required check). Do not commit.
