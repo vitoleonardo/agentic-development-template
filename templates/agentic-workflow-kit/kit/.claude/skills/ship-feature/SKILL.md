@@ -50,6 +50,6 @@ Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case m
 
 ## 7. PR (gate: user approves the push)
 
-Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`. Set the feature's status in `specs/README.md` to `in-review`. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
+Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`. The description is a file in `.work/`, so write it without asking; it changes no commit. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
 
 Finally, report the branch, the commits, the review verdict, the checks, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.
