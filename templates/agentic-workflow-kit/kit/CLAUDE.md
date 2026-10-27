@@ -9,7 +9,7 @@ Rules in `.claude/rules/` load automatically. Stack rules from the adapter load 
 - Product: <one sentence: who uses it and what problem it solves>
 - Stack: <framework, database, auth, hosting>
 - Install and dev server: `<install command>`, `<dev server command>`
-- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf`; a check that reports "not configured" does not exist in this project. Never invent commands.
+- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf` (a package can have its own `<package>/.claude/kit.conf`); a check that reports "not configured" or "n/a" does not exist in this project. Never invent commands. Full runs before a PR use `.claude/bin/check --against-baseline <test|lint|typecheck|coverage>`, which blocks only failures that are not in `.claude/baseline.tsv`.
 - What CI runs on every PR: <the workflow file and its checks>
 - Things only a human can do: <dashboards, API keys, DNS, third-party accounts>
 

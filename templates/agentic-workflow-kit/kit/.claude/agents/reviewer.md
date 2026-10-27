@@ -25,7 +25,7 @@ Report the findings ranked high, medium and low, each with the criterion ID or s
 
 Gather:
 
-1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`.
+1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
 2. The spec for this branch: find it through the Branch column in `specs/README.md`, then read `specs/<feature>.md`. Read `.work/<branch>.md` if it exists.
 3. The rules: read every file in `.claude/rules/`.
 
@@ -38,7 +38,7 @@ Check:
 - **Tests:** happy path only, skipped or focused tests, weakened assertions, mocks of the code under test, tests that the verify log does not show failing first.
 - **Rules:** any violation of `.claude/rules/`, including diff size and unrelated changes.
 
-Run `.claude/bin/check typecheck`, `.claude/bin/check lint` and `.claude/bin/check test`. A run with zero tests counts as a failure.
+Run `.claude/bin/check --against-baseline typecheck`, `--against-baseline lint` and `--against-baseline test`. They compare with `.claude/baseline.tsv` when there is one: legacy failures are reported but are not findings against this diff; new failures are. A run with zero tests counts as a failure.
 
 Report in this format:
 
