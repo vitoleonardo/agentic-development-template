@@ -31,6 +31,8 @@ expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.c
 expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
 expect "full: plugin files not installed" test ! -e "$full/.claude/.claude-plugin" -a ! -e "$full/.claude/hooks/hooks.json"
 expect "full: core rules installed" test -f "$full/.claude/rules/output.md" -a -f "$full/.claude/rules/git.md"
+expect "full: structure map installed" grep -q '`src/features/<domain>/`' "$full/.claude/rules/structure.md"
+expect "full: structure gate installed" test -x "$full/.claude/bin/structure"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
 expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
 expect "full: leadtime, route and usage installed" test -x "$full/.claude/bin/leadtime" -a -x "$full/.claude/bin/route" -a -x "$full/.claude/bin/usage" -a -x "$full/.claude/hooks/usage"
@@ -40,12 +42,24 @@ python=$(mktemp -d)
 "$here/install.sh" "$python" --adapter python >/dev/null || echo "FAIL: python install exited $?"
 expect "python: adapter config, helpers and rule installed" test -x "$python/.claude/bin/pytest-related" -a -f "$python/.claude/bin/coverage-files.py" -a -f "$python/.claude/rules/python.md"
 expect "python: the Python config replaced the core one" grep -q 'uv run pytest' "$python/.claude/kit.conf"
+expect "python: the Python structure map replaced the core one" grep -q '`src/<package>/<domain>/`' "$python/.claude/rules/structure.md"
 rm -rf "$python"
 
 expect "plugin: no hooks, skills or agents" test ! -e "$plugin/.claude/hooks" -a ! -e "$plugin/.claude/skills" -a ! -e "$plugin/.claude/agents"
 expect "plugin: project files installed" test -x "$plugin/.claude/bin/check" -a -f "$plugin/CLAUDE.md" -a -f "$plugin/specs/README.md" -a -f "$plugin/.claude/kit.conf"
 expect "plugin: settings.json has no hooks" sh -c "! grep -q '\"hooks\"' '$plugin/.claude/settings.json'"
 expect "plugin: settings.json keeps the deny rules" grep -q '"deny"' "$plugin/.claude/settings.json"
+read_denies=$(sed -n 's/^ *"Read(\(.*\))",*$/\1/p' "$full/.claude/settings.json")
+env_example_readable() {
+  name=.env.example
+  printf '%s\n' "$read_denies" | while IFS= read -r pattern; do
+    # shellcheck disable=SC2254 # the deny rule is a glob
+    case $name in $pattern) exit 1 ;; esac
+  done
+}
+expect "settings.json: no ! exception in Read denies, because the sandbox ignores them" sh -c "! printf '%s\n' \"\$1\" | grep -q '^!'" _ "$read_denies"
+expect "settings.json: no Read deny matches .env.example, so git works inside the sandbox" env_example_readable
+expect "settings.json: .env and .env.local are denied" sh -c "printf '%s\n' \"\$1\" | grep -qx .env && printf '%s\n' \"\$1\" | grep -qx .env.local" _ "$read_denies"
 if command -v node >/dev/null 2>&1; then
   expect "plugin: settings.json is valid JSON" node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$plugin/.claude/settings.json"
 fi
@@ -56,6 +70,41 @@ out=$("$here/install.sh" "$full" 2>&1)
 expect "rerun: existing files are kept" grep -qx custom "$full/CLAUDE.md"
 listed() { printf '%s\n' "$out" | grep -qx '  CLAUDE.md'; }
 expect "rerun: kept files are listed" listed
+
+expect "manifest: saves the install options" grep -qx "options$(printf '\t')--adapter typescript --preset nextjs" "$full/.claude/kit.manifest"
+expect "manifest: lists the installed files" grep -q "$(printf '\t').claude/hooks/guard\$" "$full/.claude/kit.manifest"
+
+# Updating against a newer kit: a copy of the kit with one unchanged and one locally changed file edited.
+newer=$(mktemp -d)
+cp -R "$here/." "$newer"
+echo "# newer kit" >>"$newer/kit/.claude/rules/git.md"
+echo "# newer kit" >>"$newer/kit/CLAUDE.md"
+echo "# newer kit" >>"$newer/adapters/typescript/.claude/rules/typescript.md"
+echo "custom" >"$full/.claude/rules/security.md"
+before_security=$(cat "$full/.claude/rules/security.md")
+out=$("$newer/install.sh" "$full" --update 2>&1)
+expect "update: an unchanged kit file is replaced" grep -qx '# newer kit' "$full/.claude/rules/git.md"
+expect "update: the saved adapter is used" grep -qx '# newer kit' "$full/.claude/rules/typescript.md"
+expect "update: a locally changed file is kept" grep -qx custom "$full/CLAUDE.md"
+expect "update: the kit's version of a changed file is staged" grep -qx '# newer kit' "$full/.work/kit-update/CLAUDE.md"
+expect "update: the staged file is listed with a diff command" sh -c "printf '%s\n' \"\$1\" | grep -qxF '  diff .work/kit-update/CLAUDE.md CLAUDE.md'" _ "$out"
+expect "update: a changed file the kit did not change is kept and not staged" test "$(cat "$full/.claude/rules/security.md")" = "$before_security" -a ! -e "$full/.work/kit-update/.claude/rules/security.md"
+expect "update: executables stay executable" test -x "$full/.claude/hooks/guard"
+"$newer/install.sh" "$full" --update >/dev/null 2>&1
+expect "update: a second update stages nothing" test ! -e "$full/.work/kit-update"
+expect "update: --force and --update together are refused" sh -c "! '$here/install.sh' '$full' --force --update"
+rm -rf "$newer"
+
+# A project installed before the manifest existed: nothing is overwritten, differing files are staged.
+legacy=$(mktemp -d)
+"$here/install.sh" "$legacy" >/dev/null
+rm "$legacy/.claude/kit.manifest"
+echo "custom" >>"$legacy/.claude/settings.json"
+"$here/install.sh" "$legacy" --update >/dev/null 2>&1
+expect "legacy update: a changed file is kept" sh -c "tail -n 1 '$legacy/.claude/settings.json' | grep -qx custom"
+expect "legacy update: the kit's version is staged" test -f "$legacy/.work/kit-update/.claude/settings.json"
+expect "legacy update: a manifest is written" test -f "$legacy/.claude/kit.manifest"
+rm -rf "$legacy"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

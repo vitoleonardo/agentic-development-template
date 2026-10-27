@@ -227,5 +227,36 @@ expect_out "coverage in .: 70% (was 80%)" "the lower coverage is listed"
 grep -v 'legacy' .claude/baseline.tsv >stricter.tsv
 expect_code 0 "a stricter baseline is not loosened" .claude/bin/baseline loosened .claude/baseline.tsv stricter.tsv
 
+# --- duplicates ------------------------------------------------------------------
+
+# A fake jscpd records its arguments and the base it was given, and fails when asked to.
+cat >bin/jscpd <<'EOF'
+#!/bin/sh
+echo "jscpd base=$KIT_BASE args=$*"
+[ ! -f "${JSCPD_FAIL:-/nonexistent}" ] || { echo "ERROR: jscpd found 1 new clones not in the baseline (allowed: 0)"; exit 1; }
+EOF
+chmod +x bin/jscpd
+cp .claude/kit.conf kit.conf.orig
+cat >>.claude/kit.conf <<EOF
+jscpd="'$project/bin/jscpd' . --baseline-from-ref \"\\\$KIT_BASE\""
+KIT_DUPLICATES="\$jscpd --fail-on-new-clones 0"
+KIT_DUPLICATES_RELATED="\$jscpd --changed --fail-on-new-clones 0"
+KIT_SIMILAR="\$jscpd --similarity"
+EOF
+expect_code 0 "duplicates runs its command" .claude/bin/check duplicates
+expect_out "jscpd base=main args=. --baseline-from-ref main --fail-on-new-clones 0" "KIT_BASE defaults to main and reaches the command"
+KIT_BASE=origin/dev expect_code 0 "KIT_BASE is passed through" .claude/bin/check duplicates
+expect_out "base=origin/dev" "the given base is used"
+expect_code 0 "duplicates-related gets the files" .claude/bin/check duplicates-related src/a.ts
+expect_out "--changed --fail-on-new-clones 0 src/a.ts" "the edited file is appended"
+expect_code 0 "similar runs its command" .claude/bin/check similar
+expect_out "--similarity" "the similarity flag is passed"
+touch jscpd.fail
+JSCPD_FAIL=$project/jscpd.fail expect_code 1 "a new clone fails duplicates" .claude/bin/check duplicates
+expect_out "new clones" "the clone count is shown"
+rm jscpd.fail
+mv kit.conf.orig .claude/kit.conf
+expect_code 3 "duplicates without a command is not configured" .claude/bin/check duplicates
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

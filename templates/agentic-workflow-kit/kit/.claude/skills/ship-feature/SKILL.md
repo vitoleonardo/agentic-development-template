@@ -42,7 +42,7 @@ If a task fails its checks once, dispatch it again one tier higher (`.claude/bin
 
 ## 4. Simplify
 
-Dispatch the `implementer` (`model` from `.claude/bin/route implement`, description `simplify`) with the base branch, the state file path, and this task: in the code changed on this branch only, remove duplication with existing helpers, dead code, needless abstraction and leftover debug output; do not change behaviour or tests; run the related tests. Check its result with `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` as for any task, and commit it.
+Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep their clone lists that touch files changed on this branch. Then dispatch the `implementer` (`model` from `.claude/bin/route implement`, description `simplify`) with the base branch, the state file path, those clone lists as its worklist, and this task: in the code changed on this branch only, replace each listed copy with the existing code (or move both into the shared home of `.claude/rules/structure.md`), then remove dead code, needless abstraction and leftover debug output; do not change behaviour or tests; run the related tests. A "not configured" check gives no list; the simplifier then looks for duplication itself. Check its result with `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` as for any task, and commit it.
 
 ## 5. Independent review
 

@@ -19,3 +19,12 @@ paths:
 - Never leave a promise rejection unhandled. An unexpected error is logged with context and the process exits non-zero; it is not silently ignored.
 - CLIs write results to stdout and errors to stderr, and exit with a non-zero code on failure.
 - Validate environment variables once at startup and fail fast with a message naming the missing variable (never its value).
+
+## Map
+
+Homes Node.js services and CLIs add to the Map in `structure.md`.
+
+| Kind | Home | Naming |
+|------|------|--------|
+| Process entry | `src/index.ts`, `src/main.ts`, `src/server.ts` | – |
+| HTTP routes and jobs | `src/routes/`, `src/jobs/` | the route or the job |

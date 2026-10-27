@@ -100,6 +100,21 @@ expect block Bash command "git -C $project push" reviewer
 expect block Bash command "sed -i s/a/b/ src/app.ts" test-writer
 expect block Bash command "git diff > out.txt" reviewer
 expect block Bash command "git status && rm x" reviewer
+expect allow Bash command ".claude/bin/structure" reviewer
+
+# Structure map (.claude/rules/structure.md): a new source file must go to its kind's home.
+expect block Write file_path "$project/src/helpers.ts"
+expect block Write file_path "$project/src/lib/utils.ts"
+expect allow Write file_path "$project/src/features/billing/invoice.ts"
+expect allow Write file_path "$project/README.md"
+mkdir -p "$project/src/legacy" && printf 'x\n' >"$project/src/legacy/old.ts"
+expect allow Write file_path "$project/src/legacy/old.ts"
+rm -r "$project/src/legacy"
+reason=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s/src/helpers.ts"}}' "$project" | "$project/.claude/hooks/guard" 2>&1)
+case $reason in
+  *"src/helpers.ts: no home in the Map"*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: the structure block should name the file and the Map: $reason" ;;
+esac
 
 # Protected paths (KIT_PROTECTED_PATHS); the sandbox is the enforcement, these are the guard's layers.
 cp "$project/.claude/kit.conf" "$project/kit.conf.orig"
@@ -183,6 +198,22 @@ case $out in
   *systemMessage*'a b.ts'*'typecheck fail'*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: summary should report after the retry: $out" ;;
 esac
+
+# Code the edit copies is reported in the same turn (duplicates-related gets the edited files).
+printf '{"session_id":"d1","tool_name":"Edit","tool_input":{"file_path":"%s/src/a b.ts"}}' "$project" |
+  "$project/.claude/hooks/record-edit"
+cat >"$project/.claude/kit.conf" <<'EOF'
+KIT_SOURCE_PATTERNS="*.ts"
+KIT_DUPLICATES_RELATED="printf '%s ~ src/c.ts:1-9 (renamed)\\n' \"\$@\"; exit 1"
+EOF
+out=$(printf '{"session_id":"d1"}' | "$project/.claude/hooks/check-edits")
+if printf '%s' "$out" | python3 -I -c 'import json,sys; c=json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"]; assert "duplicates-related failed" in c and "src/a b.ts ~ src/c.ts:1-9 (renamed)" in c' 2>/dev/null; then
+  passed=$((passed + 1))
+else
+  failed=$((failed + 1))
+  echo "FAIL: check-edits should report a copy with the edited file: $out"
+fi
+rm -f "$project/.work/session-d1."*
 
 # A check that was red in the log but passes when re-run does not hold the turn.
 printf '{"session_id":"s3","tool_name":"Edit","tool_input":{"file_path":"%s/src/a b.ts"}}' "$project" |

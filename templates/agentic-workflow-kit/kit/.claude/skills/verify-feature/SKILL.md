@@ -20,7 +20,7 @@ Review finds problems in the code; verify proves the behaviour, with artefacts a
 
 ## 1. Hard gates
 
-Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs typecheck, lint, build, the full test suite and coverage against the baseline, the focus and skip scan, the dependency check against the plan, protected paths, the secret scan and the diff size. A gate with an empty key in `kit.conf` fails; a check the project cannot have says `n/a: <reason>` there.
+Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs typecheck, lint, build, the full test suite and coverage against the baseline, the duplicates check, the structure check, the focus and skip scan, the dependency check against the plan, protected paths, the secret scan and the diff size. A gate with an empty key in `kit.conf` fails; a check the project cannot have says `n/a: <reason>` there.
 
 If a gate fails, stop. The fix goes through the `implementer` and then back to `/review-diff`. Do not fix it here.
 
