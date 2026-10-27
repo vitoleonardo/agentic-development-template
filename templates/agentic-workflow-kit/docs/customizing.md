@@ -20,6 +20,8 @@ paths:
 
 Write rules as instructions that can be checked ("amounts are integers in cents"), not as values ("be careful with money"). Keep each file short; a rule nobody reads in review is a rule the model also skips. If a rule must never be broken, enforce it with a hook or a CI step as well, because rules guide the model but do not stop it.
 
+`output.md` keeps answers, summaries and PR descriptions short. Edit or delete it if your team wants longer prose.
+
 ## Add a stack preset
 
 Presets are rules for one framework, in `adapters/<adapter>/presets/<name>.md`, with a `paths:` header for the framework's files. `install.sh --preset <name>` copies them to `.claude/rules/`. The TypeScript adapter has `nextjs`, `nestjs` and `node`.

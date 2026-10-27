@@ -55,7 +55,7 @@ Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `mod
 ## 5. Pack and push
 
 1. `.claude/bin/evidence json`. It refuses a dirty tree.
-2. Show the user the gate table, the matrix summary, the data runs, the screenshots and the reviewer's verdict.
+2. Show the user the gate table, the matrix summary, the data runs, the screenshots and the reviewer's verdict. Keep it short (`.claude/rules/output.md`).
 3. Ask before pushing. Then `.claude/bin/evidence push` (or `--pr <number>` once the PR exists). It pushes the pack to the `kit-evidence` branch under `<pr-N|branch>/<head sha>/` and leaves the current branch alone. CI's `evidence` job fails for a head commit without a pack.
 
 ## Rounds
