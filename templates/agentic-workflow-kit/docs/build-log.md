@@ -2,6 +2,49 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 27.10.2026: v1.1 part D (lead time)
+
+`.claude/bin/leadtime`, `tests/leadtime.test.sh` (24 cases, also under `dash`).
+
+- **One query, no extra runtime.** A single GraphQL search through `gh api graphql --paginate` with gh's built-in `--jq` gives one line per merged PR. Date arithmetic, medians and p75s are done in awk, because `date -d` and `date -r` differ between GNU and BSD. The query ran unchanged against this repository first: three PRs, which correctly printed "too few PRs" and "n/a: one contributor" for the review metrics.
+- **The fixture was calculated by hand before the script existed.** `tests/leadtime/prs.json` holds eight PRs with known times: a draft with a ReadyForReviewEvent, the author's own comment, a bot comment, a Dependabot PR, a "changes requested" review followed by a push, a fix PR touching an earlier PR's file within 14 days, and two PRs with the evidence comment. The expected values are written in the test's header. Every metric matched on the first run. The one failure was a typo in the test itself.
+- **The fake `gh` uses jq for `--jq`.** gh's built-in `--jq` is gojq, which accepts the same expression, so the test checks the real expression without network.
+- **`--split-by kit` is the comparison for docmost-ai.** A fresh fork has no PR history, so its baseline is empty (spec 6.5).
+
+## 27.10.2026: v1.1 part C (model routing, usage, budget)
+
+`.claude/bin/route`, `.claude/bin/usage`, `hooks/usage`, a Tier column in `/plan-feature`, routing and escalation in `/ship-feature`. Tests: `tests/usage.test.sh` (23 cases, also under `dash`) and the headless runner `tests/routing/run.sh`.
+
+- **What the docs allow decided the design** (checked 27.10.2026):
+  - An agent's `model` takes aliases, full IDs or `inherit`. The Agent tool's per-call `model` wins over it, but it takes aliases only, so the tiers map to aliases.
+  - A forked skill's model is fixed in its file, so `/ship-feature` dispatches the reviewer itself.
+  - `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides every per-call model, and `route check` warns about it.
+- **No hook input carries token counts.** The usage hook reads the transcripts. A real transcript had 52 assistant lines for 24 messages, because a message is written once per streamed block, so the hook counts the last line per message ID. The test pins that format with fixtures.
+- **Headless routing run on the demo** (Sonnet, `tests/routing/run.sh`). The plan had a Tier column. Both implementers were dispatched with `model: sonnet`, their tier's alias, and their transcripts show `claude-sonnet-5-5` (ROUTE-AC1). The open question from spec 5.3 is answered: a forked `/review-diff` fires SubagentStop, so its tokens are counted.
+- **The same run found two bugs in the record.** Every session wrote its tokens under the key `main`, so a second session on the branch overwrote the first; a quick `claude -p` in the run's folder reproduced it. Spec and plan run before the feature branch exists, so their tokens landed in `.work/main/`. Lines are now keyed `main:<session id>`, and `/ship-feature` runs `usage adopt` after creating the branch.
+- **The budget is enforced by a PreToolUse hook on Agent,** not left to the orchestrator: it warns at 80 percent and blocks at 100. It counts input, output and cache writes. Cache reads are left out: one run read 2.5 million cached tokens against 47,000 written, so counting them would make any budget meaningless.
+- **Not proven live:** an escalation (ROUTE-AC2) and a budget stop (ROUTE-AC3) in a real run. Both are covered by the hook tests with fixture transcripts; forcing a task to fail in a live run was not attempted.
+
+## 27.10.2026: v1.1 part B (verify and the evidence pack)
+
+`/verify-feature`, `.claude/bin/evidence`, the reviewer's screenshot check, the adapter's `evidence.yml`, and Playwright with screenshots in the demo. Tests: `tests/evidence.test.sh` (45 cases, also under `dash`) and the headless runner `tests/verify/run.sh`.
+
+- **The script decides what a script can.** Hard gates, the edge-case matrix against the JUnit results of the same run, data runs, screenshots, `evidence.json` and the push are deterministic. The model writes only the matrix rows and the screenshot judgement. A gate with an empty key fails (VERIFY-AC8). An added `.only`, `test.skip` or `xfail` fails, and so does a dependency the plan did not approve (AC4). A case without a passing test fails (AC3).
+- **Untracked files were invisible to the gates.** `git diff <merge-base>` leaves out new files, so a new 30-line file passed the size gate and a token in a new file passed the secret scan. The gates now diff untracked files too. Found by the tests.
+- **The push builds its commit with a temporary index** (`read-tree`, `update-index`, `commit-tree`), so `kit-evidence` gets the pack without touching the working tree or the current branch. `ci-check` rejects a head without a pack and a pack that names another commit (AC5), tested against a bare local remote.
+- **Headless `/ship-feature` through verify on the demo** (Sonnet, `tests/verify/run.sh`, feature "Total spent"). Every check passed:
+  - The pack had every part, with desktop and mobile screenshots on the branch and on `main` (AC1). Base images exist only for pages that already existed there.
+  - The reviewer judged the screenshots.
+  - The pack was on `kit-evidence` for the head commit, and the rendered comment had the gate table and the inline images (AC6, rendered locally).
+  - With the label changed to "Sum of costs", the e2e assertion failed. The reviewer, given only the images, reported a mismatch for every affected screenshot as a high finding and quoted the wrong label (AC2).
+- **The run found a conflict in the flow.** The model would not commit the `in-review` status after verify, because that commit would make the pack stale. It held back the PR description too, waiting for push approval, although the description is only a file. The status now goes into the last commit before the gates, and the description is written without asking.
+- **Playwright found my own mistakes.** Port 3100 was taken on this machine, my hand-calculated transfers were wrong, and Next.js adds a second `role="alert"` (its route announcer).
+- **Deviation from prompt B:** the demo has no seed script and no MSW mocks. It stores nothing and calls no external service, so both would test nothing. The pack records them as "not configured", which is the path a reviewer has to see. Its e2e input is fixed and versioned in `e2e/fixtures.ts`.
+- **Not done:**
+  - VERIFY-AC6 on GitHub itself, and open question 9.1 (images from an orphan branch in a private repo). Both need a real pull request, which was not opened without the owner's go-ahead.
+  - VERIFY-AC7 (the owner's review time on three PRs with and without the comment) needs the owner.
+  - gitleaks is not installed here, so the pattern scan stood in.
+
 ## 27.10.2026: v1.1 part A (onboarding, baseline, monorepos, Python)
 
 Spec: [SPEC-v1.1.md](SPEC-v1.1.md) section 3. New: `/onboard`, `.claude/bin/baseline`, `.claude/bin/onboard-apply`, `check --against-baseline`, nested `<package>/.claude/kit.conf`, protected paths, `adapters/python`. Tests: `tests/check.test.sh` (43 cases, also under `dash`), 27 new cases in `tests/hooks.test.sh` (93 in total), 3 in `tests/install.test.sh` (16), and the headless runner `tests/onboard/run.sh` with two fixture repos.
@@ -20,6 +63,7 @@ Spec: [SPEC-v1.1.md](SPEC-v1.1.md) section 3. New: `/onboard`, `.claude/bin/base
 
   So the guard now matches Grep and Glob, blocks commands that name a protected path, and blocks git commands that would print one unless they exclude it. The block message names the exact pathspec to add.
 - **Staging under `.work/onboard/files/` names every `.claude` folder `dot-claude`.** The docs list `.claude` as a protected directory without saying whether nested ones count, so the staged tree avoids the name. `baseline record` reads the staged configs through `KIT_CONF_ROOT` and `KIT_CONF_DIR`, and adapter helpers are reached through `$KIT_BIN`, so the baseline can be measured before anything is applied.
+- **ONBOARD-AC4 headless on the demo app.** `/onboard` staged the TypeScript adapter unchanged and proved the formatter in check mode only, as the fixed skill says. After `onboard-apply`, its `kit.conf` resolved to the same `KIT_*` values as `install.sh --adapter typescript`.
 - **Not done:** ONBOARD-AC1 on the real Docmost fork, because there is no clone on this machine. The fixtures stand in for it.
 
 ## 23.10.2026: release checks
