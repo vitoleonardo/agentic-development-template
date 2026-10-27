@@ -25,7 +25,7 @@ If the feature has no approved spec, follow `${CLAUDE_SKILL_DIR}/../spec-feature
 
 ## 2. Plan (gate: user approves)
 
-Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` and wait for approval. Then create the branch (`git checkout -b <issue>-<slug>`) and move the state file to the branch name if it differs.
+Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` and wait for approval. Then create the branch (`git checkout -b <issue>-<slug>`), move the state file to the branch name if it differs, and run `.claude/bin/usage adopt <the branch you started on>`, so the tokens of the spec and the plan count for this feature.
 
 ## 3. Build, one task at a time
 

@@ -2,7 +2,8 @@
 # Token usage per agent and the token budget, in .work/<branch>/ (see .claude/bin/usage).
 #   PostToolUse (Agent)  note which agent ran which task: agent id, description, type, requested and resolved model
 #   SubagentStop         recompute the agent's tokens from its transcript
-#   Stop                 recompute the main session's tokens from its transcript
+#   Stop                 recompute the session's own tokens from its transcript, keyed main:<session id>, so a
+#                        second session on the branch (a resumed run, a standalone /review-diff) adds a line
 #   PreToolUse (Agent)   refresh the session's line, then warn at 80 percent of KIT_BUDGET_TOKENS and block at 100
 # No hook input carries token counts, so they come from the transcripts. A message is written there several
 # times while it streams; the last line per message ID counts. Lines are replaced, never appended, because
@@ -46,6 +47,8 @@ replace() {
   mv "$new" "$dir/usage.tsv"
 }
 
+session_key=main:$(json_string session_id | tr -cd 'A-Za-z0-9_-')
+
 # Paths in hook input may start with ~.
 expand() { case $1 in "~"/*) printf '%s' "$HOME/${1#"~/"}" ;; *) printf '%s' "$1" ;; esac; }
 
@@ -54,7 +57,7 @@ case $(json_string hook_event_name) in
     replace "$(json_string agent_id)" "$(expand "$(json_string agent_transcript_path)")"
     ;;
   Stop)
-    replace main "$(expand "$(json_string transcript_path)")"
+    replace "$session_key" "$(expand "$(json_string transcript_path)")"
     ;;
   PostToolUse)
     agent=$(json_string agentId)
@@ -65,7 +68,7 @@ case $(json_string hook_event_name) in
   PreToolUse)
     budget=${KIT_BUDGET_TOKENS:-}
     [ -n "$budget" ] && [ "$budget" -gt 0 ] 2>/dev/null || exit 0
-    replace main "$(expand "$(json_string transcript_path)")"
+    replace "$session_key" "$(expand "$(json_string transcript_path)")"
     used=$(.claude/bin/usage total)
     if [ "$used" -ge "$budget" ]; then
       echo "Blocked by .claude/hooks/usage: this branch has used $used tokens of KIT_BUDGET_TOKENS=$budget. Stop before the next dispatch and ask the user whether to raise the budget or stop. .claude/bin/usage report shows where the tokens went." >&2

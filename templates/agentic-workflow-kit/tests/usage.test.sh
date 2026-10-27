@@ -65,18 +65,31 @@ hook '{"session_id":"s","hook_event_name":"PostToolUse","tool_name":"Agent","too
 hook '{"session_id":"s","hook_event_name":"SubagentStop","agent_id":"a2","agent_type":"implementer","agent_transcript_path":"'"$project"'/t/subagents/agent-a2.jsonl"}'
 hook '{"session_id":"s","hook_event_name":"Stop","transcript_path":"'"$project"'/t/main.jsonl","stop_hook_active":false}'
 hook '{"session_id":"s","hook_event_name":"Stop","transcript_path":"'"$project"'/t/main.jsonl","stop_hook_active":false}'
+# A second session on the branch (for example a standalone /review-diff) adds its own line.
+printf '%s\n' '{"type":"assistant","message":{"id":"msg_Z","model":"claude-haiku-5-5","content":[],"usage":{"input_tokens":1,"cache_creation_input_tokens":9,"cache_read_input_tokens":0,"output_tokens":2}}}' >t/other.jsonl
+hook '{"session_id":"s2","hook_event_name":"Stop","transcript_path":"'"$project"'/t/other.jsonl","stop_hook_active":false}'
 
 u=.work/7-routing/usage.tsv
-same "$(grep -c . "$u")" 3 "one line per agent and model; a second Stop replaces instead of appending"
-same "$(grep '^main' "$u")" "main	claude-opus-5-5	15	70	1000	1200" "the main session counts the last copy of each message, without synthetic ones"
+same "$(grep -c . "$u")" 4 "one line per agent and session; a second Stop of the same session replaces instead of appending"
+same "$(grep '^main:s	' "$u")" "main:s	claude-opus-5-5	15	70	1000	1200" "the main session counts the last copy of each message, without synthetic ones"
+same "$(grep -c '^main:s2	' "$u")" 1 "another session does not overwrite the first"
 same "$(grep '^a1' "$u")" "a1	claude-sonnet-5-5	5	100	300	400" "a subagent's tokens come from its own transcript"
 same "$(cut -f1-3,5 .work/7-routing/agents.tsv | head -n 1)" "a1	task 1: total line	implementer	claude-sonnet-5-5" "the agent is mapped to its task and model (ROUTE-AC1)"
-same "$(.claude/bin/usage total)" $((15 + 70 + 1200 + 5 + 100 + 400 + 4 + 100 + 400)) "the total counts input, output and cache writes"
+same "$(.claude/bin/usage total)" $((15 + 70 + 1200 + 5 + 100 + 400 + 4 + 100 + 400 + 12)) "the total counts input, output and cache writes"
 line=$(.claude/bin/usage line)
 case $line in
-  *"standard 505"*"deep 504"*"main session 1285"*"Escalations: 1."*) ok ;;
+  *"standard 505"*"deep 504"*"main session 1297"*"Escalations: 1."*) ok ;;
   *) fail "the PR line shows tokens per tier and the escalation (ROUTE-AC2): $line" ;;
 esac
+
+# Spec and plan run on main before the branch exists; adopt moves their record over.
+mkdir -p .work/main
+printf 'main:s0\tclaude-opus-5-5\t1\t1\t0\t8\n' >.work/main/usage.tsv
+printf 'r0\tspec review: total\treviewer\topus\tclaude-opus-5-5\n' >.work/main/agents.tsv
+.claude/bin/usage adopt main >/dev/null
+same "$(grep -c '^main:s0' "$u")" 1 "adopt moves the spec phase's tokens to the branch"
+same "$(grep -c '^r0' .work/7-routing/agents.tsv)" 1 "adopt moves the agent map too"
+[ ! -f .work/main/usage.tsv ] && ok || fail "adopt leaves nothing behind"
 
 # --- budget ---------------------------------------------------------------------
 
@@ -85,7 +98,7 @@ out=$(hook "$pre")
 same "$?:$out" "0:" "no budget, no message"
 printf 'KIT_BUDGET_TOKENS="2800"\n' >>.claude/kit.conf
 out=$(hook "$pre")
-case $out in *'"additionalContext":"Token budget: 2294 of 2800'*) ok ;; *) fail "80 percent of the budget warns: $out" ;; esac
+case $out in *'"additionalContext":"Token budget: 2316 of 2800'*) ok ;; *) fail "80 percent of the budget warns: $out" ;; esac
 sed -i 's/^KIT_BUDGET_TOKENS="2800"$/KIT_BUDGET_TOKENS="2000"/' .claude/kit.conf
 out=$(hook "$pre" 2>&1)
 code=$?

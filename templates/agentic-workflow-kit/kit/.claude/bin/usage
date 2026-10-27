@@ -4,7 +4,8 @@
 #   .claude/bin/usage total     tokens counted against KIT_BUDGET_TOKENS
 #   .claude/bin/usage report    per tier and per agent, escalations and review rounds
 #   .claude/bin/usage line      the one line for the PR description
-# usage.tsv:  <agent id or "main"> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
+#   .claude/bin/usage adopt <branch>   move another branch's record here (spec and plan run before the branch exists)
+# usage.tsv:  <agent id or main:<session id>> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
 # agents.tsv: <agent id> TAB <description> TAB <agent type> TAB <requested model> TAB <resolved model>
 # The budget counts input, output and cache writes. Cache reads are left out: they are cheap and grow with
 # every turn of a long session, so counting them would make any budget meaningless.
@@ -42,14 +43,14 @@ case ${1:-} in
         }
       }
       function tier(model, agent,    i) {
-        if (agent == "main") return "main"
+        if (agent ~ /^main(:|$)/) return "main"
         for (i = 1; i <= n; i++) if (index(model, alias[order[i]]) > 0) return order[i]
         return "other"
       }
       {
         tk = $3 + $4 + $6; tr = tier($2, $1)
         by[tr] += tk; total += tk
-        if ($1 != "main") rows = rows sprintf("| %s | %s | %s | %d | %d | %d | %d |\n", $1, (desc[$1] == "" ? "–" : desc[$1]), $2, $3, $4, $5, $6)
+        if ($1 !~ /^main(:|$)/) rows = rows sprintf("| %s | %s | %s | %d | %d | %d | %d |\n", $1, (desc[$1] == "" ? "–" : desc[$1]), $2, $3, $4, $5, $6)
       }
       END {
         line = "Tokens (input + output + cache writes): " total + 0
@@ -66,5 +67,21 @@ case ${1:-} in
       }
     ' "$usage"
     ;;
-  *) sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  adopt)
+    from=.work/${2:?usage: usage adopt <branch>}
+    [ "$from" != "$dir" ] || exit 0
+    mkdir -p "$dir"
+    for f in usage.tsv agents.tsv; do
+      [ -f "$from/$f" ] || continue
+      # Lines for the same agent or session are recomputed totals; the newer record wins.
+      if [ -f "$dir/$f" ]; then
+        awk -F '\t' 'NR == FNR { seen[$1] = 1; print; next } !($1 in seen)' "$dir/$f" "$from/$f" >"$dir/$f.new" && mv "$dir/$f.new" "$dir/$f"
+      else
+        cp "$from/$f" "$dir/$f"
+      fi
+      rm -f "$from/$f"
+    done
+    echo "Moved the usage record of ${2} to ${branch}."
+    ;;
+  *) sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
