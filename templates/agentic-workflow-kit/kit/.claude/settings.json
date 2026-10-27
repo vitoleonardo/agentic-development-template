@@ -10,7 +10,9 @@
       "Bash(git rev-parse *)",
       "Bash(git branch --show-current)",
       "Bash(.claude/bin/check *)",
-      "Bash(.claude/bin/spec-lint *)"
+      "Bash(.claude/bin/spec-lint *)",
+      "Bash(.claude/bin/route *)",
+      "Bash(.claude/bin/usage *)"
     ],
     "ask": [
       "Bash(npm install *)",
@@ -116,6 +118,16 @@
             "onFailure": "block"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -126,6 +138,16 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/record-edit",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage",
+            "timeout": 30
           }
         ]
       }
@@ -148,6 +170,22 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/summary",
             "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage",
+            "timeout": 30
           }
         ]
       }

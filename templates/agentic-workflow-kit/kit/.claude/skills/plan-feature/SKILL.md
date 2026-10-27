@@ -14,7 +14,7 @@ Do not edit source files in this step. The only files you write are the state fi
 ## 1. Read
 
 - The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. For a small fix without a spec, write two or three acceptance criteria into the plan instead and have them approved with it.
-- The code the feature touches. For a large codebase, explore the affected areas with parallel Explore subagents. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
+- The code the feature touches. For a large codebase, explore the affected areas with parallel `Explore` subagents, passing `model` from `.claude/bin/route explore`, so you read their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
 
 ## 2. Write the plan
 
@@ -34,9 +34,9 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 - Approved dependencies: <none, or the new packages the user approved, comma-separated; verify fails on any other>
 
 ## Tasks
-| # | Task | Files | Criteria | Test cases | Depends on |
-|---|------|-------|----------|------------|------------|
-| 1 | <one concern> | <paths> | INVITE-AC1, INVITE-AC5 | <file>: duplicate email, missing role | – |
+| # | Task | Files | Criteria | Test cases | Depends on | Tier |
+|---|------|-------|----------|------------|------------|------|
+| 1 | <one concern> | <paths> | INVITE-AC1, INVITE-AC5 | <file>: duplicate email, missing role | – | standard |
 
 ## Risks
 - <What could break, and how the plan guards against it.>
@@ -59,6 +59,7 @@ Rules for the plan:
 - Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
 - Name the test cases, not just "add tests".
 - Order the tasks so nothing is built before what it depends on. Mark tasks that touch disjoint files as parallel.
+- Tier: the model tier the implementer runs on. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
 
 ## 3. Ask for approval
 

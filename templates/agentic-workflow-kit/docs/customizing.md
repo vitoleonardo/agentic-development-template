@@ -83,6 +83,28 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 2. **Deny rules** `Read(./<path>/**)` and `Edit(./<path>/**)` stop the file tools, and Claude Code applies Read denies to Grep and Glob as well.
 3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`.
 
+## Route models by task
+
+Dispatched agents run on a tier, and `.claude/kit.conf` maps tiers to models:
+
+```sh
+KIT_MODEL_FAST="haiku"       KIT_ROUTE_EXPLORE="fast"
+KIT_MODEL_STANDARD="sonnet"  KIT_ROUTE_IMPLEMENT="standard"   # the plan may raise or lower it per task
+KIT_MODEL_DEEP="opus"        KIT_ROUTE_TESTS="standard"
+                             KIT_ROUTE_REVIEW="deep"
+                             KIT_ROUTE_VERIFY="standard"
+```
+
+`/ship-feature` passes the model on every dispatch (`.claude/bin/route <role|tier>`), because the Agent tool's `model` parameter wins over an agent's frontmatter. That parameter takes aliases only, so the values must be `sonnet`, `opus`, `haiku` or `fable`. The plan gives each task a Tier; a task that fails its checks once is retried one tier higher, and deep stays deep. The reviewer never runs below the highest tier an implementer used. Spec, plan and PR description run in the main session, on whatever model the session uses.
+
+If `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set, Claude Code runs every subagent on one model and ignores the routing; `/ship-feature` warns about it.
+
+## Token usage and budget
+
+The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, read from the transcripts) and `agents.tsv` (which agent ran which task, from the dispatch description). `.claude/bin/usage report` shows the details, and `.claude/bin/usage line` gives the line for the PR description: tokens per tier, review rounds, escalations.
+
+`KIT_BUDGET_TOKENS` sets a budget per branch, counted as input, output and cache writes (cache reads are cheap and would dwarf everything else). At 80 percent the hook tells Claude to report it; at 100 percent it blocks the next dispatch, and `/ship-feature` stops and asks.
+
 ## Block more commands
 
 Add stack-specific destructive commands to `KIT_DANGEROUS_PATTERNS`, one extended regex per line. The guard removes quotes before matching, so `sh -c 'prisma migrate reset'` is caught as well.
@@ -100,7 +122,8 @@ The hooks are in `.claude/hooks/` and registered in `.claude/settings.json`:
 | `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it |
 | `PostToolUse` (Edit, Write) | `record-edit` | after every edit; only notes the file, because it runs in parallel |
 | `PostToolBatch` | `check-edits` | once per batch of tool calls: spec lint, format, typecheck, related tests |
-| `Stop` | `summary` | when Claude wants to end the turn |
+| `Stop` | `summary`, `usage` | when Claude wants to end the turn |
+| `PreToolUse`, `PostToolUse` (Agent), `SubagentStop` | `usage` | token record per agent, and the budget check before each dispatch |
 
 Hooks registered for the same event run in parallel. Anything that must run in order, such as format before typecheck, belongs in one script, which is why `check-edits` exists. Add a step there rather than registering a new hook.
 

@@ -38,7 +38,7 @@ Write `.work/<branch>/evidence/edge-cases.md` with one table:
 - Test: the test's title (or the distinctive part of it) exactly as it appears in the test file. A case that cannot apply gets `n/a: <one-line reason>` in the Test cell.
 - Leave Result empty; the script fills it in.
 
-Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, not a note. For each one, dispatch the `test-writer` with the criterion, the case and the files; it adds tests and does not change code. A new test that fails shows missing behaviour: that goes through the implementer and review, not here. Then run `evidence gates` and `evidence matrix` again.
+Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, not a note. For each one, dispatch the `test-writer` (`model` from `.claude/bin/route tests`) with the criterion, the case and the files; it adds tests and does not change code. A new test that fails shows missing behaviour: that goes through the implementer and review, not here. Then run `evidence gates` and `evidence matrix` again.
 
 ## 3. Data runs
 
@@ -48,7 +48,7 @@ Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against t
 
 Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. A criterion without UI has no screenshots.
 
-Then dispatch the `reviewer` (Agent tool) with: the spec path, the screenshot folder, and the instruction to check the screenshots as described in its agent file. Save its report to `.work/<branch>/evidence/screenshots-review.md`. A mismatch between an image and the criterion text is a high finding: verify fails, and the fix goes through the implementer and review.
+Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `model` from `.claude/bin/route review`) with: the spec path, the screenshot folder, and the instruction to check the screenshots as described in its agent file. Save its report to `.work/<branch>/evidence/screenshots-review.md`. A mismatch between an image and the criterion text is a high finding: verify fails, and the fix goes through the implementer and review.
 
 ## 5. Pack and push
 
