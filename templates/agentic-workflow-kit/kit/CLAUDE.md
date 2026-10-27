@@ -9,7 +9,7 @@ Rules in `.claude/rules/` load automatically. Stack rules from the adapter load 
 - Product: <one sentence: who uses it and what problem it solves>
 - Stack: <framework, database, auth, hosting>
 - Install and dev server: `<install command>`, `<dev server command>`
-- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf`; a check that reports "not configured" does not exist in this project. Never invent commands.
+- Checks: always run them through `.claude/bin/check <typecheck|lint|test|test-related|coverage|format|build> [files]`. The stack adapter defines each one in `.claude/kit.conf` (a package can have its own `<package>/.claude/kit.conf`); a check that reports "not configured" or "n/a" does not exist in this project. Never invent commands. Full runs before a PR use `.claude/bin/check --against-baseline <test|lint|typecheck|coverage>`, which blocks only failures that are not in `.claude/baseline.tsv`.
 - What CI runs on every PR: <the workflow file and its checks>
 - Things only a human can do: <dashboards, API keys, DNS, third-party accounts>
 
@@ -20,17 +20,19 @@ Every feature goes through the same steps. Each step leaves a file behind, so a 
 1. **Spec** (`/spec-feature`): `specs/<feature>.md` holds the user flow and what "done" means as numbered acceptance criteria (`<FEATURE>-AC<n>`). One feature, one spec; extend it instead of creating a second one. `.claude/bin/spec-lint` must pass, then a human approves it.
 2. **Plan** (`/plan-feature`): the technical design (data, contract, permissions, decisions), then tasks with files, tests and the criteria each covers. A human approves it before any code is written.
 3. **Build**: implement against the plan. Every criterion gets a test that failed before the code made it pass. Progress and evidence go to `.work/<branch>.md`.
-4. **Review** (`/review-diff`): an independent reviewer that did not write the code checks the diff against the spec and these rules.
-5. **PR** (`/pr-description`): what, why, and an evidence table (criterion → test → result).
-6. **Acceptance**: the user checks the result and marks the feature `done`. Claude never sets `done`.
+4. **Simplify**: remove duplication, dead code and needless abstraction in the changed code, without changing behaviour.
+5. **Review** (`/review-diff`): an independent reviewer that did not write the code checks the diff against the spec and these rules.
+6. **Verify** (`/verify-feature`): hard gates, a passing test for every edge case, seeded and mocked runs, and screenshots checked against the criteria. The evidence pack in `.work/<branch>/evidence/` is pushed for CI; it is valid only for the commit it was made on.
+7. **PR** (`/pr-description`): what, why, the evidence table, and how to review it in five minutes.
+8. **Acceptance**: the user checks the result and marks the feature `done`. Claude never sets `done`.
 
-`/ship-feature` runs all five steps with the approval gates. Small fixes can skip the spec but not the test.
+`/ship-feature` runs steps 1 to 7 with the approval gates. Small fixes can skip the spec but not the test.
 
 Where things live:
 
 - `specs/README.md`: one row per feature with its current status. Update the row when the status changes; it is not a log.
 - `specs/<feature>.md`: the contract. Do not change it during the build. If it is wrong, stop and say so.
-- `.work/`: plan progress and verify logs. Gitignored, never committed.
+- `.work/`: plan progress, verify logs and evidence packs. Gitignored, never committed; packs go to the `kit-evidence` branch instead.
 
 ## Working agreements
 

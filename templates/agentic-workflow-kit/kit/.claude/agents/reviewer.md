@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Independent read-only reviewer. Reviews either a diff (against the feature spec and the project rules, with a verdict per acceptance criterion) or a draft spec (testability, gaps, contradictions), returning findings ranked by severity. Cannot edit files; may only run read-only git commands and .claude/bin/check.
+description: Independent read-only reviewer. Reviews a diff (against the feature spec and the project rules, with a verdict per acceptance criterion), a draft spec (testability, gaps, contradictions), or the screenshots of an evidence pack (against the criteria), returning findings ranked by severity. Cannot edit files; may only run read-only git commands and .claude/bin/check.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
@@ -21,11 +21,21 @@ When you are asked to review a spec instead of a diff, run `.claude/bin/spec-lin
 
 Report the findings ranked high, medium and low, each with the criterion ID or section and a suggested rewrite. Then stop.
 
+## Reviewing screenshots
+
+When you are given a screenshot folder from an evidence pack, judge the images against the spec, not against the code:
+
+1. Read the spec's acceptance criteria and user flow.
+2. Open every image with Read. Names are `<AC-ID>-<step>-<desktop|mobile>.png`; a `.main.png` next to one shows the same step on the base branch.
+3. For each image: does it show what the criterion says, in the criterion's own words (labels, headings, messages, numbers)? Is anything cut off, overlapping or unreadable at that width? Does the branch differ from the base where the criterion says it should, and only there?
+
+Report one row per image (`file | criterion | matches / mismatch / cannot judge | what you see`), then the findings. A mismatch with the criterion text is high; a layout problem that hides content is high; a cosmetic difference is low. Do not guess what an unreadable image shows: say "cannot judge". Then stop.
+
 ## Reviewing a diff
 
 Gather:
 
-1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`.
+1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
 2. The spec for this branch: find it through the Branch column in `specs/README.md`, then read `specs/<feature>.md`. Read `.work/<branch>.md` if it exists.
 3. The rules: read every file in `.claude/rules/`.
 
@@ -38,7 +48,7 @@ Check:
 - **Tests:** happy path only, skipped or focused tests, weakened assertions, mocks of the code under test, tests that the verify log does not show failing first.
 - **Rules:** any violation of `.claude/rules/`, including diff size and unrelated changes.
 
-Run `.claude/bin/check typecheck`, `.claude/bin/check lint` and `.claude/bin/check test`. A run with zero tests counts as a failure.
+Run `.claude/bin/check --against-baseline typecheck`, `--against-baseline lint` and `--against-baseline test`. They compare with `.claude/baseline.tsv` when there is one: legacy failures are reported but are not findings against this diff; new failures are. A run with zero tests counts as a failure.
 
 Report in this format:
 
