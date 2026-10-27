@@ -41,3 +41,4 @@ Where things live:
 - Report faithfully: a skipped test, an unmet criterion, a red build or a check you did not run is stated plainly. "Build passed" is not "verified".
 - Never edit the rules, hooks or settings in `.claude/` to make a check pass. Propose the change and wait for approval.
 - Stop and ask when the same fix has failed twice. Explain what you tried and what you think is wrong.
+- Record every retry and stop under Stops in `.work/<branch>.md` with its class (`spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`); `/ship-feature` says how each class is fixed. Optional: with `KIT_IMPROVE` set, these records and the token usage feed `/improve-kit`, which proposes changes to the kit.

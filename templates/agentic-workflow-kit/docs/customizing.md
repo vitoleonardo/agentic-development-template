@@ -121,6 +121,18 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `/onboard` runs `leadtime --baseline` once, which freezes the 90 days before that day in `reports/lead-time-baseline.md` and `.csv`. Later runs cover the time since then and show the baseline and the change next to each number. `--split-by kit` compares PRs with an evidence pack against PRs without, in the same period, which is the fair comparison for a repository without history. Bots and dependency PRs are left out; below ten PRs the report says the comparison is not reliable; with one contributor the review metrics are "n/a". The report names no PRs or people unless you pass `--with-titles`, and it says what changed, not why.
 
+## Run records and improvement (optional)
+
+Off by default. Set `KIT_IMPROVE="1"` in `.claude/kit.conf` to turn it on.
+
+Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`. `/ship-feature` describes how each class is fixed.
+
+With `KIT_IMPROVE` on, `/ship-feature` runs `.claude/bin/runs record` before the PR. It writes `reports/runs/<branch>.tsv`, which is committed with the PR: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
+
+`.claude/bin/runs report` combines all records into `reports/runs.md`: median and p75 of tokens per run, tokens per task, the main session's share and review rounds, the escalation rate, and the stops by class with their text. Below five runs it says the numbers are not reliable. Cost is shown as tokens per tier, not money.
+
+`/improve-kit` is the optional retrospective on top. It reads that report, `leadtime` when `gh` works, and `reports/improvements.md`, checks whether earlier changes moved their metric, and applies fixed rules: escalations above 25 % of tasks, no escalations over ten tasks, more than one review round in the median, the same `kit` stop twice, repeated `spec` or `plan` stops, any `env` or `budget` stop, a rising main-session share. Each rule has a minimum sample. It writes proposals to `.work/improve/<date>.md` and changes nothing until you approve; approved changes go on a `kit-improve-<date>` branch, with a test for every hook or check change, and an entry in `reports/improvements.md` naming the metric to judge them by.
+
 ## Block more commands
 
 Add stack-specific destructive commands to `KIT_DANGEROUS_PATTERNS`, one extended regex per line. The guard removes quotes before matching, so `sh -c 'prisma migrate reset'` is caught as well.

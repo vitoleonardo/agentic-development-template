@@ -58,6 +58,8 @@ Look at the week's pull requests and ask:
 - Where did Claude stop to ask, and was the question worth it?
 - Which rules were broken anyway? Make those a check, not a longer rule.
 
+If run records are on (`KIT_IMPROVE="1"` in `.claude/kit.conf`), run `/improve-kit` as well. It is optional: it reads the recorded runs, checks the numbers against fixed rules and proposes changes to the kit, which you approve or drop. After one week it will mostly say "not enough data"; from then on, run it every five merged features or once a month.
+
 Then decide what comes next: more repositories (consider the [plugin](customizing.md#use-it-as-a-plugin), so skills and hooks update in one place), more presets for your frameworks, or the sandbox.
 
 ## Everyday habits
@@ -66,6 +68,7 @@ Then decide what comes next: more repositories (consider the [plugin](customizin
 - **After a break**: start a new session and say "continue". Claude reads `specs/README.md` and `.work/<branch>.md` and picks up from there.
 - **A check is red on purpose**: when a test is written to fail first, Claude records it in the state file and says so. A red check without that note is a real failure.
 - **The guard blocked something you need**: run the command yourself. If it should never have been blocked, fix the pattern and add a test.
+- **Something does not work**: Claude retries once a tier higher, then stops and asks. Every retry and stop gets a line under Stops in `.work/<branch>.md` with its cause (`spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`), and the cause decides where the fix goes (see `/ship-feature`). A `kit` stop means the kit itself got in the way: fix it in its own pull request, with a test.
 - **The spec turns out wrong mid-build**: Claude stops and asks. Change the spec first, get it approved again, then continue. Never let the code and the spec drift apart.
 - **Never edit the rules or hooks to make a check pass.** Change them deliberately, in their own pull request.
 
