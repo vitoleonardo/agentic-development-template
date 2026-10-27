@@ -1,6 +1,6 @@
 ---
 name: ship-feature
-description: Run a feature end to end - spec, plan, test-first build in fresh subagent contexts, independent review, PR description - with approval gates after the spec, after the plan and before anything is pushed. Resumes from the state file after a break.
+description: Run a feature end to end - spec, plan, test-first build in fresh subagent contexts, simplify, independent review, verify with an evidence pack, PR description - with approval gates after the spec, after the plan and before anything is pushed. Resumes from the state file after a break.
 argument-hint: <feature idea or existing feature name>
 disable-model-invocation: true
 ---
@@ -44,9 +44,9 @@ Go over the changed code only: remove duplication with existing helpers, dead co
 
 Run `/review-diff`. It uses the read-only reviewer in a fresh context. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
 
-## 6. Full verification
+## 6. Verify
 
-Run `.claude/bin/check --against-baseline typecheck`, `--against-baseline lint`, `--against-baseline test` and `.claude/bin/check build`. Every check must pass, and the test run must execute more than zero tests. Report legacy failures and flaky tests as the check lists them, and any check that is not configured or `n/a`.
+Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case matrix, data runs, screenshots, and the evidence pack. If verify fails, the fix goes through the implementer and then back to step 5. After two failed verify rounds, stop and ask. Ask before pushing the pack.
 
 ## 7. PR (gate: user approves the push)
 
