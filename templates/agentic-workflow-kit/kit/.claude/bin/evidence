@@ -3,13 +3,15 @@
 # Usage:
 #   .claude/bin/evidence gates                 run every hard gate; write gates.md and gates.tsv; exit 1 if one fails
 #   .claude/bin/evidence matrix                check edge-cases.md: every case has a passing test or "n/a: <reason>"
-#   .claude/bin/evidence data                  run KIT_SEED + KIT_E2E and KIT_TEST_MOCKED; write data-runs.md
-#   .claude/bin/evidence screenshots [--no-base]   run KIT_SCREENSHOTS on the branch, and on the base in a worktree
+#   .claude/bin/evidence data [--all]          run KIT_SEED + the affected e2e tests and KIT_TEST_MOCKED; write data-runs.md
+#   .claude/bin/evidence screenshots [--no-base] [--all]   screenshots of the affected tests, on the branch and the base
+#   .claude/bin/evidence e2e-select [--all]    print which e2e tests the change needs: all, related (with files) or none
 #   .claude/bin/evidence json                  assemble evidence.json from the parts
 #   .claude/bin/evidence push [--pr N]         push the pack to the kit-evidence branch under <pr-N|branch>/<head sha>/
 #   .claude/bin/evidence ci-check --head SHA --key KEY...   CI: the pushed pack exists for SHA and names it
 #   .claude/bin/evidence comment --dir DIR --repo OWNER/NAME --key KEY   print the PR comment for a pack
 # The pack lives in .work/<branch>/evidence/ (EVIDENCE_DIR overrides it). See docs/SPEC-v1.1.md, section 4.
+# --all runs the whole e2e suite; CI does that after every merge to catch what the selection missed.
 set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
@@ -228,15 +230,88 @@ matrix() {
   return "$result"
 }
 
+# --- e2e selection -------------------------------------------------------------
+
+# changed_files: the files changed since the merge base, untracked ones included, without protected paths.
+changed_files() {
+  # shellcheck disable=SC2046
+  { git diff --name-only "$(merge_base)" -- . $(excludes); git ls-files --others --exclude-standard -- . $(excludes); } 2>/dev/null | sort -u
+}
+
+# quoted <file>: the lines of a file as single-quoted shell words, for appending to a command.
+quoted() { sed "s/'/'\\\\''/g; s/^/'/; s/\$/'/" "$1" | tr '\n' ' '; }
+
+# e2e_select [--all]: which e2e tests the change since the merge base needs. Prints "<mode>: <reason>" and, for
+# "related", one test file per line. all runs KIT_E2E, related runs KIT_E2E_RELATED with the files, none runs nothing.
+# Related tests are the changed e2e files plus the e2e files that name a feature (SHOP in SHOP-AC1) whose criterion
+# IDs the diff adds. Whatever the selection cannot vouch for runs everything.
+e2e_select() {
+  [ "${1:-}" = --all ] && { echo "all: --all"; return; }
+  [ -n "$(conf_value . KIT_E2E_RELATED)" ] || { echo "all: KIT_E2E_RELATED is not set"; return; }
+  e2e_patterns=$(conf_value . KIT_E2E_PATTERNS)
+  [ -n "$e2e_patterns" ] || { echo "all: KIT_E2E_PATTERNS is not set"; return; }
+  full=$(conf_value . KIT_E2E_FULL_PATTERNS)
+  test_patterns=$(conf_value . KIT_TEST_PATTERNS)
+  changed_files >"$tmp/changed"
+  : >"$tmp/selected"
+  other=""
+  while IFS= read -r f; do
+    if [ -n "$full" ] && matches_any "$f" "$full"; then echo "all: $f changed"; return; fi
+    if matches_any "$f" "$e2e_patterns"; then
+      [ -f "$f" ] && printf '%s\n' "$f" >>"$tmp/selected"
+    elif ! matches_any "$f" "$test_patterns"; then
+      case $f in *.md) ;; *) other=$f ;; esac
+    fi
+  done <"$tmp/changed"
+  features=""
+  if [ -n "$other" ]; then
+    # Only tests and docs changed: their own e2e files are enough. Otherwise add the features the diff names.
+    features=$(diff_all -U0 | grep '^+' | grep -v '^+++' | grep -oE '[A-Z][A-Z0-9]*-AC[0-9]+' | sed 's/-AC[0-9]*$//' | sort -u | tr '\n' ' ')
+    if [ -n "$features" ]; then
+      # shellcheck disable=SC2046
+      git ls-files --cached --others --exclude-standard -- . $(excludes) | while IFS= read -r f; do
+        matches_any "$f" "$e2e_patterns" && [ -f "$f" ] &&
+          grep -qE "(^|[^A-Z0-9])($(printf '%s' "$features" | sed 's/ *$//; s/ /|/g'))-AC[0-9]" "$f" && printf '%s\n' "$f"
+      done >>"$tmp/selected"
+    fi
+  fi
+  sort -u "$tmp/selected" -o "$tmp/selected"
+  if [ -s "$tmp/selected" ]; then
+    echo "related: $(wc -l <"$tmp/selected" | tr -d ' ') e2e test files (changed e2e files${features:+, features ${features% }})"
+    cat "$tmp/selected"
+  elif [ -n "$other" ]; then
+    echo "all: $other changed and no e2e test names a criterion of this change"
+  else
+    echo "none: only tests and docs changed"
+  fi
+}
+
+# e2e_command <command key> <related key> [--all]: the command for the selection, or "n/a: <reason>" for none.
+# The selection stays in $tmp/selection; its first line is the reason.
+e2e_command() {
+  e2e_select "${3:-}" >"$tmp/selection"
+  case $(head -n 1 "$tmp/selection") in
+    none:*) printf 'n/a: %s' "$(head -n 1 "$tmp/selection" | sed 's/^none: //')" ;;
+    related:*)
+      related=$(conf_value . "$2")
+      if [ -z "$related" ]; then conf_value . "$1"; return; fi
+      tail -n +2 "$tmp/selection" >"$tmp/selected-files"
+      printf '%s %s' "$related" "$(quoted "$tmp/selected-files")"
+      ;;
+    *) conf_value . "$1" ;;
+  esac
+}
+
 # --- data runs -----------------------------------------------------------------
 
+# run_step <name> <command> [label]: the label defaults to the last "seed:" or "mocked:" line the command prints.
 run_step() {
   name=$1 cmd=$2
   started=$(now)
   (sh -c "$cmd" </dev/null) >"$tmp/log-$name" 2>&1
   code=$?
   secs=$(($(now) - started))
-  label=$(grep -E '^(seed|mocked):' "$tmp/log-$name" | tail -n 1)
+  label=${3:-$(grep -E '^(seed|mocked):' "$tmp/log-$name" | tail -n 1)}
   result=pass
   [ "$code" -eq 0 ] || result=fail
   printf '%s\t%s\t%s\t%s\n' "$name" "$result" "$secs" "$label" >>"$dir/data-runs.tsv"
@@ -253,6 +328,7 @@ data() {
   status=0
   seed=$(conf_value . KIT_SEED)
   e2e=$(conf_value . KIT_E2E)
+  case $e2e in '' | n/a:*) ;; *) e2e=$(e2e_command KIT_E2E KIT_E2E_RELATED "${1:-}") ;; esac
   mocked=$(conf_value . KIT_TEST_MOCKED)
   for pair in "seed:$seed" "e2e:$e2e" "mocked:$mocked"; do
     name=${pair%%:*} cmd=${pair#*:}
@@ -263,13 +339,15 @@ data() {
         if [ "$name" = e2e ] && grep -q "^seed${tab}fail" "$dir/data-runs.tsv"; then
           printf 'e2e\tfail\t0\tnot run: the seed failed\n' >>"$dir/data-runs.tsv"; status=1; continue
         fi
-        run_step "$name" "$cmd" || status=1
+        label=""
+        [ "$name" = e2e ] && label=$(head -n 1 "$tmp/selection")
+        run_step "$name" "$cmd" "$label" || status=1
         ;;
     esac
   done
   {
     printf '# Data runs\n\nSeeded: `KIT_SEED` then `KIT_E2E`. Mocked: `KIT_TEST_MOCKED`. The seed version and the mock set are the last `seed:` and `mocked:` lines the commands print.\n\n'
-    printf '| Run | Result | Time | Command | Seed or mock set |\n|-----|--------|------|---------|------------------|\n'
+    printf '| Run | Result | Time | Command | Seed, mock set or e2e selection |\n|-----|--------|------|---------|---------------------------------|\n'
     cat "$tmp/data-table"
     [ -s "$tmp/data-logs" ] && { printf '\n## Failures\n'; cat "$tmp/data-logs"; }
   } >"$dir/data-runs.md"
@@ -281,9 +359,12 @@ data() {
 
 # KIT_SCREENSHOTS writes <AC-ID>-<step>-<desktop|mobile><KIT_SCREENSHOT_SUFFIX>.png into $KIT_SCREENSHOT_DIR.
 screenshots() {
-  with_base=1
-  [ "${1:-}" = --no-base ] && with_base=0
+  with_base=1 all=""
+  for arg; do
+    case $arg in --no-base) with_base=0 ;; --all) all=--all ;; esac
+  done
   cmd=$(conf_value . KIT_SCREENSHOTS)
+  case $cmd in '' | n/a:*) ;; *) cmd=$(e2e_command KIT_SCREENSHOTS KIT_SCREENSHOTS_RELATED "$all") ;; esac
   case $cmd in
     '' | n/a:*) echo "screenshots: ${cmd:-not configured}"; mkdir -p "$dir"; printf '%s\n' "${cmd:-not configured}" >"$dir/screenshots.txt"; return 0 ;;
   esac
@@ -490,11 +571,12 @@ command=${1:-}
 case $command in
   gates) gates ;;
   matrix) matrix ;;
-  data) data ;;
+  data) data "$@" ;;
+  e2e-select) e2e_select "$@" ;;
   screenshots) screenshots "$@" ;;
   json) json ;;
   push) push "$@" ;;
   ci-check) ci_check "$@" ;;
   comment) comment "$@" ;;
-  *) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

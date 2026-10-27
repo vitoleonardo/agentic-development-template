@@ -172,5 +172,91 @@ expect_out "![SHOP-AC1-1-desktop.png](https://github.com/me/shop/blob/kit-eviden
 expect_out "SHOP-AC1-1-desktop.main.png" "the base screenshot sits next to it"
 expect_out "**Review:** ready, 0 high, 1 medium, 1 low." "the review summary"
 
+# --- e2e selection: only the e2e tests a change affects --------------------------
+
+# On main: two features with e2e tests, a shared fixture, and runners that record what they were given.
+git checkout -q main
+mkdir -p e2e
+printf 'test("SHOP-AC1: shows the total", () => {});\n' >e2e/shop.spec.ts
+printf 'test("CART-AC2: removes an item", () => {});\n' >e2e/cart.spec.ts
+printf 'export const fixture = 1;\n' >e2e/fixtures.ts
+printf 'export const other = 0;\n' >src/other.ts
+printf '.work/\n' >.gitignore
+tab=$(printf '\t')
+cat >bin/fake-e2e <<'EOF'
+#!/bin/sh
+printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
+[ -n "${KIT_SCREENSHOT_DIR:-}" ] && : >"$KIT_SCREENSHOT_DIR/SHOP-AC1-1-desktop$KIT_SCREENSHOT_SUFFIX.png"
+exit 0
+EOF
+chmod +x bin/fake-e2e
+cat >>.claude/kit.conf <<EOF
+KIT_E2E="'$project/bin/fake-e2e'"
+KIT_E2E_RELATED="'$project/bin/fake-e2e'"
+KIT_E2E_PATTERNS="e2e/*.spec.ts"
+KIT_E2E_FULL_PATTERNS="package.json e2e/fixtures.ts"
+KIT_TEST_PATTERNS="*.test.ts e2e/*"
+KIT_SCREENSHOTS="'$project/bin/fake-e2e' ALL-SHOTS"
+KIT_SCREENSHOTS_RELATED="'$project/bin/fake-e2e' SHOTS"
+EOF
+g add -A
+g commit -qm "e2e tests"
+export E2E_LOG="$work/e2e.log"
+
+# branch_with <branch> <change command>: a branch off main with one committed change, then `evidence e2e-select`.
+branch_with() {
+  git checkout -q main
+  git checkout -qb "$1"
+  sh -c "$2"
+  g add -A
+  g commit -qm "$1"
+  out=$(.claude/bin/evidence e2e-select 2>&1)
+}
+
+branch_with sel-docs "printf 'docs\n' >NOTES.md; printf 'it(\"SHOP-AC9: x\", () => {});\n' >src/x.test.ts"
+expect_out "none:" "a change without source or e2e changes runs no e2e"
+: >"$E2E_LOG"
+expect_code 0 "data passes when no e2e test is affected" .claude/bin/evidence data
+grep -q "^e2e${tab}n/a${tab}0${tab}n/a: only tests and docs changed" .work/sel-docs/evidence/data-runs.tsv && ok || fail "the skipped e2e run and why: $(cat .work/sel-docs/evidence/data-runs.tsv)"
+[ ! -s "$E2E_LOG" ] && ok || fail "no e2e runner ran: $(cat "$E2E_LOG")"
+
+branch_with sel-feature "printf 'export const total = 5;\n' >src/total.ts; printf 'it(\"SHOP-AC3: rounds\", () => {});\n' >>src/total.test.ts"
+expect_out "related:" "a feature change runs related e2e tests"
+expect_out "e2e/shop.spec.ts" "the e2e tests of the criteria the diff names (SHOP)"
+case $out in *cart.spec.ts*) fail "another feature's e2e tests are not selected: $out" ;; *) ok ;; esac
+: >"$E2E_LOG"
+expect_code 0 "data runs the related e2e tests" .claude/bin/evidence data
+[ "$(cat "$E2E_LOG")" = "e2e/shop.spec.ts" ] && ok || fail "KIT_E2E_RELATED gets the selected files: $(cat "$E2E_LOG")"
+grep -q "^e2e${tab}pass${tab}[0-9]*${tab}related:" .work/sel-feature/evidence/data-runs.tsv && ok || fail "the selection is recorded: $(cat .work/sel-feature/evidence/data-runs.tsv)"
+: >"$E2E_LOG"
+expect_code 0 "data --all runs the whole suite" .claude/bin/evidence data --all
+[ "$(cat "$E2E_LOG")" = "ALL" ] && ok || fail "--all runs KIT_E2E: $(cat "$E2E_LOG")"
+: >"$E2E_LOG"
+expect_code 0 "screenshots of the related tests" .claude/bin/evidence screenshots --no-base
+grep -q "^SHOTS e2e/shop.spec.ts$" "$E2E_LOG" && ok || fail "KIT_SCREENSHOTS_RELATED gets the selected files: $(cat "$E2E_LOG")"
+
+branch_with sel-e2e "printf 'test(\"CART-AC2: removes the last item\", () => {});\n' >>e2e/cart.spec.ts"
+expect_out "e2e/cart.spec.ts" "a changed e2e test file runs"
+
+printf 'test("CART-AC3: empties the cart", () => {});\n' >e2e/empty.spec.ts
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "e2e/empty.spec.ts" "a new e2e file that is not committed yet runs"
+rm e2e/empty.spec.ts
+
+branch_with sel-fixture "printf 'export const fixture = 2;\n' >e2e/fixtures.ts"
+expect_out "all: e2e/fixtures.ts changed" "a change to shared e2e setup runs the whole suite"
+
+branch_with sel-unmapped "printf 'export const other = 1;\n' >src/other.ts"
+expect_out "all:" "a source change no e2e test maps to runs the whole suite"
+: >"$E2E_LOG"
+.claude/bin/evidence screenshots --no-base >/dev/null 2>&1
+grep -q "^ALL-SHOTS$" "$E2E_LOG" && ok || fail "all screenshots when the whole suite runs: $(cat "$E2E_LOG")"
+
+git checkout -q sel-feature
+sed -i '/KIT_E2E_RELATED/d' .claude/kit.conf
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
+git checkout -q .claude/kit.conf
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

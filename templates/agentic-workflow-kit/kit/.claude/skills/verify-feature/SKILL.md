@@ -44,9 +44,11 @@ Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, n
 
 Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against the seeded data, and `KIT_TEST_MOCKED` with external dependencies replaced, and records the seed version and the mock set. A run that is `not configured` or `n/a` is recorded as such; say so in the report, because a reviewer must see what was not checked.
 
+The e2e run covers only the tests the change affects when `KIT_E2E_RELATED` is set: the changed e2e files and the ones that name this feature's criteria. Its row says what ran and why (`related: …`, `all: …`, or `n/a` when only tests and docs changed). Report that line as it is. Do not pass `--all` to make a selection go away; the whole suite runs in CI after the merge.
+
 ## 4. Screenshots
 
-Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. A criterion without UI has no screenshots.
+Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` (with the same selection as the e2e run) on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. A criterion without UI has no screenshots.
 
 Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `model` from `.claude/bin/route review`) with: the spec path, the screenshot folder, and the instruction to check the screenshots as described in its agent file. Save its report to `.work/<branch>/evidence/screenshots-review.md`. A mismatch between an image and the criterion text is a high finding: verify fails, and the fix goes through the implementer and review.
 

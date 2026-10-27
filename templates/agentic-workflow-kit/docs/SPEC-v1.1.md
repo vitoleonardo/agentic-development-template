@@ -190,7 +190,7 @@ The pack is valid only for the commit in `head`. Any push after verify (a review
 - `/pr-description` reads `evidence.json` and writes the evidence table from it, plus a "How to review this PR in 5 minutes" section: which screenshots to look at, which edge cases are new, what the reviewer agent flagged as medium.
 - CI job `evidence`:
   1. fails if `kit-evidence` has no pack for the PR's head SHA, or if its `evidence.json` has a different `head` (VERIFY-AC5);
-  2. runs `KIT_SEED`, `KIT_E2E` and `KIT_SCREENSHOTS` again, so the deterministic parts do not depend on my machine. It compares the results with the pushed pack and reports differences;
+  2. runs `KIT_SEED`, `KIT_E2E` and `KIT_SCREENSHOTS` again, so the deterministic parts do not depend on my machine. It compares the results with the pushed pack and reports differences. With `KIT_E2E_RELATED` set, e2e and screenshots cover only the tests the change affects (`evidence e2e-select`); the job `Full e2e` runs the whole suite after every merge to the default branch;
   3. uploads the CI run's folder as a workflow artefact;
   4. posts one sticky PR comment with the gate table, the matrix summary and the screenshots inline. The comment names the SHA and is updated on every push.
 
