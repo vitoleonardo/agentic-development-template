@@ -24,6 +24,8 @@ expect_code() {
 }
 expect_out() { case $out in *"$1"*) ok ;; *) fail "$2: no '$1' in: $out" ;; esac; }
 g() { git -c user.name=t -c user.email=t@example.invalid "$@"; }
+# evidence push makes its own commit; CI runners have no git identity.
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 
 mkdir -p src bin
 cat >bin/fake-tests <<'EOF'
