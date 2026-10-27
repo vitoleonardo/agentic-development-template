@@ -23,8 +23,17 @@ Version facts were checked against the Next.js 16 upgrade guide on 23.10.2026. R
 
 ## Structure (convention)
 
-- `app/` holds routing and composition only: `page`, `layout`, `loading`, `error`, `not-found`, route handlers. Business logic lives in `features/<domain>/` and data access in `data/` (or the project's equivalent).
+- `app/` holds routing and composition only: `page`, `layout`, `loading`, `error`, `not-found`, route handlers. Business logic lives in `features/<domain>/` and data access in `data/` (see the Map in `structure.md`).
 - Use private folders (`_components`) for route-local code that must not become a route.
+
+## Map
+
+Homes Next.js adds to the Map in `structure.md`.
+
+| Kind | Home | Naming |
+|------|------|--------|
+| Routes without `src/` | `app/` | Next.js file conventions |
+| Proxy and instrumentation | `proxy.ts`, `src/proxy.ts`, `instrumentation.ts`, `src/instrumentation.ts` | – |
 
 ## Server and client boundary
 

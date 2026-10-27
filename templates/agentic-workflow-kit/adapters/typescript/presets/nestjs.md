@@ -19,6 +19,16 @@ paths:
 - A circular dependency between modules (`forwardRef`) is a design smell. Propose moving the shared part into its own module, and ask before adding `forwardRef`.
 - Dependencies come in through constructor injection. Never `new` a provider by hand.
 
+## Map
+
+Homes NestJS adds to the Map in `structure.md`.
+
+| Kind | Home | Naming |
+|------|------|--------|
+| Bootstrap | `src/main.ts`, `src/app.module.ts` | – |
+| Feature modules | `src/<domain>/` | `<domain>.module.ts`, `.controller.ts`, `.service.ts`, `dto/`, `entities/` |
+| E2E tests | `test/` | `<feature>.e2e-spec.ts` |
+
 ## Controllers and services
 
 - Controllers are thin: route decorators, DTO input, one service call, the response. No business logic and no repository access.

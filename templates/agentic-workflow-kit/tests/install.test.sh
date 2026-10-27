@@ -31,6 +31,8 @@ expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.c
 expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
 expect "full: plugin files not installed" test ! -e "$full/.claude/.claude-plugin" -a ! -e "$full/.claude/hooks/hooks.json"
 expect "full: core rules installed" test -f "$full/.claude/rules/output.md" -a -f "$full/.claude/rules/git.md"
+expect "full: structure map installed" grep -q '`src/features/<domain>/`' "$full/.claude/rules/structure.md"
+expect "full: structure gate installed" test -x "$full/.claude/bin/structure"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
 expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
 expect "full: leadtime, route and usage installed" test -x "$full/.claude/bin/leadtime" -a -x "$full/.claude/bin/route" -a -x "$full/.claude/bin/usage" -a -x "$full/.claude/hooks/usage"
@@ -40,6 +42,7 @@ python=$(mktemp -d)
 "$here/install.sh" "$python" --adapter python >/dev/null || echo "FAIL: python install exited $?"
 expect "python: adapter config, helpers and rule installed" test -x "$python/.claude/bin/pytest-related" -a -f "$python/.claude/bin/coverage-files.py" -a -f "$python/.claude/rules/python.md"
 expect "python: the Python config replaced the core one" grep -q 'uv run pytest' "$python/.claude/kit.conf"
+expect "python: the Python structure map replaced the core one" grep -q '`src/<package>/<domain>/`' "$python/.claude/rules/structure.md"
 rm -rf "$python"
 
 expect "plugin: no hooks, skills or agents" test ! -e "$plugin/.claude/hooks" -a ! -e "$plugin/.claude/skills" -a ! -e "$plugin/.claude/agents"

@@ -12,13 +12,14 @@ Claude Code writes code fast, but out of the box nothing makes it write down wha
 | Claude decides how to build it while building it | A plan with the technical design and tasks in `.work/<branch>.md`, approved before any code |
 | Tests come last, if at all | Each criterion gets a test that fails first; the red and the green run are recorded |
 | "Done, all tests pass" without a test run | Hooks format, typecheck and run the related tests after every batch of edits, and the turn does not end quietly while they are red |
+| Every session puts files somewhere else and writes a second copy of an existing helper | One Map of where each kind of code lives. The guard blocks a new file outside it; jscpd fails on code the branch copies, also with renamed variables |
 | The author reviews its own work | A read-only reviewer in a fresh context checks the diff against every criterion |
 | `cat .env`, `rm -rf`, `git push --force` are one approval click away | Denied by permissions, and a guard hook catches what the deny list misses (`sh -c '...'`, `/usr/bin/env`, `git -C x push -f`). Licence-restricted folders are closed by the sandbox |
 | CI checks whatever someone remembered to configure | Spec lint, typecheck, lint, tests, coverage of the changed files, build, and a warning above 400 changed lines |
 
 ## Install in 60 seconds
 
-Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The core needs nothing else; the TypeScript adapter expects Node 20.9+.
+Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The core needs nothing else; the TypeScript adapter expects Node 20.9+. The duplicates check needs [jscpd](https://github.com/kucherenko/jscpd) 5 (tested with 5.4.2): `npm i -D jscpd@5.4.2` in TypeScript projects, the binary on PATH (`brew install jscpd`) for Python.
 
 ```sh
 git clone https://github.com/vitoleonardo/agentic-development-template
@@ -26,10 +27,10 @@ cd agentic-development-template/templates/agentic-workflow-kit
 ./install.sh ~/code/my-app --adapter typescript --preset nextjs
 ```
 
-The installer never overwrites a file that is already in your project; it lists them so you can merge by hand (or rerun with `--force`). Then:
+The installer never overwrites a file that is already in your project; it lists them so you can merge by hand (or rerun with `--force`). Upgrading an existing install: add `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SIMILAR` from the adapter to your `kit.conf` (or run `/onboard --refresh`); until then `/verify-feature` fails its duplicates gate. Then:
 
 1. Fill in the "Project facts" section of `CLAUDE.md`.
-2. Run `.claude/bin/check typecheck` (and `lint`, `test`, `build`) once to see that the adapter found your commands.
+2. Run `.claude/bin/check typecheck` (and `lint`, `test`, `build`, `duplicates`) once to see that the adapter found your commands.
 3. Start `claude` in the project and accept the trust prompt. Until then Claude Code ignores the project's hooks and allow rules.
 4. Make the `quality-gates` workflow a required status check.
 
@@ -70,18 +71,19 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Part | Files | What it does |
 |---|---|---|
 | Project guide | `CLAUDE.md` | Project facts, the flow above, working agreements ("ask, don't fill gaps", "stop after two failed fixes") |
-| Rules | `.claude/rules/*.md` | Architecture, testing, security, code style, git, output (short answers and PRs). Stack rules load only for matching files |
+| Rules | `.claude/rules/*.md` | Structure (the Map of where code lives), architecture, testing, security, code style, git, output (short answers and PRs). Stack rules load only for matching files |
 | Permissions | `.claude/settings.json` | Read-only git and the checks run without asking. Installs, pushes, CI, lockfiles, migrations and infra ask. Secrets, `rm -rf`, force push, network tools are denied |
-| Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. `record-edit` and `check-edits` run format, typecheck and related tests after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
+| Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. It also blocks writing a new source file outside the Map. `record-edit` and `check-edits` run format, typecheck, related tests and the duplicates check after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
 | Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`, `/onboard`, and the optional `/improve-kit` |
 | Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
 | Lead time | `.claude/bin/leadtime` | Lead time, cycle time, time to first review, review rounds, spec to merge, rework and PR size from GitHub, before and after the kit, without names by default |
 | Model routing | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`; tokens per agent and an optional budget per branch |
 | Run records (optional) | `.claude/bin/runs`, `/improve-kit` | Off until `KIT_IMPROVE` is set. One record per feature in `reports/runs/` (tokens per tier, escalations, review rounds, every stop with its cause); `/improve-kit` turns them into proposed changes to the kit, applied only after approval |
-| Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build. The adapter fills in the commands; a package in a monorepo can have its own config |
+| Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build, duplicates and similar functions. The adapter fills in the commands; a package in a monorepo can have its own config |
 | Baseline | `.claude/bin/baseline`, `.claude/baseline.tsv` | `check --against-baseline` blocks only new failures: tests by ID, lint and type errors per file, coverage. `/onboard` records it for existing repositories |
+| Structure | `.claude/bin/structure`, `.claude/rules/structure.md` | Hard gate: every new source file sits in a home of the Map, and no file is named `utils`, `helpers`, `common` or `misc`. `/onboard` writes the Map from the repository |
 | Spec lint | `.claude/bin/spec-lint` | Hard gate for acceptance criteria: IDs, Given/when/then, one result per criterion, no vague words, required sections, no open questions once approved |
-| CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, diff size warning, all against the baseline |
+| CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, duplicates, structure, diff size warning, all against the baseline |
 | MCP example | `.mcp.example.json` | GitHub (read-only tools) and a database through a read-only user. Not active until you rename it |
 | Demo | `examples/demo-app/` | A small Next.js 16 app with a spec and tests to try everything on |
 

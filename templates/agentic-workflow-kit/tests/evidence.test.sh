@@ -47,6 +47,7 @@ KIT_TEST="'$project/bin/fake-tests'"
 KIT_TEST_REPORT=".work/junit.xml"
 KIT_COVERAGE="true"
 KIT_COVERAGE_FILES="printf 'src/total.ts\t9\t10\n'"
+KIT_DUPLICATES="true"
 KIT_SOURCE_PATTERNS="*.ts"
 KIT_PROTECTED_PATHS="vendor/ee"
 KIT_MAX_CHANGED_LINES="20"
@@ -110,12 +111,29 @@ expect_code 1 "a token in the diff fails the secret scan" .claude/bin/evidence g
 expect_out "| secrets | fail |" "the secret gate fails"
 rm src/config.ts
 
-seq 1 30 | sed 's/^/export const x/;s/$/ = 1;/' >src/many.ts
+mkdir -p src/lib
+seq 1 30 | sed 's/^/export const x/;s/$/ = 1;/' >src/lib/many.ts
 expect_code 0 "above the size limit is a warning" .claude/bin/evidence gates
 expect_out "warning: 32 changed lines" "the size warning is shown"
-seq 1 50 | sed 's/^/export const y/;s/$/ = 1;/' >>src/many.ts
+seq 1 50 | sed 's/^/export const y/;s/$/ = 1;/' >>src/lib/many.ts
 expect_code 1 "above twice the size limit fails" .claude/bin/evidence gates
-rm src/many.ts
+rm -r src/lib
+
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="echo \\"1 new clones\\"; exit 1"/' .claude/kit.conf
+expect_code 1 "a clone the branch adds fails the duplicates gate" .claude/bin/evidence gates
+expect_out "| duplicates | fail |" "the duplicates gate fails"
+grep -q "| duplicates | fail | .*new clones" .work/42-total/evidence/gates.md && ok || fail "the clone count is in the detail"
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES=""/' .claude/kit.conf
+expect_code 1 "an unconfigured duplicates gate fails" .claude/bin/evidence gates
+expect_out "| duplicates | fail | 0s | not configured" "the unconfigured duplicates gate is named"
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="true"/' .claude/kit.conf
+
+printf 'export const helper = 1;\n' >src/helpers.ts
+expect_code 1 "a new source file outside the Map fails the structure gate" .claude/bin/evidence gates
+expect_out "| structure | fail |" "the structure gate fails"
+rm src/helpers.ts
+expect_code 0 "the structure gate passes without misplaced files" .claude/bin/evidence gates
+expect_out "| structure | pass |" "the structure gate passes"
 
 # --- edge-case matrix -----------------------------------------------------------
 
