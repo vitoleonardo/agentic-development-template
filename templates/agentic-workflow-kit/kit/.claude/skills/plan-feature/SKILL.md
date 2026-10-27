@@ -50,6 +50,9 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 ## Verify log
 | Criterion | Test | Red seen | Green | Notes |
 |-----------|------|----------|-------|-------|
+
+## Notes
+- <Per finished task, one or two lines that later tasks need: deviations from the plan, open issues, new helpers or interfaces with path:line.>
 ```
 
 Rules for the plan:
@@ -57,8 +60,9 @@ Rules for the plan:
 - The design covers every criterion; it introduces nothing the spec does not ask for.
 - Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
 - Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
+- Each task is worth a fresh context. Fold a pure rename or a one-line change into the task whose files it touches.
 - Name the test cases, not just "add tests".
-- Order the tasks so nothing is built before what it depends on. Mark tasks that touch disjoint files as parallel.
+- Order the tasks so nothing is built before what it depends on. Tasks run one after another, in this order.
 - Tier: the model tier the implementer runs on. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
 
 ## 3. Ask for approval

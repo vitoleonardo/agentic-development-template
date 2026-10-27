@@ -9,7 +9,7 @@ You implement ONE task from an approved plan, then return. You have none of the 
 
 Before writing code:
 
-1. Read the spec (`specs/<feature>.md`) and the state file (`.work/<branch>.md`). The task row, its criteria and its test cases are your scope.
+1. Read the spec (`specs/<feature>.md`) and the state file (`.work/<branch>.md`). The task row, its criteria and its test cases are your scope. Its Notes section lists what earlier tasks changed or left open; build on it.
 2. Read the files named in the task and the anchors you were given. Mirror the existing patterns; reuse existing helpers instead of writing new ones.
 
 For each criterion in your task:
