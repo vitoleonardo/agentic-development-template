@@ -56,7 +56,7 @@ Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case m
 
 Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`, and add the line from `.claude/bin/usage line` (tokens per tier, review rounds, escalations). The description is a file in `.work/`, so write it without asking; it changes no commit. Run `.claude/bin/runs record`; when run records are on (`KIT_IMPROVE` in `.claude/kit.conf`), it writes `reports/runs/<branch>.tsv` for `/improve-kit`; commit that file. When they are off, it says so and writes nothing. Ask before `git push` and before creating the PR. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
 
-Finally, report the branch, the commits, the review verdict, the checks, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.
+Finally, report in at most eight lines: the branch, the commits, the review verdict, the checks, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.
 
 ## When something does not work
 

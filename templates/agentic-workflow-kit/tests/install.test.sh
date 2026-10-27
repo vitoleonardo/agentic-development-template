@@ -30,6 +30,7 @@ expect "full: settings.json registers the hooks" grep -q '"PreToolUse"' "$full/.
 expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.claude/skills/review-diff/SKILL.md"
 expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
 expect "full: plugin files not installed" test ! -e "$full/.claude/.claude-plugin" -a ! -e "$full/.claude/hooks/hooks.json"
+expect "full: core rules installed" test -f "$full/.claude/rules/output.md" -a -f "$full/.claude/rules/git.md"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
 expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
 expect "full: leadtime, route and usage installed" test -x "$full/.claude/bin/leadtime" -a -x "$full/.claude/bin/route" -a -x "$full/.claude/bin/usage" -a -x "$full/.claude/hooks/usage"

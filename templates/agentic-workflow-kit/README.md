@@ -70,7 +70,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Part | Files | What it does |
 |---|---|---|
 | Project guide | `CLAUDE.md` | Project facts, the flow above, working agreements ("ask, don't fill gaps", "stop after two failed fixes") |
-| Rules | `.claude/rules/*.md` | Architecture, testing, security, code style, git. Stack rules load only for matching files |
+| Rules | `.claude/rules/*.md` | Architecture, testing, security, code style, git, output (short answers and PRs). Stack rules load only for matching files |
 | Permissions | `.claude/settings.json` | Read-only git and the checks run without asking. Installs, pushes, CI, lockfiles, migrations and infra ask. Secrets, `rm -rf`, force push, network tools are denied |
 | Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. `record-edit` and `check-edits` run format, typecheck and related tests after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
 | Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`, `/onboard`, and the optional `/improve-kit` |
