@@ -4,7 +4,8 @@
 # uploads them, and keeps one comment on the PR with the gate table, the matrix summary and the screenshots.
 # A pull request runs only the e2e tests its change affects (see KIT_E2E_RELATED in kit.conf); after every merge the
 # "Full e2e" job runs the whole suite on the default branch, so a test the selection skipped fails there.
-# Make "Evidence" a required status check next to "Quality gates".
+# Pull requests opened by bots (Dependabot, Renovate) are skipped, and a pull request from a fork gets no comment
+# because its token cannot write one. Make "Evidence" a required status check next to "Quality gates".
 name: Evidence
 
 on:
@@ -28,7 +29,7 @@ env:
 jobs:
   evidence:
     name: Evidence
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -88,7 +89,7 @@ jobs:
             ${{ runner.temp }}/ci-evidence
 
       - name: Sticky comment
-        if: ${{ !cancelled() && steps.pack.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.pack.outcome == 'success' && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
