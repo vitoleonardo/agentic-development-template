@@ -6,6 +6,7 @@
 # The answers a user would give are scripted. bypassPermissions stands in for the user approving each command
 # (the folder is untrusted, so allow rules do not apply); the guard hook still runs. The run checks afterwards
 # that the session itself wrote nothing outside .work/ before onboard-apply.
+# shellcheck disable=SC2034 # $code is read inside the conditions that check() evaluates
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -55,7 +56,6 @@ turn "Approved. Continue with the proposal. Do not stage CI files."
 
 failed=0
 # check <description> <shell condition>; conditions read $code, $changed and $outside set below.
-# shellcheck disable=SC2034
 check() { if eval "$2"; then echo "ok:   $1"; else echo "FAIL: $1"; failed=$((failed + 1)); fi; }
 
 # Before apply: the session wrote only under .work/ (ONBOARD-AC1).

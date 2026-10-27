@@ -16,7 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MAX_CHANGED_LINES: "400" # above this the PR gets a warning to split it
   NO_COLOR: "1"
   KIT_BASE: origin/${{ github.base_ref }}
 
@@ -44,6 +43,8 @@ jobs:
           changed=$(git diff --numstat "$BASE_REF...HEAD" -- . \
             ':(exclude,glob)**/uv.lock' ':(exclude,glob)**/*.snap' |
             awk '{ total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
+          # KIT_MAX_CHANGED_LINES in .claude/kit.conf; above it the PR gets a warning to split it.
+          MAX_CHANGED_LINES=$(sh -c '. ./.claude/kit.conf; echo "${KIT_MAX_CHANGED_LINES:-400}"')
           echo "Changed lines (without lockfiles and snapshots): $changed" >>"$GITHUB_STEP_SUMMARY"
           if [ "$changed" -gt "$MAX_CHANGED_LINES" ]; then
             echo "::warning title=Large pull request::$changed changed lines (limit $MAX_CHANGED_LINES). Consider splitting it into smaller pull requests; small diffs get better reviews."

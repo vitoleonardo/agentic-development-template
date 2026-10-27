@@ -31,6 +31,7 @@ expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.c
 expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
 expect "full: plugin files not installed" test ! -e "$full/.claude/.claude-plugin" -a ! -e "$full/.claude/hooks/hooks.json"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
+expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
 expect "full: adapter helpers and the onboarding tools installed" test -f "$full/.claude/bin/coverage-files.mjs" -a -x "$full/.claude/bin/baseline" -a -x "$full/.claude/bin/onboard-apply" -a -f "$full/.claude/skills/onboard/SKILL.md"
 python=$(mktemp -d)
 "$here/install.sh" "$python" --adapter python >/dev/null || echo "FAIL: python install exited $?"
