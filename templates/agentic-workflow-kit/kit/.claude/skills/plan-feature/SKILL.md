@@ -31,6 +31,7 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 - States and errors: <loading, empty, failure; what the user sees in each>
 - Decisions: <choice, the alternatives considered, and why>
 - Reused: <existing modules and patterns this builds on, with path:line>
+- Approved dependencies: <none, or the new packages the user approved, comma-separated; verify fails on any other>
 
 ## Tasks
 | # | Task | Files | Criteria | Test cases | Depends on |
