@@ -13,7 +13,7 @@ Claude Code writes code fast, but out of the box nothing makes it write down wha
 | Tests come last, if at all | Each criterion gets a test that fails first; the red and the green run are recorded |
 | "Done, all tests pass" without a test run | Hooks format, typecheck and run the related tests after every batch of edits, and the turn does not end quietly while they are red |
 | The author reviews its own work | A read-only reviewer in a fresh context checks the diff against every criterion |
-| `cat .env`, `rm -rf`, `git push --force` are one approval click away | Denied by permissions, and a guard hook catches what the deny list misses (`sh -c '...'`, `/usr/bin/env`, `git -C x push -f`) |
+| `cat .env`, `rm -rf`, `git push --force` are one approval click away | Denied by permissions, and a guard hook catches what the deny list misses (`sh -c '...'`, `/usr/bin/env`, `git -C x push -f`). Licence-restricted folders are closed by the sandbox |
 | CI checks whatever someone remembered to configure | Spec lint, typecheck, lint, tests, coverage of the changed files, build, and a warning above 400 changed lines |
 
 ## Install in 60 seconds
@@ -33,7 +33,11 @@ The installer never overwrites a file that is already in your project; it lists 
 3. Start `claude` in the project and accept the trust prompt. Until then Claude Code ignores the project's hooks and allow rules.
 4. Make the `quality-gates` workflow a required status check.
 
-Projects in another language: install without `--adapter` and fill in the commands in `.claude/kit.conf`. See [docs/customizing.md](docs/customizing.md#add-an-adapter).
+Adapters: `typescript` and `python`. Projects in another language: install without `--adapter` and fill in the commands in `.claude/kit.conf`. See [docs/customizing.md](docs/customizing.md#add-an-adapter).
+
+### Existing repositories
+
+Install without an adapter (`./install.sh ~/code/legacy-app`), start `claude` there and run `/onboard`. It scans the repository, records a baseline of its checks in `.claude/baseline.tsv`, and proposes the stack config (one per package in a monorepo), the project facts, rules from the repository's own conventions, and protected paths. It writes nothing outside `.work/onboard/` until you approve; then `.claude/bin/onboard-apply` puts the files in place. From then on, tests that already failed are reported as legacy and do not block a pull request; new failures always do. See [docs/customizing.md](docs/customizing.md#onboard-an-existing-repository).
 
 ### As a plugin
 
@@ -69,15 +73,16 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Rules | `.claude/rules/*.md` | Architecture, testing, security, code style, git. Stack rules load only for matching files |
 | Permissions | `.claude/settings.json` | Read-only git and the checks run without asking. Installs, pushes, CI, lockfiles, migrations and infra ask. Secrets, `rm -rf`, force push, network tools are denied |
 | Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. `record-edit` and `check-edits` run format, typecheck and related tests after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
-| Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description` |
+| Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`, `/onboard` |
 | Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
-| Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build. The adapter fills in the commands |
+| Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build. The adapter fills in the commands; a package in a monorepo can have its own config |
+| Baseline | `.claude/bin/baseline`, `.claude/baseline.tsv` | `check --against-baseline` blocks only new failures: tests by ID, lint and type errors per file, coverage. `/onboard` records it for existing repositories |
 | Spec lint | `.claude/bin/spec-lint` | Hard gate for acceptance criteria: IDs, Given/when/then, one result per criterion, no vague words, required sections, no open questions once approved |
-| CI | `.github/workflows/quality-gates.yml` (TypeScript adapter) | Spec lint, typecheck, lint, tests, coverage on changed files (70%), build, diff size warning |
+| CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, diff size warning, all against the baseline |
 | MCP example | `.mcp.example.json` | GitHub (read-only tools) and a database through a read-only user. Not active until you rename it |
 | Demo | `examples/demo-app/` | A small Next.js 16 app with a spec and tests to try everything on |
 
-The kit is language-neutral at its core. Version 1 ships and tests one adapter: TypeScript, with presets for Next.js, NestJS and plain Node.
+The kit is language-neutral at its core. It ships and tests two adapters: TypeScript, with presets for Next.js, NestJS and plain Node, and Python with uv.
 
 ## Try it on the demo app
 
@@ -88,6 +93,7 @@ The kit is language-neutral at its core. Version 1 ships and tests one adapter: 
 - [Team playbook](docs/team-playbook.md): rolling the kit out to a team in one week, day by day
 - [Customizing](docs/customizing.md): rules, presets, adapters, hooks, the sandbox, MCP servers
 - [Build log](docs/build-log.md): what the kit's own tests and end-to-end runs caught while building it
+- [Specification v1.1](docs/SPEC-v1.1.md): onboarding, the evidence pack, model routing and lead time
 
 ## Limits
 

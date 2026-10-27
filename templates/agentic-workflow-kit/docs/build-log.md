@@ -2,6 +2,26 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 27.10.2026: v1.1 part A (onboarding, baseline, monorepos, Python)
+
+Spec: [SPEC-v1.1.md](SPEC-v1.1.md) section 3. New: `/onboard`, `.claude/bin/baseline`, `.claude/bin/onboard-apply`, `check --against-baseline`, nested `<package>/.claude/kit.conf`, protected paths, `adapters/python`. Tests: `tests/check.test.sh` (43 cases, also under `dash`), 27 new cases in `tests/hooks.test.sh` (93 in total), 3 in `tests/install.test.sh` (16), and the headless runner `tests/onboard/run.sh` with two fixture repos.
+
+- **The baseline gate works with the real tools, not only the fakes.** On the demo app with one assertion broken on `main`, `check --against-baseline test` passed and reported the test as "legacy, not blocking". It failed and named the test when a second test broke on the branch. The first attempt at that second break hit the same test as the legacy one and correctly passed, which made the test case wrong, not the gate. With the Python adapter, mypy and the coverage gate caught a new type error in a changed file and a coverage drop from 100 to 80 percent.
+- **"Removed by the diff" was too generous at first.** A disappeared test counted as removed if any removed line in the diff mentioned its name, and in the fixture that line came from a data file. Only removed lines of test files count now.
+- **Vitest writes no coverage when tests fail** (found in v1). With legacy failures that would have disabled the coverage gate in every brownfield repo. The TypeScript adapter now passes `--coverage.reportOnFailure`; pytest-cov reports on failure by default.
+- **One coverage gate instead of one per language.** `changed-coverage.mjs` read Istanbul only, so Python would have needed a second implementation. The gate is now in `baseline` and reads `<file> TAB <covered> TAB <total>` from a small per-adapter helper (`coverage-files.mjs`, `coverage-files.py`). The Node script is gone, and the CI workflows call `check --against-baseline` for every gate. The first run counted the kit's own helper in `.claude/bin/` as a changed source file; `.claude/` is excluded now.
+- **Error parsing needs several formats.** tsc writes `file(line,col)`, ESLint's default formatter groups errors under a file header, pyright indents its lines. The parser has a test case for each format, and a tool that exits non-zero without readable `file:line` output blocks rather than passing.
+- **Headless `/onboard` on the pnpm monorepo fixture** (Sonnet, four turns, `tests/onboard/run.sh`). Every check passed. The session wrote nothing outside `.work/` before `onboard-apply`, and nothing outside the allowed list after it (ONBOARD-AC1). The gate passed on `main` with the legacy test recorded (AC2). `ai-service/` got its own config. `AGENTS.md` stayed unchanged and `CLAUDE.md` imports it (AC5). `packages/ee` was protected by `denyRead`, deny rules and `KIT_PROTECTED_PATHS`, and the canary string in its source never appeared in the transcript (AC3). The only `ee` file the model opened was `LICENSE`.
+- **The run found two gaps in the skill.** To test the `format` command, the model ran it with `--write`, so Biome reformatted an application file. It reverted the file itself and said so. The skill now forbids running any command that writes application files and proves formatters in check mode. It also asked before running `uv sync`, which creates a gitignored `.venv`: a fair question that the scripted answers did not cover.
+- **Protected paths, as the docs describe them:**
+  - The sandbox covers Bash only, and it merges `Read` deny rules into its `denyRead`.
+  - Claude Code applies `Read` denies to Grep and Glob as "best effort".
+  - The kit's own allow rules let `git show` and `git diff` print any file.
+
+  So the guard now matches Grep and Glob, blocks commands that name a protected path, and blocks git commands that would print one unless they exclude it. The block message names the exact pathspec to add.
+- **Staging under `.work/onboard/files/` names every `.claude` folder `dot-claude`.** The docs list `.claude` as a protected directory without saying whether nested ones count, so the staged tree avoids the name. `baseline record` reads the staged configs through `KIT_CONF_ROOT` and `KIT_CONF_DIR`, and adapter helpers are reached through `$KIT_BIN`, so the baseline can be measured before anything is applied.
+- **Not done:** ONBOARD-AC1 on the real Docmost fork, because there is no clone on this machine. The fixtures stand in for it.
+
 ## 23.10.2026: release checks
 
 Sanitization checklist from the spec, run on `main` after the merge (e0398f0), including the full git history:
