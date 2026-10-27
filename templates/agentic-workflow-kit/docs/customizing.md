@@ -38,7 +38,7 @@ An adapter tells the kit how your stack typechecks, lints, tests and formats. It
 | `KIT_LINT` | `/ship-feature`, reviewer, CI | nothing |
 | `KIT_TEST` | `/ship-feature`, reviewer, CI | nothing; must fail when zero tests run |
 | `KIT_TEST_RELATED` | hooks, implementer, test-writer | the edited files; runs only the tests that cover them |
-| `KIT_COVERAGE` | CI | nothing; writes `coverage/coverage-summary.json` (Istanbul json-summary) for the changed-lines gate |
+| `KIT_COVERAGE` | CI | nothing; writes `coverage/coverage-summary.json` (Istanbul json-summary) for the changed-files coverage gate |
 | `KIT_FORMAT` | hooks | the edited files |
 | `KIT_BUILD` | `/ship-feature`, CI | nothing |
 | `KIT_SOURCE_PATTERNS` | hooks | shell patterns of files that trigger the checks, for example `*.py` |
@@ -65,7 +65,7 @@ Running the whole suite after every batch of edits is fine for small projects. F
 
 Check the adapter by hand before relying on it: `.claude/bin/check typecheck`, `.claude/bin/check test-related <a source file>`, and then a deliberate type error, which must make the first one fail.
 
-For CI, copy `adapters/typescript/.github/workflows/quality-gates.yml` and replace the setup and install steps. Spec lint, the diff-size warning and the order of the steps carry over unchanged. The changed-lines coverage script reads the Istanbul `json-summary` format that JavaScript tools write. For other languages, replace that step with your coverage tool's own diff check, for example `diff-cover` for Python.
+For CI, copy `adapters/typescript/.github/workflows/quality-gates.yml` and replace the setup and install steps. Spec lint, the diff-size warning and the order of the steps carry over unchanged. The changed-files coverage script reads the Istanbul `json-summary` format that JavaScript tools write. For other languages, replace that step with your coverage tool's own diff check, for example `diff-cover` for Python.
 
 ## Block more commands
 
