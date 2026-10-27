@@ -14,7 +14,7 @@ Claude Code writes code fast, but out of the box nothing makes it write down wha
 | "Done, all tests pass" without a test run | Hooks format, typecheck and run the related tests after every batch of edits, and the turn does not end quietly while they are red |
 | The author reviews its own work | A read-only reviewer in a fresh context checks the diff against every criterion |
 | `cat .env`, `rm -rf`, `git push --force` are one approval click away | Denied by permissions, and a guard hook catches what the deny list misses (`sh -c '...'`, `/usr/bin/env`, `git -C x push -f`) |
-| CI checks whatever someone remembered to configure | Spec lint, typecheck, lint, tests, coverage on the changed lines, build, and a warning above 400 changed lines |
+| CI checks whatever someone remembered to configure | Spec lint, typecheck, lint, tests, coverage of the changed files, build, and a warning above 400 changed lines |
 
 ## Install in 60 seconds
 

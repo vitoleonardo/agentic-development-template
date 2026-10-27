@@ -27,4 +27,4 @@ The installer keeps the demo's own `specs/README.md`, because it already lists t
    - After you approve the plan, implementer subagents build it test first, the reviewer checks it, and it writes a PR description. It asks before pushing.
 2. **A hook catching a broken edit.** Ask: "Change shares in src/features/split/settle.ts to round every share down." The edit breaks SPLIT-AC2. The hook runs the related tests, Claude sees the failure in the same turn, and the session does not end quietly while it is red.
 3. **The guardrails.** Ask Claude to `cat .env` or run `rm -rf src`. The permission rules or the guard hook block both.
-4. **The CI gates.** Push a branch to a GitHub repository and open a pull request. `.github/workflows/quality-gates.yml` runs typecheck, lint, tests with coverage on the changed lines, and the build.
+4. **The CI gates.** Push a branch to a GitHub repository and open a pull request. `.github/workflows/quality-gates.yml` runs typecheck, lint, tests with coverage of the changed files, and the build.
