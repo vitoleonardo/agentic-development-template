@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Shellcheck
-        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/lib.sh tests/*.sh tests/onboard/run.sh adapters/python/.claude/bin/pytest-related
+        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/usage kit/.claude/hooks/lib.sh tests/*.sh tests/onboard/run.sh adapters/python/.claude/bin/pytest-related
       - name: Hooks
         run: sh tests/hooks.test.sh
       - name: Spec lint
@@ -39,8 +39,10 @@ jobs:
         run: sh tests/check.test.sh
       - name: Evidence pack
         run: sh tests/evidence.test.sh
-      - name: Hooks, check and evidence under dash
-        run: dash tests/hooks.test.sh && dash tests/check.test.sh && dash tests/evidence.test.sh
+      - name: Routing and usage
+        run: sh tests/usage.test.sh
+      - name: All suites under dash
+        run: for t in hooks check evidence usage; do dash "tests/$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates
