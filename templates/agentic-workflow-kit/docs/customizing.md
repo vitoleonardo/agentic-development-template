@@ -173,6 +173,38 @@ Some things are never optional, at every level:
 - `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
 - A commit on `main` or `master` always asks.
 - Failure stops still ask: a task that fails twice, review or verify rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+
+## Run a backlog unattended
+
+`.claude/bin/autopilot` builds several approved specs one after another without you. Each feature gets fresh headless sessions, so the context never holds more than one feature:
+
+| Level | Holds | Lives for |
+|---|---|---|
+| `autopilot` (shell, no model) | the queue, branch names, results | the whole run |
+| `claude -p "/plan-feature <slug>"` | spec, code exploration, plan | planning one feature |
+| `claude -p "/ship-feature <slug>"` | spec, plan, state file | building one feature |
+| subagents | one task | one task |
+
+Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the usage record. A stopped feature resumes from them.
+
+1. Approve every spec yourself first. Their rows in `specs/README.md` must be `approved`. Autopilot does not start while a queued spec is a draft. The specs are the one thing an unattended run cannot check.
+2. Set a budget per feature: `KIT_BUDGET_TOKENS` in `kit.conf` or in the environment.
+3. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
+
+For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session and the build session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. A feature is done when its row says `in-review`. Rows already in review are skipped, so running it again resumes.
+
+**Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
+
+- an action was denied (`permission_denials`): everything in the list above stays yours
+- the stop class is `spec`, `kit`, `env` or `budget`
+- the answerer escalates
+- the cap is reached
+
+Later features wait, because they build on the stopped one. Answer with the printed `claude --resume <session id>`, then run `autopilot` again.
+
+**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<slug>-<phase>.jsonl` holds each session's full transcript. With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
+
+If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
 
 ## Block more commands

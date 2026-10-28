@@ -79,6 +79,8 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
 
 \* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself. With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
 
+To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
+
 Every step leaves a file, so a new session continues where the last one stopped. The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`. Small fixes may skip the spec, but not the test.
 
 ## What is included
