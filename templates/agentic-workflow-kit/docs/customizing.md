@@ -189,13 +189,16 @@ Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the 
 
 1. Approve every spec yourself first. Their rows in `specs/README.md` must be `approved`. Autopilot does not start while a queued spec is a draft. The specs are the one thing an unattended run cannot check.
 2. Set a budget per feature: `KIT_BUDGET_TOKENS` in `kit.conf` or in the environment.
-3. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
+3. Start `claude` interactively in the project once and accept the trust dialog. Headless sessions ignore the allowlist in `.claude/settings.json` in a folder that was never trusted, so every check is denied. Trust is per folder: a new clone or worktree needs it again. Autopilot checks this first with a one-turn haiku session and refuses to start without it.
+4. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
 
-For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session and the build session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. A feature is done when its row says `in-review`. Rows already in review are skipped, so running it again resumes.
+For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session and the build session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+
+A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-review` earlier, before the verify gates run, so that status alone does not count. Features with a PR, and rows marked `done`, are skipped, so running it again resumes. A feature that is `in-review` without a PR resumes at verify.
 
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
 
-- an action was denied (`permission_denials`): everything in the list above stays yours
+- an action was denied (`permission_denials`): everything in the list above stays yours. The stop names the denied commands.
 - the stop class is `spec`, `kit`, `env` or `budget`
 - the answerer escalates
 - the cap is reached
