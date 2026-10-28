@@ -57,7 +57,7 @@ Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still 
 Pull the kit's repository, then run `./install.sh ~/code/my-app --update`. It uses the options of the last install, saved in `.claude/kit.manifest` with a checksum of every file the kit installed:
 
 - A file the project has not changed is replaced with the kit's new version.
-- A file the project has changed and the kit has too is kept. The kit's version goes to `.work/kit-update/`, and the installer prints a `diff` command for each one to merge by hand. `/onboard` writes `settings.json`, `kit.conf` and `CLAUDE.md`, so expect those there.
+- A file the project has changed and the kit has too is kept. The kit's version goes to `.work/kit-update/`, and the installer prints a `diff` command for each one to merge by hand. `/onboard` writes `settings.json`, `kit.conf` and `CLAUDE.md`, so expect those there. The exception is the `permissions.ask` rules that the guard now decides per `KIT_APPROVAL`: they are removed from a changed `settings.json` in place, and the installer lists them.
 - A file the kit has not changed is left alone, changed or not.
 
 Projects installed before the manifest existed have no checksums yet. Their first update overwrites nothing and stages every file that differs from the kit. Commit `.claude/kit.manifest` with the update.
@@ -69,13 +69,15 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
 ```text
 /ship-feature Invite colleagues to a team by email
   1. Spec       specs/invite.md: user flow, INVITE-AC1..n, edge cases, out of scope
-                spec-lint + reviewer check it                    -> you approve
-  2. Plan       .work/<branch>.md: design, tasks, test per criterion   -> you approve
+                spec-lint + reviewer check it                    -> you approve*
+  2. Plan       .work/<branch>.md: design, tasks, test per criterion   -> you approve*
   3. Build      implementer subagents, one task each: test red, code, test green
   4. Review     read-only reviewer: verdict per criterion, findings by severity
-  5. PR         description with criteria and evidence           -> you push
+  5. PR         description with criteria and evidence           -> you push*
   6. Accept     you check it and set the status to done
 ```
+
+\* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself. With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
 
 Every step leaves a file, so a new session continues where the last one stopped. The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`. Small fixes may skip the spec, but not the test.
 

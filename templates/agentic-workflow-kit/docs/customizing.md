@@ -94,7 +94,7 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 
 1. **The sandbox** (`sandbox.enabled` and `sandbox.filesystem.denyRead` in `.claude/settings.json`) blocks the path for every process a command starts. This is the only layer that holds against any command; the others are best effort.
 2. **Deny rules** `Read(./<path>/**)` and `Edit(./<path>/**)` stop the file tools, and Claude Code applies Read denies to Grep and Glob as well.
-3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`.
+3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`. A single `git diff`, `git show` or `git log` gets the missing excludes appended by the guard. Chained ones are blocked.
 
 ## Route models by task
 
@@ -146,11 +146,40 @@ With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before t
 
 `/improve-kit` is the optional retrospective on top. It reads that report, `leadtime` when `gh` works, and `reports/improvements.md`, checks whether earlier changes moved their metric, and applies fixed rules: escalations above 25 % of tasks, no escalations over ten tasks, more than one review round in the median, the same `kit` stop twice, repeated `spec` or `plan` stops, any `env` or `budget` stop, a rising main-session share. Each rule has a minimum sample. It writes proposals to `.work/improve/<date>.md` and changes nothing until you approve; approved changes go on a `kit-improve-<date>` branch, with a test for every hook or check change, and an entry in `reports/improvements.md` naming the metric to judge them by.
 
+## Choose how often the agent asks
+
+`KIT_APPROVAL` decides which approval gates stop for you. Set it in `.claude/kit.conf`, or for one session in the environment, which wins: `KIT_APPROVAL=autonomous claude`.
+
+| Gate | What it covers | `strict` (default) | `standard` | `autonomous` |
+|---|---|---|---|---|
+| `spec` | approving the spec, and again after an amendment | ask | ask | auto |
+| `plan` | approving the plan | ask | ask | auto |
+| `split` | splitting a change past `KIT_MAX_CHANGED_LINES` into several PRs | ask | auto | auto |
+| `deps` | new dependencies, package installs, lockfiles | ask | auto | auto |
+| `config` | `.github/`, `.gitlab-ci.yml`, Dockerfiles, compose files, `migrations/`, `infra/`, `terraform/` | ask | auto | auto |
+| `commit` | `git commit` on a feature branch | ask | auto | auto |
+| `push` | `git push`, `gh pr create`, `.claude/bin/evidence push` | ask | auto | auto |
+
+`KIT_GATE_<NAME>="ask"` or `"auto"` overrides one gate, for example `KIT_APPROVAL="autonomous"` with `KIT_GATE_PUSH="ask"`. `.claude/bin/gate <name>` prints the answer; `.claude/bin/gate level` prints the level.
+
+At an `auto` gate the agent decides and writes one line under `## Decisions to review` in `.work/<branch>.md`. `/pr-description` copies that section into the PR, so the reviewer sees every decision nobody approved.
+
+The skills ask `gate` at each step. The guard applies the same gates to the commands and file edits themselves: it answers the permission check with `ask` or `allow` instead of static `permissions.ask` rules, which a hook cannot lift. It only allows a single command without a prompt. A chained command (`git add -A && git commit`) or one with command substitution goes through the normal permission check.
+
+Some things are never optional, at every level:
+
+- The guard still blocks secrets and `.env` files, protected paths, force push, `git reset --hard`, `git clean -f`, deleting branches, destructive SQL and network commands.
+- The `permissions.deny` rules still apply.
+- `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
+- A commit on `main` or `master` always asks.
+- Failure stops still ask: a task that fails twice, review or verify rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+- `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
+
 ## Block more commands
 
 Add stack-specific destructive commands to `KIT_DANGEROUS_PATTERNS`, one extended regex per line. The guard removes quotes before matching, so `sh -c 'prisma migrate reset'` is caught as well.
 
-For commands that should ask rather than be blocked, add a rule to `permissions.ask` in `.claude/settings.json`, for example `"Bash(terraform apply *)"`. Rules in `permissions.deny` beat `ask` and `allow` in every scope, so a developer cannot allow a denied command in their own settings.
+For commands that should always ask rather than be blocked, add a rule to `permissions.ask` in `.claude/settings.json`, for example `"Bash(make deploy *)"`. A settings `ask` rule holds at every `KIT_APPROVAL` level; a command that should follow the level belongs in the guard's gate mapping instead. Rules in `permissions.deny` beat `ask` and `allow` in every scope, so a developer cannot allow a denied command in their own settings.
 
 Test every new pattern in `tests/hooks.test.sh`: one command that must be blocked and one similar command that must pass.
 
@@ -160,7 +189,7 @@ The hooks are in `.claude/hooks/` and registered in `.claude/settings.json`:
 
 | Event | Script | Runs |
 |---|---|---|
-| `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it |
+| `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it, and gated commands get `ask` or `allow` per `KIT_APPROVAL` |
 | `PostToolUse` (Edit, Write) | `record-edit` | after every edit; only notes the file, because it runs in parallel |
 | `PostToolBatch` | `check-edits` | once per batch of tool calls: spec lint, format, typecheck, related tests |
 | `Stop` | `summary`, `usage` | when Claude wants to end the turn |

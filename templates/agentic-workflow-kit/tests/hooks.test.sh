@@ -36,6 +36,31 @@ expect() {
   esac
 }
 
+guard_output() {
+  printf '{"session_id":"t","tool_name":"%s","tool_input":{"%s":%s}}' "$1" "$2" "$(json_quote "$3")" |
+    "$project/.claude/hooks/guard" 2>/dev/null
+}
+
+expect_rewrite() {
+  got=$(guard_output Bash command "$1" | python3 -I -c 'import json,sys; o=json.load(sys.stdin)["hookSpecificOutput"]; print(o["permissionDecision"], o["updatedInput"]["command"])' 2>/dev/null)
+  if [ "$got" = "allow $2" ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    echo "FAIL: expected '$1' to become '$2', got '$got'"
+  fi
+}
+
+expect_gate() {
+  got=$(KIT_APPROVAL=$2 guard_output "$3" "$4" "$5" | sed -nE 's/.*"permissionDecision":"([a-z]+)".*/\1/p')
+  if [ "${got:-none}" = "$1" ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    echo "FAIL: expected $1 under KIT_APPROVAL=$2 for $3 $5, got ${got:-none}"
+  fi
+}
+
 # Destructive shell commands
 expect block Bash command "rm -rf build"
 expect block Bash command "rm -r -f build"
@@ -130,9 +155,11 @@ expect block Bash command "cat apps/server/src/ee/license.ts"
 expect block Bash command "rg secret ./packages/ee"
 expect block Bash command "find apps/server/src/ee -name '*.ts' -exec cat {} +"
 expect block Bash command "git show HEAD:packages/ee/index.ts"
-expect block Bash command "git diff main...HEAD"
-expect block Bash command "git log -p -3"
-expect block Bash command "git diff main...HEAD -- . ':(exclude)apps/server/src/ee'"
+expect_rewrite "git diff main...HEAD" "git diff main...HEAD -- . ':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"
+expect_rewrite "git log -p -3" "git log -p -3 -- . ':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"
+expect block Bash command "git log -p -3 | head -n 50"
+expect block Bash command "git -c core.pager=less show HEAD"
+expect_rewrite "git diff main...HEAD -- . ':(exclude)apps/server/src/ee'" "git diff main...HEAD -- . ':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"
 expect allow Bash command "git diff main...HEAD -- . ':(exclude)apps/server/src/ee' ':(exclude)packages/ee'"
 expect allow Bash command "git diff main...HEAD -- . :!apps/server/src/ee :!packages/ee" reviewer
 expect allow Bash command "git diff --name-only main...HEAD"
@@ -146,6 +173,72 @@ case $reason in
 esac
 mv "$project/kit.conf.orig" "$project/.claude/kit.conf"
 expect allow Bash command "git diff main...HEAD"
+
+gate_is() {
+  gate_name=$1 gate_want=$2
+  shift 2
+  got=$(env "$@" "$project/.claude/bin/gate" "$gate_name" 2>/dev/null)
+  if [ "$got" = "$gate_want" ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    echo "FAIL: gate $gate_name with $*: wanted $gate_want, got '$got'"
+  fi
+}
+gate_is push ask KIT_APPROVAL=
+gate_is push ask KIT_APPROVAL=strict
+gate_is push auto KIT_APPROVAL=standard
+gate_is plan ask KIT_APPROVAL=standard
+gate_is plan auto KIT_APPROVAL=autonomous
+gate_is push ask KIT_APPROVAL=bogus
+gate_is push ask KIT_APPROVAL=autonomous KIT_GATE_PUSH=ask
+gate_is deps auto KIT_APPROVAL=strict KIT_GATE_DEPS=auto
+cp "$project/.claude/kit.conf" "$project/kit.conf.orig"
+printf '\nKIT_APPROVAL="autonomous"\nKIT_GATE_SPEC="ask"\n' >>"$project/.claude/kit.conf"
+gate_is push auto KIT_APPROVAL=
+gate_is spec ask KIT_APPROVAL=
+gate_is push ask KIT_APPROVAL=strict
+gate_is spec auto KIT_APPROVAL= KIT_GATE_SPEC=auto
+mv "$project/kit.conf.orig" "$project/.claude/kit.conf"
+if "$project/.claude/bin/gate" merge >/dev/null 2>&1; then
+  failed=$((failed + 1)); echo "FAIL: an unknown gate should be a usage error"
+else
+  passed=$((passed + 1))
+fi
+
+expect_gate ask strict Bash command "git push origin 42-invite-users"
+expect_gate allow autonomous Bash command "git push origin 42-invite-users"
+expect_gate allow standard Bash command "gh pr create --base main --title x --body-file .work/x-pr.md"
+expect_gate allow standard Bash command ".claude/bin/evidence push"
+expect_gate ask strict Bash command "git commit -m 'Add invite form'"
+expect_gate allow autonomous Bash command "git commit -m 'Add invite form; with validation'"
+expect_gate allow autonomous Bash command "git commit -m \"\$(cat <<'EOF'
+Add invite form
+
+Co-Authored-By: x
+EOF
+)\""
+expect_gate none autonomous Bash command "git commit -m \"\$(cat <<EOF
+\$(id)
+EOF
+)\""
+expect_gate none autonomous Bash command "git commit -m \"\$(rm x)\""
+expect_gate none autonomous Bash command "git add -A && git commit -m wip"
+expect_gate ask strict Bash command "git add -A && git commit -m wip"
+expect_gate ask strict Bash command "npm install pdf-lib"
+expect_gate allow standard Bash command "pnpm add pdf-lib"
+expect_gate none autonomous Bash command "npm test"
+expect_gate ask strict Edit file_path "$project/apps/web/package-lock.json"
+expect_gate allow autonomous Write file_path "$project/.github/workflows/ci.yml"
+expect_gate ask strict Edit file_path "$project/apps/server/Dockerfile"
+expect_gate none strict Edit file_path "$project/src/app.ts"
+KIT_GATE_PUSH=ask expect_gate ask autonomous Bash command "git push"
+expect block Bash command "git push --force origin main"
+(
+  cd "$project" && git init -q -b main && KIT_APPROVAL=autonomous guard_output Bash command "git commit -m x"
+) | grep -q '"permissionDecision":"ask"' && passed=$((passed + 1)) ||
+  { failed=$((failed + 1)); echo "FAIL: a commit on main should always ask"; }
+rm -rf "$project/.git"
 
 # Packages with their own .claude/kit.conf bring their own source, test and dangerous patterns.
 mkdir -p "$project/ai-service/.claude"
@@ -225,6 +318,24 @@ case $out in
   *systemMessage*'typecheck pass (2 runs)'*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: summary should re-run a red check and not block once it passes: $out" ;;
 esac
+
+(
+  cd "$project" || exit 1
+  git init -q -b main
+  printf 'x' >src/old.ts
+  git add -A && git -c user.name=t -c user.email=t@example.invalid commit -qm base
+  printf 'KIT_SOURCE_PATTERNS="*.ts"\nKIT_TYPECHECK="printf '"'"'src/old.ts:1:1: error TS1: legacy\\n'"'"'; exit 1"\n' >.claude/kit.conf
+  printf 'typecheck\t.\tsrc/old.ts\t1\n' >.claude/baseline.tsv
+  printf '{"session_id":"b1","tool_name":"Edit","tool_input":{"file_path":"%s/src/a b.ts"}}' "$project" | .claude/hooks/record-edit
+  printf '{"session_id":"b1"}' | KIT_BASE=main .claude/hooks/check-edits
+  printf '{"session_id":"b1","stop_hook_active":false}' | KIT_BASE=main .claude/hooks/summary
+) >"$project/baseline.out" 2>&1
+case $(cat "$project/baseline.out") in
+  *'"decision":"block"'* | *'typecheck failed'* | *'typecheck fail'*) failed=$((failed + 1)); echo "FAIL: a known baseline typecheck error should not block: $(cat "$project/baseline.out")" ;;
+  *'typecheck pass'*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: summary should report typecheck pass against the baseline: $(cat "$project/baseline.out")" ;;
+esac
+rm -rf "$project/.git" "$project/.claude/baseline.tsv" "$project/src/old.ts" "$project/baseline.out" "$project/.work/session-b1."*
 
 # A spec edit runs spec-lint and reports its findings to Claude.
 printf '# X\n\nID prefix: X\n\n## Acceptance criteria\n- **X-AC1**: it works fast\n' >"$project/specs/x.md"

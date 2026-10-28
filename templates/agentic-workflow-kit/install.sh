@@ -81,6 +81,67 @@ strip_hooks() {
   ' "$1"
 }
 
+gate_ask_rules='Bash(npm install *)
+Bash(npm i *)
+Bash(npm ci *)
+Bash(npm uninstall *)
+Bash(npm update *)
+Bash(pnpm install *)
+Bash(pnpm i *)
+Bash(pnpm add *)
+Bash(pnpm remove *)
+Bash(pnpm update *)
+Bash(pnpm up *)
+Bash(yarn add *)
+Bash(yarn remove *)
+Bash(yarn install *)
+Bash(bun add *)
+Bash(bun install *)
+Bash(pip install *)
+Bash(uv add *)
+Bash(uv pip *)
+Bash(poetry add *)
+Bash(cargo add *)
+Bash(go get *)
+Bash(bundle add *)
+Bash(composer require *)
+Bash(dotnet add *)
+Bash(git push *)
+Bash(gh pr create *)
+Edit(.github/**)
+Edit(.gitlab-ci.yml)
+Edit(package-lock.json)
+Edit(pnpm-lock.yaml)
+Edit(yarn.lock)
+Edit(bun.lock)
+Edit(poetry.lock)
+Edit(uv.lock)
+Edit(Cargo.lock)
+Edit(go.sum)
+Edit(Gemfile.lock)
+Edit(composer.lock)
+Edit(migrations/**)
+Edit(Dockerfile*)
+Edit(docker-compose*)
+Edit(compose.yaml)
+Edit(compose.yml)
+Edit(infra/**)
+Edit(terraform/**)'
+retire_ask_rules() {
+  RULES=$gate_ask_rules awk '
+    BEGIN { n = split(ENVIRON["RULES"], r, "\n"); for (i = 1; i <= n; i++) retired["\"" r[i] "\""] = 1 }
+    {
+      entry = $0
+      sub(/^[[:space:]]+/, "", entry); sub(/,?[[:space:]]*$/, "", entry)
+      if (entry in retired) { print entry > "/dev/stderr"; next }
+      if ($0 ~ /^[[:space:]]*[]}]/ && have) sub(/,[[:space:]]*$/, "", prev)
+      if (have) print prev
+      prev = $0; have = 1
+    }
+    END { if (have) print prev }
+  ' "$1" >"$scratch/retired-settings" 2>"$scratch/retired-rules" && cat "$scratch/retired-settings" >"$1"
+}
+
 render() {
   case $2 in
     # Skills name the plugin's agents (agentic-workflow-kit:reviewer); in the project they are plain names.
@@ -104,6 +165,7 @@ copy() {
     base=$(awk -F'\t' -v path="$2" '$2 == path { print $1 }' "$old_manifest")
     { [ "$current" = "$new" ] || [ "$base" = "$new" ]; } && return 0
     if [ "$current" != "$base" ]; then
+      [ "$2" = .claude/settings.json ] && retire_ask_rules "$dest"
       mkdir -p "$(dirname -- "$staging/$2")"
       cp "$rendered" "$staging/$2"
       printf '%s\n' "$2" >>"$staged"
@@ -162,6 +224,11 @@ if [ "$update" -eq 1 ]; then
     echo
     echo "Changed in the project and in the kit. The kit's version is in .work/kit-update/; merge it by hand:"
     sed 's|.*|  diff .work/kit-update/& &|' "$staged"
+  fi
+  if [ -s "$scratch/retired-rules" ]; then
+    echo
+    echo "Removed from .claude/settings.json; the guard asks for these now, per KIT_APPROVAL (.claude/bin/gate):"
+    tr '\n' ' ' <"$scratch/retired-rules" | fold -s -w 110 | sed 's/^/  /'; echo
   fi
   echo
   echo "Review the changes with git diff and commit them with .claude/kit.manifest."
