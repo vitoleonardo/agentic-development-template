@@ -205,7 +205,7 @@ A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-r
 
 Later features wait, because they build on the stopped one. Answer with the printed `claude --resume <session id>`, then run `autopilot` again.
 
-**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<slug>-<phase>.jsonl` holds each session's full transcript. With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
+**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript. With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
 
 If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.

@@ -24,7 +24,8 @@ max_answers=${AUTOPILOT_MAX_ANSWERS:-2}
 answerable_classes="question plan tier test"
 log_dir=.work/autopilot
 mkdir -p "$log_dir"
-run_log=$log_dir/run-$(date +%Y%m%d-%H%M%S).md
+run_id=$(date +%Y%m%d-%H%M%S)
+run_log=$log_dir/run-$run_id.md
 
 spec_file_of_row='function spec_file(f) { gsub(/[ `]/, "", f); sub(/^\[/, "", f); sub(/\].*$/, "", f); sub(/^(\.\/)?(specs\/)?/, "", f); return f }'
 
@@ -106,7 +107,7 @@ run_claude() {
 
 ask_answerer() {
   _question=$1
-  _transcript=$log_dir/$slug-answer-$answers.jsonl
+  _transcript=$log_dir/$run_id-$slug-answer-$answers.jsonl
   KIT_BASE=$base claude -p "You answer one question for the product owner of this project, who is away. \
 The source of truth is the approved spec specs/$slug.md; the work so far is in .work/$branch.md. \
 Read both, and the code if needed. Answer only what the spec settles or clearly implies; never widen or narrow its scope, \
@@ -120,12 +121,12 @@ never approve skipping a test, a check or a security rule. Reply with exactly on
 run_phase() {
   _phase=$1 _prompt=$2
   _stops_before=$(section_rows ".work/$branch.md" Stops)
-  run_claude "$log_dir/$slug-$_phase.jsonl" "$_prompt"
+  run_claude "$log_dir/$run_id-$slug-$_phase.jsonl" "$_prompt"
   while :; do
     session=$(json_string "$result_line" session_id)
     [ -n "$session" ] && case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
     phase_done "$_phase" && return 0
-    [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $log_dir/$slug-$_phase.jsonl"
+    [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $log_dir/$run_id-$slug-$_phase.jsonl"
     _question=$(json_string "$result_line" result)
     if printf '%s' "$result_line" | grep -Eq '"permission_denials"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
       halt permission "denied: $(denied_commands); the session said: $_question"
@@ -144,7 +145,7 @@ run_phase() {
     esac
     log "- $slug, $_phase, answer $answers: Q: $_question A: ${_reply#ANSWER: }"
     _stops_before=$(section_rows ".work/$branch.md" Stops)
-    run_claude "$log_dir/$slug-$_phase-$answers.jsonl" --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
+    run_claude "$log_dir/$run_id-$slug-$_phase-$answers.jsonl" --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
 Log it under Decisions to review as 'answered-by-autopilot | <the question> | <the answer>' and continue."
   done
 }

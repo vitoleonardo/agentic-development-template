@@ -123,10 +123,19 @@ same "$(git merge-base alpha beta)" "$(git rev-parse alpha)" "beta branches from
 log=$(cat .work/autopilot/run-*.md)
 contains "$log" "| alpha | alpha | in-review | https://example.invalid/pull/alpha;" "the run log has a row per feature with its PR"
 contains "$log" "s1 s2" "the run log keeps the session ids"
+same "$(ls .work/autopilot/*-alpha-plan.jsonl | wc -l | tr -d ' ')" 1 "each session keeps its transcript"
 
 autopilot
 same "$?" 0 "a second run succeeds"
 same "$(calls | wc -l | tr -d ' ')" 4 "features in review are skipped"
+setup alpha:planned
+script 'RESULT="Which one?"' 'RESULT="ESCALATE: unclear"'
+autopilot
+sleep 1
+script 'RESULT="Which one?"' 'RESULT="ESCALATE: unclear"'
+rm -f "$fake/n"
+autopilot
+same "$(ls .work/autopilot/*-alpha-build.jsonl | wc -l | tr -d ' ')" 2 "a second run keeps the first run's transcripts"
 
 setup alpha:planned beta:approved
 script 'set_status alpha in-review; RESULT="Gate duplicates failed; install jscpd?"' 'RESULT="ESCALATE: a new dependency needs a human."'
