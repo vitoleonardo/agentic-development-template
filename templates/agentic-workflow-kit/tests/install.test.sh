@@ -95,6 +95,28 @@ expect "update: a second update stages nothing" test ! -e "$full/.work/kit-updat
 expect "update: --force and --update together are refused" sh -c "! '$here/install.sh' '$full' --force --update"
 rm -rf "$newer"
 
+older=$(mktemp -d)
+cp -R "$here/." "$older"
+awk '
+  { print }
+  /^    "ask": \[$/ { print "      \"Bash(npm install *)\","; print "      \"Bash(git push *)\"," }
+' "$here/kit/.claude/settings.json" | awk '
+  $0 == "      \"Edit(.claude/rules/**)\"" { print $0 ","; print "      \"Edit(terraform/**)\""; next }
+  { print }
+' >"$older/kit/.claude/settings.json"
+retire=$(mktemp -d)
+"$older/install.sh" "$retire" >/dev/null
+awk '{ print } $0 == "      \"Bash(gh pr merge *)\"," { print "      \"Bash(make deploy *)\"," }' "$retire/.claude/settings.json" >"$retire/settings.tmp"
+mv "$retire/settings.tmp" "$retire/.claude/settings.json"
+out=$("$here/install.sh" "$retire" --update 2>&1)
+expect "update: the retired ask rules are removed from a changed settings.json" sh -c "! grep -qF -e '\"Bash(npm install *)\"' -e '\"Bash(git push *)\"' -e '\"Edit(terraform/**)\"' '$retire/.claude/settings.json'"
+expect "update: local rules in settings.json stay" grep -qF '"Bash(make deploy *)",' "$retire/.claude/settings.json"
+expect "update: the removed rules are listed" sh -c "printf '%s\n' \"\$1\" | grep -qF '\"Bash(git push *)\"'" _ "$out"
+if command -v node >/dev/null 2>&1; then
+  expect "update: settings.json stays valid JSON after removing the last ask entry" node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$retire/.claude/settings.json"
+fi
+rm -rf "$older" "$retire"
+
 # A project installed before the manifest existed: nothing is overwritten, differing files are staged.
 legacy=$(mktemp -d)
 "$here/install.sh" "$legacy" >/dev/null
