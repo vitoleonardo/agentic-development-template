@@ -94,7 +94,7 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 
 1. **The sandbox** (`sandbox.enabled` and `sandbox.filesystem.denyRead` in `.claude/settings.json`) blocks the path for every process a command starts. This is the only layer that holds against any command; the others are best effort.
 2. **Deny rules** `Read(./<path>/**)` and `Edit(./<path>/**)` stop the file tools, and Claude Code applies Read denies to Grep and Glob as well.
-3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`.
+3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`. A single `git diff`, `git show` or `git log` gets the missing excludes appended by the guard. Chained ones are blocked.
 
 ## Route models by task
 

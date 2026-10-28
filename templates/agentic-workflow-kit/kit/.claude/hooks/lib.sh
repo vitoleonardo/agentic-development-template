@@ -62,3 +62,11 @@ relative_path() {
     *) printf '%s' "$1" ;;
   esac
 }
+
+kit_check() {
+  if [ "$1" = typecheck ] && [ -f .claude/baseline.tsv ]; then
+    .claude/bin/check --against-baseline typecheck
+  else
+    .claude/bin/check "$@"
+  fi
+}

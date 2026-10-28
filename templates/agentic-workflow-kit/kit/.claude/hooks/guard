@@ -149,6 +149,15 @@ if [ -n "$protected" ]; then
       if (sub_ == "grep" || (sub_ == "stash" && rest ~ /^ show/)) exit 0
       exit 1
     }'; then
+    if runs_one_command && printf '%s' "$cmd" | grep -Eq '^[[:space:]]*git[[:space:]]+(diff|show|log)([[:space:]]|$)'; then
+      case " $cmd " in
+        *" -- "*) rewritten="$cmd$missing" ;;
+        *) rewritten="$cmd -- .$missing" ;;
+      esac
+      printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"%s","updatedInput":{"command":"%s"}}}\n' \
+        "$(printf 'Added the exclude pathspec for KIT_PROTECTED_PATHS:%s' "$missing" | json_escape)" "$(printf '%s' "$rewritten" | json_escape)"
+      exit 0
+    fi
     block "git would print protected files. Add the pathspec -- .$missing to the command."
   fi
 fi
