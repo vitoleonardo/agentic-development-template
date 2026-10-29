@@ -38,8 +38,8 @@ Everything the build needs is now in files. If the plan gate asked, suggest that
 
 For each task in the plan's order:
 
-1. Dispatch the `implementer` subagent on the task's tier. Give it the spec path, the state file path (its Notes section holds what earlier tasks left for later ones), the task row, its criteria, the test cases and the `path:line` anchors from planning. It shares none of your context, so be complete. One task at a time: implementers share the working tree and the edit hooks, so a second one would typecheck the first one's half-finished edits.
-2. Check what it returns. Every criterion needs a red run and a green run. Run `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` yourself. Do not take its word for it.
+1. Dispatch the `implementer` subagent on the task's tier. Give it the spec path, the state file path (its Notes section holds what earlier tasks left for later ones), the task row, its criteria, the test cases and the `path:line` anchors from planning. For a task that changes UI, tell it to check its screenshots (its agent file says how). It shares none of your context, so be complete. One task at a time: implementers share the working tree and the edit hooks, so a second one would typecheck the first one's half-finished edits.
+2. Check what it returns. Every criterion needs a red run and a green run. Run `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` yourself. A UI task returns a screenshot folder; open two of its images yourself. Do not take its word for it.
 3. Update the state file: tick the task in Progress, add the evidence to the Verify log, and add one or two lines to Notes: its deviations, open issues, and any new helper or interface a later task needs (`path:line`).
 4. Commit the task (one logical change per commit, gate: commit), so every finished task is a safe point to stop.
 
@@ -51,7 +51,7 @@ Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep thei
 
 ## 5. Independent review
 
-Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
+Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. If the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff. Wording, a missing item, and layout that hides content are found here, not at verify. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
 
 ## 6. Verify
 
