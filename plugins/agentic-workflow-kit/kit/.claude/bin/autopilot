@@ -21,6 +21,11 @@ fi
 KIT_BUDGET_TOKENS=${budget_from_environment:-${KIT_BUDGET_TOKENS:-}}
 
 max_answers=${AUTOPILOT_MAX_ANSWERS:-2}
+max_session_seconds=${AUTOPILOT_MAX_SESSION_SECONDS:-14400}
+max_idle_seconds=${AUTOPILOT_MAX_IDLE_SECONDS:-1200}
+max_identical_calls=${AUTOPILOT_MAX_IDENTICAL_CALLS:-6}
+max_waits=${AUTOPILOT_MAX_WAITS:-3}
+poll_seconds=${AUTOPILOT_POLL_SECONDS:-60}
 answerable_classes="question plan tier test"
 log_dir=.work/autopilot
 mkdir -p "$log_dir"
@@ -71,7 +76,7 @@ json_string() {
 }
 
 denied_commands() {
-  printf '%s' "$result_line" | sed 's/.*"permission_denials"//' |
+  printf '%s' "$denials" | sed 's/.*"permission_denials"//' |
     grep -oE '"(command|file_path)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -n 5 |
     sed -E 's/^"[a-z_]+"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/ /g' | cut -c 1-100 | tr '\n' ';' | sed 's/;$//; s/;/; /g'
 }
@@ -95,14 +100,96 @@ session_ids() { printf '%s' "${sessions:-–}"; }
 
 unattended_tools="Bash(.claude/bin/*),Bash(./.claude/bin/*),Bash($root/.claude/bin/*),Bash(git checkout *),Bash(git switch *),Bash(git restore *),Bash(git stash *),Bash(git commit *),Bash(git push *),Bash(gh pr create *),Bash(gh pr view *)"
 
+# repeated_call <transcript>: names the tool call one agent made max_identical_calls times in a row, if any.
+repeated_call() {
+  awk -v max="$max_identical_calls" '
+    /"type":"assistant"/ && /"type":"tool_use"/ {
+      agent = "main"
+      if (match($0, /"parent_tool_use_id":"[^"]*"/)) agent = substr($0, RSTART, RLENGTH)
+      call = $0
+      sub(/.*"content":\[/, "", call); sub(/\],"(container|stop_reason)".*/, "", call); gsub(/"id":"[^"]*"/, "", call)
+      count[agent] = (call == last[agent]) ? count[agent] + 1 : 1
+      last[agent] = call
+      if (count[agent] >= max) {
+        name = call; sub(/.*"name":"/, "", name); sub(/".*/, "", name)
+        print "the same tool call " count[agent] " times in a row: " name
+        exit
+      }
+    }' "$1"
+}
+
+# watch <pid> <transcript>: waits for the session and stops it when it runs too long, writes nothing for too long
+# or repeats one tool call; the reason goes into $watchdog.
+watch() {
+  _started=$(date +%s) _size=-1 _quiet_since=$(date +%s)
+  while kill -0 "$1" 2>/dev/null; do
+    sleep "$poll_seconds"
+    _now=$(date +%s)
+    _new_size=$(wc -c <"$2" | tr -d ' ')
+    [ "$_new_size" = "$_size" ] || { _size=$_new_size; _quiet_since=$_now; }
+    if [ $((_now - _started)) -gt "$max_session_seconds" ]; then _reason="ran longer than $max_session_seconds s"
+    elif [ $((_now - _quiet_since)) -ge "$max_idle_seconds" ]; then _reason="no output for $max_idle_seconds s"
+    else _reason=$(repeated_call "$2")
+    fi
+    if [ -n "$_reason" ]; then
+      kill "$1" 2>/dev/null
+      wait "$1" 2>/dev/null
+      watchdog="watchdog: $_reason"
+      return
+    fi
+  done
+  wait "$1"
+}
+
+# record_session <transcript> <seconds> <ended by>: one row in sessions.tsv. A session writes one result line per
+# segment (it resumes after background tasks): num_turns counts the segment, total_cost_usd the whole session.
+record_session() {
+  [ -f "$log_dir/sessions.tsv" ] ||
+    printf 'date\tfeature\tphase\ttranscript\tminutes\tturns\tcost_usd\tresult lines\tended by\n' >"$log_dir/sessions.tsv"
+  _metrics=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$1" | awk '
+    { n++
+      if (match($0, /"num_turns":[0-9]+/)) turns += substr($0, RSTART + 12, RLENGTH - 12)
+      if (match($0, /"total_cost_usd":[0-9.eE+-]+/)) cost = substr($0, RSTART + 17, RLENGTH - 17) }
+    END { printf "%d\t%s\t%d", turns, (cost == "" ? "–" : cost), n }')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%d.%m.%Y %H:%M')" "$slug" "$_phase" "${1##*/}" "$((($2 + 59) / 60))" \
+    "$_metrics" "$3" >>"$log_dir/sessions.tsv"
+}
+
+# usage_limit_reset <transcript>: the epoch second the usage limit resets, when the last rate limit event rejected
+# the session (its own status, not the overage or one window's).
+usage_limit_reset() {
+  grep '"rate_limit_event"' "$1" | tail -n 1 | awk '
+    match($0, /"rate_limit_info":\{"status":"rejected"/) {
+      rest = substr($0, RSTART + RLENGTH)
+      if (match(rest, /"resetsAt":[0-9]+/)) print substr(rest, RSTART + 11, RLENGTH - 11)
+    }'
+}
+
+# add_stop <trigger> <resolution>: a budget stop under Stops in the state file, for /improve-kit.
+add_stop() {
+  _state=.work/$branch.md
+  _line="- autopilot $_phase session | budget | $1 | stopped the session | $2"
+  [ -f "$_state" ] || printf '## Stops\n' >"$_state"
+  grep -q '^## Stops[[:space:]]*$' "$_state" || printf '\n## Stops\n' >>"$_state"
+  awk -v line="$_line" '{ print } /^## Stops[ \t]*$/ { print line }' "$_state" >"$_state.new" && mv "$_state.new" "$_state"
+}
+
 run_claude() {
   _transcript=$1
   shift
+  watchdog="" limit_reset=""
+  _session_started=$(date +%s)
   KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS \
     claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
     --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
-    >"$_transcript" 2>&1
+    >"$_transcript" 2>&1 &
+  watch $! "$_transcript"
+  limit_reset=$(usage_limit_reset "$_transcript")
+  _ended_by=${watchdog:-ended}
+  [ -z "$limit_reset" ] || _ended_by="usage limit"
+  record_session "$_transcript" $(($(date +%s) - _session_started)) "$_ended_by"
   result_line=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)
+  denials=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | grep -E '"permission_denials"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{' | tail -n 1)
 }
 
 ask_answerer() {
@@ -119,16 +206,38 @@ never approve skipping a test, a check or a security rule. Reply with exactly on
 }
 
 run_phase() {
-  _phase=$1 _prompt=$2
+  _phase=$1 _prompt=$2 _restarts=0 _waits=0
   _stops_before=$(section_rows ".work/$branch.md" Stops)
   run_claude "$log_dir/$run_id-$slug-$_phase.jsonl" "$_prompt"
   while :; do
     session=$(json_string "$result_line" session_id)
     [ -n "$session" ] && case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
     phase_done "$_phase" && return 0
+    if [ -n "$watchdog" ]; then
+      if [ "$_restarts" -ge 1 ]; then
+        add_stop "$watchdog" "halted the run"
+        halt budget "$watchdog, a second time in the $_phase session; see $_transcript"
+      fi
+      _restarts=$((_restarts + 1))
+      add_stop "$watchdog" "started a fresh session"
+      log "- $slug, $_phase: $watchdog; started a fresh session, which resumes from .work/$branch.md"
+      _stops_before=$(section_rows ".work/$branch.md" Stops)
+      run_claude "$log_dir/$run_id-$slug-$_phase-restart-$_restarts.jsonl" "$_prompt"
+      continue
+    fi
+    if [ -n "$limit_reset" ]; then
+      [ "$_waits" -lt "$max_waits" ] || halt budget "the usage limit stopped the $_phase session $max_waits times"
+      _waits=$((_waits + 1))
+      _until=$(date -d "@$limit_reset" '+%d.%m.%Y %H:%M' 2>/dev/null || date -r "$limit_reset" '+%d.%m.%Y %H:%M')
+      log "- $slug, $_phase: waits for the usage limit to reset at $_until"
+      _remaining=$((limit_reset + 120 - $(date +%s)))
+      [ "$_remaining" -le 0 ] || sleep "$_remaining"
+      run_claude "$log_dir/$run_id-$slug-$_phase-wait-$_waits.jsonl" "$_prompt"
+      continue
+    fi
     [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $log_dir/$run_id-$slug-$_phase.jsonl"
     _question=$(json_string "$result_line" result)
-    if printf '%s' "$result_line" | grep -Eq '"permission_denials"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
+    if [ -n "$denials" ]; then
       halt permission "denied: $(denied_commands); the session said: $_question"
     fi
     _class=question
