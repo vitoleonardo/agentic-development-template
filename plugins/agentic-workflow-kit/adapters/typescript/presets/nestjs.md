@@ -42,6 +42,16 @@ Homes NestJS adds to the Map in `structure.md`.
 - Never return entities directly when they carry sensitive fields. Return a response DTO, or exclude fields with the serializer.
 - Configuration comes from `@nestjs/config` with a validation schema. Services read config through `ConfigService`, not `process.env`.
 
+## Duplicates
+
+Constructor parameter lists (`private readonly xRepo: XRepo`, `@Inject(X)`) repeat across services, processors and controllers; that is dependency injection, not shared logic. Add this to `scan` in `.claude/kit.conf`:
+
+```sh
+--ignore-pattern 'constructor\s*\((?:[^()]|\([^()]*\))*\)'
+```
+
+Measured on Docmost's `apps/server` (jscpd 5.4.2, `--ignore-identifiers`): clones containing a constructor went from 32 to 11, all clones from 499 to 469. The rest are import blocks and class headers around the constructor. `--min-tokens 70` leaves 6 such clones but drops all clones from 499 to 185, real ones included, so prefer the pattern.
+
 ## Testing
 
 - Unit tests build the module with `Test.createTestingModule` and override external providers (database, HTTP clients, queues).

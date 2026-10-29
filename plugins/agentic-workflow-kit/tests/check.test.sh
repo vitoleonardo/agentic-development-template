@@ -291,5 +291,45 @@ rm jscpd.fail
 mv kit.conf.orig .claude/kit.conf
 expect_code 3 "duplicates without a command is not configured" .claude/bin/check duplicates
 
+# --- duplicates-new.mjs: a new clone inside a clone the base already has is legacy -----------------------
+
+# The fake jscpd writes the clones of $FAKE_HEAD (a run with --baseline-from-ref) or $FAKE_BASE (the base scan)
+# as a jscpd 5 JSON report into --output, and logs where it ran.
+cat >bin/jscpd-json <<'EOF'
+#!/bin/sh
+out="" mode=base
+while [ $# -gt 0 ]; do
+  case $1 in --output) out=$2; shift ;; --baseline-from-ref) mode=head; shift ;; esac
+  shift
+done
+echo "$mode $PWD" >>"$JSCPD_LOG"
+mkdir -p "$out"
+if [ "$mode" = head ]; then cp "$FAKE_HEAD" "$out/jscpd-report.json"; else cp "$FAKE_BASE" "$out/jscpd-report.json"; fi
+EOF
+chmod +x bin/jscpd-json
+# clone <first> <second> <fragment> <isNew>: one jscpd 5 duplicate.
+clone() {
+  printf '{"firstFile": {"name": "%s", "start": 1, "end": 9}, "secondFile": {"name": "%s", "start": 3, "end": 11}, "fragment": "%s", "isNew": %s, "tokens": 60}' "$1" "$2" "$3" "$4"
+}
+report() { printf '{"duplicates": [%s], "statistics": {}}\n' "$1"; }
+dupnew() { KIT_BASE=main JSCPD_LOG=$project/jscpd.log FAKE_HEAD=$project/head.json FAKE_BASE=$project/base.json expect_code "$1" "$2" node "$here/adapters/typescript/.claude/bin/duplicates-new.mjs" "$project/bin/jscpd-json" . --format typescript; }
+: >jscpd.log
+report "$(clone src/x.ts src/y.ts 'let a = 1;\n  let b = 2;' false)" >head.json
+report "" >base.json
+dupnew 0 "only legacy clones pass without a base scan"
+[ "$(grep -c '^base' jscpd.log)" -eq 0 ] && ok || fail "no base scan without new clones: $(cat jscpd.log)"
+report "$(clone src/x.ts src/y.ts 'let a = 1;\n  let b = 2;' true)" >head.json
+report "$(clone src/y.ts src/x.ts 'const z = 0;\n  let a = 1;   let b = 2;\n  let c = 3;' false)" >base.json
+dupnew 0 "a new clone inside a clone the same file pair has on the base is legacy"
+expect_out "inside a clone the base already has: src/x.ts:1-9 ~ src/y.ts:3-11" "the legacy clone is named"
+grep -q "^base .*/" jscpd.log && ok || fail "the base is scanned in a worktree: $(cat jscpd.log)"
+[ -z "$(git worktree list | sed 1d)" ] && ok || fail "the base worktree is removed: $(git worktree list)"
+report "$(clone src/x.ts src/w.ts 'let a = 1;\n  let b = 2;' true)" >head.json
+dupnew 1 "a clone in a file pair the base does not have is new"
+expect_out "1 new clones" "the new clone is counted"
+expect_out "src/x.ts:1-9 ~ src/w.ts:3-11" "the new clone is named"
+report "$(clone src/x.ts src/y.ts 'const z = 0;\n  let a = 1;   let b = 2;\n  let c = 3;\n  let d = 4;' true)" >head.json
+dupnew 1 "a clone that grew past the base's clone is new"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

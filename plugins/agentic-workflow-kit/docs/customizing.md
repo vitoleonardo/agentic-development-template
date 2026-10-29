@@ -28,7 +28,7 @@ Write rules as instructions that can be checked ("amounts are integers in cents"
 
 `/onboard` writes the Map from the repository: it copies the homes the code already uses, puts the extra homes of a kind under `## Legacy` (no new files there), and keeps the kit's default where the repository has none. Add a home through a pull request, in the same change as the first file that needs it. The Python adapter ships its own map.
 
-Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out.
+Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out. In the TypeScript adapter, `KIT_DUPLICATES` runs jscpd through `duplicates-new.mjs`: jscpd matches clones by fingerprint, so editing one copy of a legacy clone splits it into pieces jscpd reports as new; a clone inside one the same file pair already has on the base counts as legacy. The NestJS preset documents an `--ignore-pattern` for constructor parameter lists.
 
 ## Add a stack preset
 
