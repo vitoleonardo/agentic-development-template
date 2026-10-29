@@ -55,7 +55,7 @@ Dispatch the `reviewer` agent with the Agent tool (description `review round <n>
 
 ## 6. Verify
 
-Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case matrix, data runs, screenshots, and the evidence pack. If verify fails, classify every failure as in "Verify failures" below and run `.claude/bin/gate round <class> <n>`, where n counts this branch's failed verify rounds of that class. `ask`: stop and ask. `auto`: fix it as the class says, log the round under Decisions to review, and verify again. Pushing the pack is gate push.
+Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. If verify fails, classify every failure as in "Verify failures" below and run `.claude/bin/gate round <class> <n>`, where n counts this branch's failed verify rounds of that class. `ask`: stop and ask. `auto`: fix it as the class says, log the round under Decisions to review, and verify again. Pushing the pack is gate push.
 
 ## 7. PR (gate: push)
 

@@ -366,6 +366,18 @@ run_step() {
   [ "$code" -eq 0 ]
 }
 
+# e2e_results: the KIT_E2E_REPORT results of this run replace the e2e rows of tests.tsv (third field "e2e"), so the
+# matrix counts cases that only an e2e test covers.
+e2e_results() {
+  [ -f "$dir/tests.tsv" ] || return 0
+  grep -v "${tab}e2e\$" "$dir/tests.tsv" >"$tmp/tests"
+  for pkg in $(packages); do
+    report=$(conf_value "$pkg" KIT_E2E_REPORT)
+    [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" | sed "s/\$/${tab}e2e/" >>"$tmp/tests"
+  done
+  cp "$tmp/tests" "$dir/tests.tsv"
+}
+
 data() {
   mkdir -p "$dir"
   : >"$dir/data-runs.tsv"
@@ -386,8 +398,15 @@ data() {
           printf 'e2e\tfail\t0\tnot run: the seed failed\n' >>"$dir/data-runs.tsv"; status=1; continue
         fi
         label=""
-        [ "$name" = e2e ] && label=$(head -n 1 "$tmp/selection")
+        if [ "$name" = e2e ]; then
+          label=$(head -n 1 "$tmp/selection")
+          for pkg in $(packages); do
+            report=$(conf_value "$pkg" KIT_E2E_REPORT)
+            [ -n "$report" ] && rm -f "$pkg/$report"
+          done
+        fi
         run_step "$name" "$cmd" "$label" || status=1
+        [ "$name" = e2e ] && e2e_results
         ;;
     esac
   done

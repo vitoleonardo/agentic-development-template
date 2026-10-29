@@ -23,7 +23,15 @@ Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs 
 
 If a gate fails, stop and classify the failure as in Rounds below. Do not fix it here.
 
-## 2. Edge-case matrix
+## 2. Data runs
+
+Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against the seeded data, and `KIT_TEST_MOCKED` with external dependencies replaced, and records the seed version and the mock set. A run that is `not configured` or `n/a` is recorded as such; say so in the report, because a reviewer must see what was not checked.
+
+The e2e run covers only the tests the change affects when `KIT_E2E_RELATED` is set: the changed e2e files and the ones that name this feature's criteria. Its row says what ran and why (`related: …`, `all: …`, or `n/a` when only tests and docs changed). Report that line as it is. Do not pass `--all` to make a selection go away; the whole suite runs in CI after the merge.
+
+With `KIT_E2E_REPORT` set, the e2e run's JUnit results go into the pack's `tests.tsv`, so the matrix can name e2e tests too.
+
+## 3. Edge-case matrix
 
 Write `.work/<branch>/evidence/edge-cases.md` with one table:
 
@@ -34,16 +42,10 @@ Write `.work/<branch>/evidence/edge-cases.md` with one table:
 ```
 
 - Rows: for each criterion, the plan's test cases plus the reviewer's checklist: errors, empty data, duplicates, double submits, missing permissions, limits, concurrent edits.
-- Test: the test's title (or the distinctive part of it) exactly as it appears in the test file. A case that cannot apply gets `n/a: <one-line reason>` in the Test cell.
+- Test: the test's title (or the distinctive part of it) exactly as it appears in the test file, a unit or an e2e test. A case that cannot apply gets `n/a: <one-line reason>` in the Test cell.
 - Leave Result empty; the script fills it in.
 
-Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, not a note. For each one, dispatch the `test-writer` (`model` from `.claude/bin/route tests`) with the criterion, the case and the files; it adds tests and does not change code. A new test that fails shows missing behaviour: that goes through the implementer and review, not here. Then run `evidence gates` and `evidence matrix` again.
-
-## 3. Data runs
-
-Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against the seeded data, and `KIT_TEST_MOCKED` with external dependencies replaced, and records the seed version and the mock set. A run that is `not configured` or `n/a` is recorded as such; say so in the report, because a reviewer must see what was not checked.
-
-The e2e run covers only the tests the change affects when `KIT_E2E_RELATED` is set: the changed e2e files and the ones that name this feature's criteria. Its row says what ran and why (`related: …`, `all: …`, or `n/a` when only tests and docs changed). Report that line as it is. Do not pass `--all` to make a selection go away; the whole suite runs in CI after the merge.
+Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, not a note. For each one, dispatch the `test-writer` (`model` from `.claude/bin/route tests`) with the criterion, the case and the files; it adds tests and does not change code. A new test that fails shows missing behaviour: that goes through the implementer and review, not here. Then run `evidence gates`, `evidence data` (if a new test is an e2e test) and `evidence matrix` again.
 
 ## 4. Screenshots
 

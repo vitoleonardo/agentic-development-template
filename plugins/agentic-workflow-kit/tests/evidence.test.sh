@@ -256,6 +256,13 @@ cat >bin/fake-e2e <<'EOF'
 #!/bin/sh
 printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
 [ -n "${BASE_HINT:-}" ] && printf 'env:%s\n' "$BASE_HINT" >>"$E2E_LOG"
+if [ -z "${KIT_SCREENSHOT_DIR:-}" ]; then
+  mkdir -p .work
+  failure=""
+  [ -n "${E2E_FAIL:-}" ] && failure='<failure message="x"/>'
+  printf '<testsuites><testcase classname="e2e/shop.spec.ts" name="SHOP-AC1: the total updates in the browser">%s</testcase></testsuites>\n' "$failure" >.work/e2e-junit.xml
+  [ -z "${E2E_FAIL:-}" ] || exit 1
+fi
 [ -n "${KIT_SCREENSHOT_DIR:-}" ] && : >"$KIT_SCREENSHOT_DIR/SHOP-AC1-1-desktop$KIT_SCREENSHOT_SUFFIX.png"
 exit 0
 EOF
@@ -264,6 +271,7 @@ cat >>.claude/kit.conf <<EOF
 KIT_E2E="'$project/bin/fake-e2e'"
 KIT_E2E_RELATED="'$project/bin/fake-e2e'"
 KIT_E2E_PATTERNS="e2e/*.spec.ts"
+KIT_E2E_REPORT=".work/e2e-junit.xml"
 KIT_E2E_FULL_PATTERNS="package.json e2e/fixtures.ts"
 KIT_TEST_PATTERNS="*.test.ts e2e/*"
 KIT_SCREENSHOTS="'$project/bin/fake-e2e' ALL-SHOTS"
@@ -320,6 +328,22 @@ expect_out "n/a: base has no NEWF" "the skipped base run says why"
 case $out in *"base run failed"*) fail "a base without the feature is not a failure: $out" ;; *) ok ;; esac
 grep -q "base: n/a: base has no NEWF" .work/sel-newfeature/evidence/screenshots.txt && ok || fail "the pack records the skipped base: $(cat .work/sel-newfeature/evidence/screenshots.txt 2>&1)"
 [ "$(grep -c . "$E2E_LOG")" -eq 1 ] && ok || fail "only the branch run ran: $(cat "$E2E_LOG")"
+
+# An e2e-only case passes or fails with the e2e run instead of being n/a.
+git checkout -q sel-feature
+.claude/bin/evidence gates >/dev/null 2>&1
+cat >.work/sel-feature/evidence/edge-cases.md <<'EOF'
+| Criterion | Case | Input | Expected | Test | Result |
+|-----------|------|-------|----------|------|--------|
+| SHOP-AC1 | in the browser | add an item | the total updates | SHOP-AC1: the total updates in the browser | |
+EOF
+expect_code 1 "before the data run, an e2e-only case has no result" .claude/bin/evidence matrix
+expect_code 0 "the data run passes" .claude/bin/evidence data
+expect_code 0 "after the data run, the e2e case passes" .claude/bin/evidence matrix
+E2E_FAIL=1 expect_code 1 "a failing e2e run fails the data run" .claude/bin/evidence data
+expect_code 1 "a failing e2e case fails the matrix" .claude/bin/evidence matrix
+expect_out "fail: fail" "the failing e2e case is reported"
+[ "$(grep -c 'the total updates in the browser' .work/sel-feature/evidence/tests.tsv)" -eq 1 ] && ok || fail "a rerun replaces the e2e rows: $(cat .work/sel-feature/evidence/tests.tsv)"
 
 branch_with sel-e2e "printf 'test(\"CART-AC2: removes the last item\", () => {});\n' >>e2e/cart.spec.ts"
 expect_out "e2e/cart.spec.ts" "a changed e2e test file runs"
