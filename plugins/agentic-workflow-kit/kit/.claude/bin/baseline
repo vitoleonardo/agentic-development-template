@@ -385,12 +385,12 @@ compare() {
   esac
   [ -f .claude/kit.conf ] || { echo "check: .claude/kit.conf is missing." >&2; exit 2; }
   [ -f "$baseline_file" ] || echo "No $baseline_file yet: every failure blocks. /onboard records one."
-  result=3
+  verdict=3
   for pkg in $(packages); do
     cmd=$(configured "$pkg" "$var")
     case $cmd in
       '') continue ;;
-      n/a:*) [ "$result" -eq 3 ] && result=4; echo "$check in $pkg: $cmd"; continue ;;
+      n/a:*) [ "$verdict" -eq 3 ] && verdict=4; echo "$check in $pkg: $cmd"; continue ;;
     esac
     case $check in
       test) compare_test "$pkg" ;;
@@ -399,13 +399,13 @@ compare() {
     esac
     code=$?
     case $code in
-      0) [ "$result" -ne 1 ] && result=0 ;;
+      0) [ "$verdict" -ne 1 ] && verdict=0 ;;
       3) ;;
-      *) result=1 ;;
+      *) verdict=1 ;;
     esac
   done
-  [ "$result" -eq 3 ] && echo "check: '$check' is not configured in any .claude/kit.conf." >&2
-  return "$result"
+  [ "$verdict" -eq 3 ] && echo "check: '$check' is not configured in any .claude/kit.conf." >&2
+  return "$verdict"
 }
 
 # --- loosened ------------------------------------------------------------------

@@ -222,6 +222,28 @@ out=$(.claude/bin/check --against-baseline coverage 2>&1)
 case $out in *tests/helper.ts*) fail "a file in a top-level tests/ folder is not a source file: $out" ;; *) ok ;; esac
 rm -r tests
 
+# --- a later package that passes keeps an earlier failure -----------------------
+
+cp packages/py/.claude/kit.conf py.conf.orig
+cat >>packages/py/.claude/kit.conf <<EOF
+KIT_TYPECHECK="true"
+KIT_COVERAGE="true"
+KIT_COVERAGE_FILES="printf 'app/new.py\t1\t1\n'"
+EOF
+printf 'x = 2\n' >packages/py/app/new.py
+printf 'src/a.ts\t5\t10\n' >root.cov
+expect_code 1 "coverage fails when an earlier package fails and a later one passes" .claude/bin/check --against-baseline coverage
+expect_out "at least 70% is required" "the failing package is reported"
+printf 'src/a.ts\t9\t10\n' >root.cov
+git checkout -q -- packages/py/app/new.py
+mv py.conf.orig packages/py/.claude/kit.conf
+cp .claude/kit.conf root.conf.orig
+printf 'src/a.ts:1:1: lint/style wrong\n' >root.lint
+printf 'KIT_LINT="cat %s; test ! -s %s"\n' "'$project/root.lint'" "'$project/root.lint'" >>.claude/kit.conf
+expect_code 1 "lint fails when an earlier package fails and a later one has only legacy errors" .claude/bin/check --against-baseline lint
+expect_out "error in a changed file: src/a.ts" "the failing package is reported"
+mv root.conf.orig .claude/kit.conf
+
 # --- loosened baselines ---------------------------------------------------------
 
 sed -e 's/ok1	pass/ok1	fail/' -e 's/^coverage	.	80$/coverage	.	70/' .claude/baseline.tsv >looser.tsv
