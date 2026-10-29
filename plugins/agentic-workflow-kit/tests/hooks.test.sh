@@ -206,6 +206,36 @@ else
   passed=$((passed + 1))
 fi
 
+# round_is <class> <n> <want> [env...]: whether verify round n, failed with this class, continues (auto) or asks.
+round_is() {
+  round_class=$1 round_n=$2 round_want=$3
+  shift 3
+  got=$(env "$@" "$project/.claude/bin/gate" round "$round_class" "$round_n" 2>/dev/null)
+  if [ "$got" = "$round_want" ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    echo "FAIL: gate round $round_class $round_n with $*: wanted $round_want, got '$got'"
+  fi
+}
+round_is spec 1 ask KIT_APPROVAL=autonomous
+round_is kit 9 auto KIT_APPROVAL=strict
+round_is test 3 auto KIT_APPROVAL=strict
+round_is test 4 ask KIT_APPROVAL=strict
+round_is hotfix 2 auto KIT_APPROVAL=standard
+round_is hotfix 3 ask KIT_APPROVAL=standard
+round_is hotfix 3 auto KIT_APPROVAL=autonomous
+round_is hotfix 3 auto KIT_APPROVAL=standard KIT_VERIFY_ROUNDS="test:1 hotfix:3"
+round_is test 2 ask KIT_APPROVAL=standard KIT_VERIFY_ROUNDS="test:1 hotfix:3"
+for bad in "round plan 1" "round test" "round test x"; do
+  # shellcheck disable=SC2086
+  if "$project/.claude/bin/gate" $bad >/dev/null 2>&1; then
+    failed=$((failed + 1)); echo "FAIL: gate $bad should be a usage error"
+  else
+    passed=$((passed + 1))
+  fi
+done
+
 expect_gate ask strict Bash command "git push origin 42-invite-users"
 expect_gate allow autonomous Bash command "git push origin 42-invite-users"
 expect_gate allow standard Bash command "gh pr create --base main --title x --body-file .work/x-pr.md"

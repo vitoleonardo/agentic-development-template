@@ -54,6 +54,9 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 ## Stops
 - <step> | <class> | <trigger> | <what was tried> | <resolution>
 
+## Rounds
+- <review|verify> <n> | <full|delta> | <commit range> | <pass, or fail: <classes>>
+
 ## Decisions to review
 - <gate> | <what was decided> | <why>
 

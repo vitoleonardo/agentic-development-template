@@ -149,7 +149,7 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 Off by default. Set `KIT_IMPROVE="1"` in `.claude/kit.conf` to turn it on.
 
-Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`. `/ship-feature` describes how each class is fixed.
+Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `hotfix`, `kit`, `env`, `budget`. Verify rounds also get a line under Rounds (`- verify <n> | full | <range> | pass` or `fail: <classes>`), which `runs report` counts per run and by cause. `/ship-feature` describes how each class is fixed.
 
 With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before the gates and commits `reports/runs/<branch>.tsv` together with the `in-review` status, so the evidence pack stays valid for that commit. The record holds: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
 
@@ -183,7 +183,8 @@ Some things are never optional, at every level:
 - The `permissions.deny` rules still apply.
 - `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
 - A commit on `main` or `master` always asks.
-- Failure stops still ask: a task that fails twice, review or verify rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+- Failure stops still ask: a task that fails twice, review rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+- Verify failures are classified by cause, and `.claude/bin/gate round <class> <n>` decides whether round n continues. `kit` (a false positive of the kit) never counts as a round. `test` (the test or its setup) and `hotfix` (a product fix that keeps the spec) continue up to `KIT_VERIFY_ROUNDS` (default `test:3 hotfix:2`), and at `autonomous` past it. `spec` always asks. The same failure coming back after two fixes stops at every level.
 
 ## Run a backlog unattended
 
@@ -210,7 +211,7 @@ A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-r
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
 
 - an action was denied (`permission_denials`): everything in the list above stays yours. The stop names the denied commands.
-- the stop class is `spec`, `kit`, `env` or `budget`
+- the stop class is `spec`, `hotfix`, `kit`, `env` or `budget`
 - the answerer escalates
 - the cap is reached
 

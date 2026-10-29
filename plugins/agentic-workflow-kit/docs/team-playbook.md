@@ -69,7 +69,7 @@ Then decide what comes next: more repositories (consider the [plugin](customizin
 - **After a break**: start a new session and say "continue". Claude reads `specs/README.md` and `.work/<branch>.md` and picks up from there.
 - **A check is red on purpose**: when a test is written to fail first, Claude records it in the state file and says so. A red check without that note is a real failure.
 - **The guard blocked something you need**: run the command yourself. If it should never have been blocked, fix the pattern and add a test.
-- **Something does not work**: Claude retries once a tier higher, then stops and asks. Every retry and stop gets a line under Stops in `.work/<branch>.md` with its cause (`spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`), and the cause decides where the fix goes (see `/ship-feature`). A `kit` stop means the kit itself got in the way: fix it in its own pull request, with a test.
+- **Something does not work**: Claude retries once a tier higher, then stops and asks. Every retry and stop gets a line under Stops in `.work/<branch>.md` with its cause (`spec`, `plan`, `tier`, `test`, `hotfix`, `kit`, `env`, `budget`), and the cause decides where the fix goes (see `/ship-feature`). A `kit` stop means the kit itself got in the way: fix it in its own pull request, with a test.
 - **The spec turns out wrong mid-build**: Claude stops and asks. Change the spec first, get it approved again, then continue. Never let the code and the spec drift apart.
 - **Never edit the rules or hooks to make a check pass.** Change them deliberately, in their own pull request.
 

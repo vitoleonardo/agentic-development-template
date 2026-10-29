@@ -53,6 +53,13 @@ cat >.work/12-export.md <<'EOF'
 - task 1 | tier | typecheck failed on standard | retry on deep | passed on deep
 - task 2 | kit | guard blocked `npm run gen` | ran it by hand | guard pattern too wide, proposed fix
 
+## Rounds
+- <review|verify> <n> | <full|delta> | <commit range> | <pass, or fail: <classes>>
+- review 1 | full | a1b2c3d..e4f5a6b | 2 high
+- verify 1 | full | a1b2c3d..e4f5a6b | fail: kit
+- verify 2 | full | a1b2c3d..f0f0f0f | fail: hotfix (screenshots)
+- verify 3 | full | a1b2c3d..0a0a0a0 | pass
+
 ## Notes
 - task 1 added src/export.ts:12
 EOF
@@ -75,6 +82,8 @@ same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}
 same "$(grep -c '^stop' "$r")" 2 "one stop row per Stops line, without the template line"
 same "$(grep '^stop' "$r" | tail -n 1)" "stop${tab}task 2${tab}kit${tab}guard blocked \`npm run gen\`${tab}ran it by hand${tab}guard pattern too wide, proposed fix" "a stop row keeps its fields"
 same "$(cat "$project/err")" "" "known classes give no warning"
+same "$(grep -c '^round' "$r")" 4 "one round row per Rounds line, without the template line"
+same "$(grep '^round' "$r" | sed -n 3p)" "round${tab}verify${tab}2${tab}full${tab}a1b2c3d..f0f0f0f${tab}fail: hotfix (screenshots)" "a round row keeps its fields"
 cp .work/12-export.md "$project/state"
 sed -i '/^- task 2 | kit/a - verify | weird | x | y | z' .work/12-export.md
 .claude/bin/runs record >/dev/null 2>"$project/err"
@@ -84,7 +93,7 @@ cp "$project/state" .work/12-export.md
 
 # --- report ---------------------------------------------------------------------
 
-printf 'run\t2026-09-01\told-a\told-a\t4\t0\t2\t3000\t0\t2400\t0\t600\nstop\ttask 3\tkit\tformat hook slow\t–\twaited\n' >reports/runs/old-a.tsv
+printf 'run\t2026-09-01\told-a\told-a\t4\t0\t2\t3000\t0\t2400\t0\t600\nstop\ttask 3\tkit\tformat hook slow\t–\twaited\nround\tverify\t1\tfull\tx..y\tpass\n' >reports/runs/old-a.tsv
 printf 'run\t2026-09-10\told-b\told-b\t0\t1\t0\t2000\t0\t1000\t0\t1000\nstop\tspec\tspec\tcriterion 4 untestable\t–\tamended\n' >reports/runs/old-b.tsv
 .claude/bin/runs report >/dev/null
 m=reports/runs.md
@@ -95,6 +104,9 @@ grep -q '| Tokens per task | 625 | 750 | 2 |' "$m" && ok || fail "tokens per tas
 grep -q '| Main-session share of tokens (%) | 40 | 50 | 3 |' "$m" && ok || fail "main-session share"
 grep -q '| kit | 2 |' "$m" && grep -q '| spec | 1 |' "$m" && grep -q '| tier | 1 |' "$m" && grep -q '| budget | 0 |' "$m" && ok || fail "stops by class"
 grep -q '^- old-a, task 3: format hook slow. Tried: –. Resolution: waited.$' "$m" && ok || fail "stops are listed with their feature"
+grep -q '| Verify rounds | 2 | 3 | 2 |' "$m" && ok || fail "verify rounds per run, only runs that record rounds: $(grep -i verify "$m")"
+grep -q 'Verify rounds: 4 in 2 runs (mean 2.0). Failed by a kit false positive: 1. Failed on the screenshot review: 1.' "$m" && ok || fail "verify rounds by cause: $(grep -i 'verify rounds:' "$m")"
+grep -q '| hotfix | 0 |' "$m" && ok || fail "hotfix is a stop class"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

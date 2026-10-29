@@ -21,7 +21,7 @@ Review finds problems in the code; verify proves the behaviour, with artefacts a
 
 Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs typecheck, lint, build, the full test suite and coverage against the baseline, the duplicates check, the structure check, the focus and skip scan, the dependency check against the plan, protected paths, the secret scan and the diff size. A gate with an empty key in `kit.conf` fails; a check the project cannot have says `n/a: <reason>` there.
 
-If a gate fails, stop. The fix goes through the `implementer` and then back to `/review-diff`. Do not fix it here.
+If a gate fails, stop and classify the failure as in Rounds below. Do not fix it here.
 
 ## 2. Edge-case matrix
 
@@ -59,6 +59,15 @@ Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `mod
 
 ## Rounds
 
-If verify fails, the fix goes implementer → review → verify. After two verify rounds that still fail, stop and ask the user. Explain what failed, what was tried, and what you think is wrong.
+Record every round under `## Rounds` in `.work/<branch>.md`: `- verify <n> | full | <merge base>..<head> | pass` or `fail: <classes>`, with `(screenshots)` when the screenshot review found it.
+
+If verify fails, classify each failure by its cause:
+
+- `kit`: a false positive of the kit (the check is wrong, not the code). Not a verify round. Fix it in the kit's narrow way or log it, as `/ship-feature` describes; never relax a threshold or a strict path.
+- `test`: the test or the test setup is wrong. The `test-writer` fixes it; the product code stays.
+- `hotfix`: the product is wrong and the spec stays as written. Implementer with a red test, then review, then verify.
+- `spec`: the criterion has to change. Always stop and ask.
+
+Then run `.claude/bin/gate round <class> <n>` (n: the failed verify rounds of that class so far). `ask`: stop and ask the user, explaining what failed, what was tried, and what you think is wrong. `auto`: continue, and log the round under Decisions to review. Stop at any level when the same failure came back after two fixes.
 
 Report faithfully: a gate that is `n/a`, a data run that is not configured, a screenshot the reviewer could not judge, or a pack that was not pushed is stated plainly.

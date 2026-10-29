@@ -12,7 +12,7 @@ You orchestrate. Subagents do the implementation in fresh contexts; you own the 
 
 ## Approval gates
 
-Run `.claude/bin/gate level` once and tell the user the level. Every gate below runs `.claude/bin/gate <name>` first. `ask`: stop and ask, as written. `auto`: decide, add one line under Decisions to review in the state file, and continue. Failure stops (retries, review and verify rounds, the budget, the `spec`, `kit` and `env` classes) ask at every level.
+Run `.claude/bin/gate level` once and tell the user the level. Every gate below runs `.claude/bin/gate <name>` first. `ask`: stop and ask, as written. `auto`: decide, add one line under Decisions to review in the state file, and continue. Failure stops (retries, review rounds, the budget, the `spec` and `env` classes) ask at every level; verify rounds ask when `.claude/bin/gate round` says so.
 
 ## 0. Resume or start
 
@@ -55,7 +55,7 @@ Dispatch the `reviewer` agent with the Agent tool (description `review round <n>
 
 ## 6. Verify
 
-Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case matrix, data runs, screenshots, and the evidence pack. If verify fails, the fix goes through the implementer and then back to step 5. After two failed verify rounds, stop and ask. Pushing the pack is gate push.
+Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case matrix, data runs, screenshots, and the evidence pack. If verify fails, classify every failure as in "Verify failures" below and run `.claude/bin/gate round <class> <n>`, where n counts this branch's failed verify rounds of that class. `ask`: stop and ask. `auto`: fix it as the class says, log the round under Decisions to review, and verify again. Pushing the pack is gate push.
 
 ## 7. PR (gate: push)
 
@@ -65,7 +65,7 @@ Finally, report in at most eight lines: the branch, the commits, the review verd
 
 ## When something does not work
 
-The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier higher, two review rounds, two verify rounds, and a stop when the same fix failed twice. Every retry and every stop, including a review round with open high findings and a failed verify round, gets one line under Stops in the state file:
+The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier higher, two review rounds, the verify rounds `gate round` allows, and a stop when the same failure came back after two fixes, at every level. Every retry and every stop, including a review round with open high findings and a failed verify round, gets one line under Stops in the state file:
 
 `- <step> | <class> | <trigger> | <what was tried> | <resolution>`
 
@@ -74,7 +74,18 @@ Pick the class by the cause, not the symptom, and fix it where it belongs:
 - `spec`: the spec is wrong, unclear or untestable. Stop and ask. Once the user has decided, amend it through `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md` (new criterion IDs or a `removed` mark, a Decisions entry, `spec-lint`, approval again), update the affected tasks, and continue.
 - `plan`: a task is too big, in the wrong order, or misses an anchor. Propose the change to the plan and continue once the user approves it.
 - `tier`: the model was too weak for the task. Retry a tier higher as in step 3.
-- `test`: a test is flaky or tests the wrong thing. Dispatch the `test-writer`; never weaken the test.
-- `kit`: a hook, the guard, a check command or a rule is wrong, too slow, or blocks something harmless. Never edit `.claude/` to get past it; ask the user, and write the fix you would propose into the resolution.
+- `test`: a test or its setup is flaky or tests the wrong thing. Dispatch the `test-writer`; never weaken the test.
+- `hotfix`: the product is wrong while the spec stays as written. The implementer writes a red test first, then the fix.
+- `kit`: a hook, the guard, a check command or a rule is wrong, too slow, or blocks something harmless. Never edit `.claude/` to get past it; ask the user, and write the fix you would propose into the resolution. In verify, see "Verify failures".
 - `env`: a dependency, the network, credentials or a step only a human can do. Ask, and add it to the plan's Human-only steps.
 - `budget`: the token budget blocked a dispatch. Ask whether to raise it or stop.
+
+### Verify failures
+
+A verify round that fails gets one line under `## Rounds` in the state file (`- verify <n> | full | <merge base>..<head> | fail: <classes>`, with `(screenshots)` when the screenshot review found it), and each failure gets its class:
+
+- `kit`: a false positive. The gate or script is wrong, not the code. It does not count as a verify round. Write a Stops line with the kit fix you propose. If the kit offers a narrow way for exactly this case (an approved fake value in `.claude/secrets-allow.tsv`, a test pattern for a test file) and `.claude/bin/gate config` is `auto`, apply it in its own commit and log it under Decisions to review; otherwise ask. Never relax a threshold, a key format, a hook or a strict path to get past it.
+- `test`: the test or the test stack is wrong (a selector, timing, an auth throttle, shared Redis or database state). The `test-writer` fixes it, the product code stays as it is, and the round continues.
+- `hotfix`: the product is wrong and the spec stays as written (layout, a missing state, responsive behaviour). The implementer writes a red test and the fix, then one review round on the fix (step 5), then verify.
+- `spec`: the criterion itself has to change. Always stop and ask.
+

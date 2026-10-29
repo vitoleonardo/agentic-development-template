@@ -7,6 +7,7 @@
 # A record has kind-prefixed, TAB-separated rows:
 #   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main>
 #   stop <step> <class> <trigger> <what was tried> <resolution>   (one per line under "## Stops" in .work/<branch>.md)
+#   round <review|verify> <n> <full|delta> <commit range> <result>   (one per line under "## Rounds")
 # Tokens count input, output and cache writes, as in .claude/bin/usage. RUNS_TODAY overrides the date (tests).
 set -u
 
@@ -23,7 +24,7 @@ if [ -z "${KIT_IMPROVE:-}" ]; then
   exit 0
 fi
 
-classes="spec plan tier test kit env budget"
+classes="spec plan tier test hotfix kit env budget"
 
 case ${1:-} in
   record)
@@ -40,7 +41,15 @@ case ${1:-} in
         '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", d, f, b, $9, $8, $7, $1, $2, $3, $4, $5 }'
       [ -f "$state" ] && awk -v classes="$classes" '
         BEGIN { n = split(classes, c, " "); for (i = 1; i <= n; i++) known[c[i]] = 1 }
-        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); next }
+        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); next }
+        in_rounds && /^- / && !/^- </ {
+          line = substr($0, 3); gsub(/\t/, " ", line)
+          n = split(line, p, "|")
+          for (i = 1; i <= 4; i++) { v = (i <= n) ? p[i] : ""; gsub(/^ +| +$/, "", v); f[i] = v }
+          split(f[1], kn, " ")
+          printf "round\t%s\t%s\t%s\t%s\t%s\n", kn[1], kn[2], f[2], f[3], f[4]
+          next
+        }
         in_stops && /^- / && !/^- </ {
           line = substr($0, 3); gsub(/\t/, " ", line)
           n = split(line, p, "|")
@@ -68,6 +77,13 @@ case ${1:-} in
         if ($8 > 0) share[++nsh] = $12 * 100 / $8
         next
       }
+      $1 == "round" && $2 == "verify" {
+        if (!(cur in vrounds)) nvr++
+        vrounds[cur]++; all_vr++
+        if ($6 ~ /^fail/ && $6 ~ /kit/) vr_kit++
+        if ($6 ~ /^fail/ && $6 ~ /screenshots/) vr_shots++
+        next
+      }
       $1 == "stop" {
         stopsr[cur]++; byclass[$3]++
         list[$3] = list[$3] sprintf("- %s, %s: %s. Tried: %s. Resolution: %s.\n", feat[cur], $2, $4, ($5 == "" ? "–" : $5), ($6 == "" ? "–" : $6))
@@ -84,11 +100,18 @@ case ${1:-} in
         if (nsh) printf "| Main-session share of tokens (%%) | %.0f | %.0f | %d |\n", med(share, nsh), p75(share, nsh), nsh
         printf "| Review rounds | %s | %s | %d |\n", med(roundv, runs), p75(roundv, runs), runs
         printf "| Escalations per run | %s | %s | %d |\n", med(escv, runs), p75(escv, runs), runs
+        if (nvr) {
+          k = 0; for (r in vrounds) vrv[++k] = vrounds[r]
+          printf "| Verify rounds | %s | %s | %d |\n", med(vrv, nvr), p75(vrv, nvr), nvr
+        }
         print ""
         print "| Date | Feature | Tasks | Escalations | Review rounds | Tokens | Main session | Stops |"
         print "|------|---------|-------|-------------|---------------|--------|--------------|-------|"
         for (r = 1; r <= runs; r++) printf "| %s | %s | %d | %d | %d | %d | %d | %d |\n", date[r], feat[r], tasks[r], esc[r], rounds[r], tok[r], mainr[r], stopsr[r]
         print ""
+        if (nvr) {
+          printf "Verify rounds: %d in %d runs (mean %.1f). Failed by a kit false positive: %d. Failed on the screenshot review: %d.\n\n", all_vr, nvr, all_vr / nvr, vr_kit, vr_shots
+        }
         print "## Stops by class"
         print ""
         n = split(classes, c, " ")
