@@ -61,7 +61,7 @@ Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `mod
 
 ## Rounds
 
-Record every round under `## Rounds` in `.work/<branch>.md`: `- verify <n> | full | <merge base>..<head> | pass` or `fail: <classes>`, with `(screenshots)` when the screenshot review found it.
+Record every round under `## Rounds` in `.work/<branch>.md`: `- verify <n> | <full|delta> | <commit range> | pass` or `fail: <classes>`, with `(screenshots)` when the screenshot review found it.
 
 If verify fails, classify each failure by its cause:
 
@@ -69,6 +69,8 @@ If verify fails, classify each failure by its cause:
 - `test`: the test or the test setup is wrong. The `test-writer` fixes it; the product code stays.
 - `hotfix`: the product is wrong and the spec stays as written. Implementer with a red test, then review, then verify.
 - `spec`: the criterion has to change. Always stop and ask.
+
+A failed round reruns only what failed: `.claude/bin/evidence gates --only <the failed gates>`, the screenshot flow of the fix, and the e2e cases of the fix (`evidence data` already selects them). Record it as `delta` under Rounds. Only the full run at the final commit builds the pack: `evidence json` refuses gates that ran with `--only`.
 
 Then run `.claude/bin/gate round <class> <n>` (n: the failed verify rounds of that class so far). `ask`: stop and ask the user, explaining what failed, what was tried, and what you think is wrong. `auto`: continue, and log the round under Decisions to review. Stop at any level when the same failure came back after two fixes.
 

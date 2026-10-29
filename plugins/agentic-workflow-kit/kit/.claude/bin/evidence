@@ -1,7 +1,9 @@
 #!/bin/sh
 # Evidence pack for /verify-feature: the parts a script can decide, so the model only writes the judgements.
 # Usage:
-#   .claude/bin/evidence gates                 run every hard gate; write gates.md and gates.tsv; exit 1 if one fails
+#   .claude/bin/evidence gates [--only a,b]    run every hard gate (or only the named ones, for a round that reruns
+#                                              what failed; json refuses that pack); write gates.md and gates.tsv
+#   .claude/bin/evidence scope <commit>        whether a later round covers the commits since <commit> or the whole branch
 #   .claude/bin/evidence matrix                check edge-cases.md: every case has a passing test or "n/a: <reason>"
 #   .claude/bin/evidence data [--all]          run KIT_SEED + the affected e2e tests and KIT_TEST_MOCKED; write data-runs.md
 #   .claude/bin/evidence screenshots [--no-base] [--all]   screenshots of the affected tests, on the branch and the base
@@ -41,6 +43,7 @@ json_str() {
 
 # gate <name> <result> <seconds> <detail>: record one gate.
 gate() {
+  want "$1" || return 0
   printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$(printf '%s' "$4" | tr '\t\n' '  ' | cut -c1-300)" >>"$dir/gates.tsv"
   printf '| %s | %s | %ss | %s |\n' "$1" "$2" "$3" "$(printf '%s' "$4" | tr '|\n' '/ ' | cut -c1-300)" >>"$tmp/gates-table"
   [ "$2" = fail ] && [ -s "$tmp/log-$1" ] && { printf '\n### %s\n\n```text\n' "$1"; tail -n 40 "$tmp/log-$1"; printf '```\n'; } >>"$tmp/gates-logs"
@@ -51,6 +54,7 @@ gate() {
 # check_gate <name> <check arguments...>: a gate run through .claude/bin/check; n/a passes with its reason,
 # "not configured" fails (a hard gate has to be configured or say why not).
 check_gate() {
+  want "$1" || return 0
   name=$1
   shift
   started=$(now)
@@ -125,7 +129,24 @@ gitleaks_config() {
 
 regex_escape() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
 
+all_gates="typecheck lint build test coverage duplicates structure focus dependencies protected secrets size"
+
+# want <gate>: true unless gates --only leaves the gate out.
+want() {
+  [ -z "${only:-}" ] && return 0
+  case " $only " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
 gates() {
+  only=""
+  if [ "${1:-}" = --only ]; then
+    only=$(printf '%s' "${2:-}" | tr ',' ' ')
+    for g in $only; do
+      case " $all_gates " in *" $g "*) ;; *) echo "evidence gates: unknown gate '$g'; the gates are: $all_gates" >&2; return 2 ;; esac
+    done
+    [ -n "$only" ] || { echo "evidence gates: --only needs gate names, for example --only secrets,coverage" >&2; return 2; }
+  fi
   mkdir -p "$dir"
   : >"$dir/gates.tsv"
   : >"$tmp/gates-table"
@@ -224,18 +245,22 @@ gates() {
 
   {
     printf '# Hard gates\n\nHead %s, base %s (%s).\n\n' "$(git rev-parse --short HEAD)" "$(base_ref)" "$(git rev-parse --short "$mb")"
+    [ -n "$only" ] && printf 'Partial run (--only %s): not an evidence pack. Run every gate at the final commit.\n\n' "$only"
     printf '| Gate | Result | Time | Detail |\n|------|--------|------|--------|\n'
     cat "$tmp/gates-table"
     [ -s "$tmp/gates-logs" ] && { printf '\n## Output\n'; cat "$tmp/gates-logs"; }
   } >"$dir/gates.md"
-  # The test gate's flaky tests go into the pack.
-  sed -n 's/^  flaky (passed on the rerun): //p' "$tmp/log-test" >"$dir/flaky.txt" 2>/dev/null
-  # The JUnit reports of this run, so the matrix can check test names against what actually ran.
-  : >"$dir/tests.tsv"
-  for pkg in $(packages); do
-    report=$(conf_value "$pkg" KIT_TEST_REPORT)
-    [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" >>"$dir/tests.tsv"
-  done
+  if [ -n "$only" ]; then printf '%s\n' "$only" >"$dir/gates.partial"; else rm -f "$dir/gates.partial"; fi
+  if want test; then
+    # The test gate's flaky tests go into the pack.
+    sed -n 's/^  flaky (passed on the rerun): //p' "$tmp/log-test" >"$dir/flaky.txt" 2>/dev/null
+    # The JUnit reports of this run, so the matrix can check test names against what actually ran.
+    : >"$dir/tests.tsv"
+    for pkg in $(packages); do
+      report=$(conf_value "$pkg" KIT_TEST_REPORT)
+      [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" >>"$dir/tests.tsv"
+    done
+  fi
   cat "$tmp/gates-table"
   if [ -n "$failed" ]; then
     echo "Failed gates:$failed. Details in $dir/gates.md."
@@ -493,10 +518,39 @@ screenshots() {
   [ -n "$(ls "$shots")" ] || { echo "screenshots: KIT_SCREENSHOTS wrote no images." >&2; return 1; }
 }
 
+# --- scope of a later round -----------------------------------------------------
+
+# scope <since>: whether a later review or verify round may cover only the commits since <since> ("delta") or must
+# cover the whole branch again ("full"): when the fixes are more than 20% of the branch's diff, or touch a file in
+# KIT_CONTRACT_PATTERNS (auth, migrations, public routes).
+scope() {
+  since=${1:?usage: evidence scope <commit the last round ran on>}
+  git rev-parse -q --verify "$since^{commit}" >/dev/null || { echo "evidence scope: $since is not a commit." >&2; return 2; }
+  contracts=${KIT_CONTRACT_PATTERNS:-$(conf_value . KIT_CONTRACT_PATTERNS)}
+  if [ -n "$contracts" ]; then
+    # shellcheck disable=SC2046
+    git diff --name-only "$since" -- . $(excludes) | while IFS= read -r f; do
+      matches_any "$f" "$contracts" && { printf '%s\n' "$f"; break; }
+    done >"$tmp/contract"
+    if [ -s "$tmp/contract" ]; then echo "full: $(cat "$tmp/contract") is a contract file (KIT_CONTRACT_PATTERNS)"; return 0; fi
+  fi
+  lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$'
+  total=$(diff_all --numstat | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  # shellcheck disable=SC2046
+  fixes=$(git diff --numstat "$since" -- . $(excludes) | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  pct=$(awk -v f="$fixes" -v t="$total" 'BEGIN { print (t == 0 ? 0 : int(f * 100 / t)) }')
+  if [ "$pct" -gt 20 ]; then
+    echo "full: the fixes are $pct% of the diff, more than 20%"
+  else
+    echo "delta $(git rev-parse --short "$since")..$(git rev-parse --short HEAD) ($pct% of the diff)"
+  fi
+}
+
 # --- evidence.json -------------------------------------------------------------
 
 json() {
   [ -f "$dir/gates.tsv" ] || { echo "evidence: run 'evidence gates' first." >&2; return 2; }
+  [ -f "$dir/gates.partial" ] && { echo "evidence: the last gates run was partial (--only $(cat "$dir/gates.partial")); run every gate at the final commit." >&2; return 1; }
   head=$(git rev-parse HEAD)
   mb=$(merge_base)
   review=$dir/review.md
@@ -669,7 +723,8 @@ comment() {
 command=${1:-}
 [ $# -gt 0 ] && shift
 case $command in
-  gates) gates ;;
+  gates) gates "$@" ;;
+  scope) scope "$@" ;;
   matrix) matrix ;;
   data) data "$@" ;;
   e2e-select) e2e_select "$@" ;;
@@ -678,5 +733,5 @@ case $command in
   push) push "$@" ;;
   ci-check) ci_check "$@" ;;
   comment) comment "$@" ;;
-  *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

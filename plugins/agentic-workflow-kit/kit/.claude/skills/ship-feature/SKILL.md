@@ -53,6 +53,8 @@ Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep thei
 
 Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. If the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff. Wording, a missing item, and layout that hides content are found here, not at verify. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
 
+Round 1 reviews the full diff. A later round reviews only what changed, when `.claude/bin/evidence scope <the commit the previous round reviewed>` prints `delta <range>`: give the reviewer the previous round's findings and that commit range. It checks that each finding is closed and reviews those commits and the criteria they touch. When `scope` prints `full: <reason>` (the fixes are more than 20% of the diff, or touch a file in `KIT_CONTRACT_PATTERNS`: auth, migrations, public routes), the round reviews the full diff again. Record every round under `## Rounds` in the state file: `- review <n> | <full|delta> | <commit range> | <high findings, or pass>`.
+
 ## 6. Verify
 
 Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. If verify fails, classify every failure as in "Verify failures" below and run `.claude/bin/gate round <class> <n>`, where n counts this branch's failed verify rounds of that class. `ask`: stop and ask. `auto`: fix it as the class says, log the round under Decisions to review, and verify again. Pushing the pack is gate push.
@@ -82,7 +84,7 @@ Pick the class by the cause, not the symptom, and fix it where it belongs:
 
 ### Verify failures
 
-A verify round that fails gets one line under `## Rounds` in the state file (`- verify <n> | full | <merge base>..<head> | fail: <classes>`, with `(screenshots)` when the screenshot review found it), and each failure gets its class:
+A verify round that fails gets one line under `## Rounds` in the state file (`- verify <n> | <full|delta> | <commit range> | fail: <classes>`, with `(screenshots)` when the screenshot review found it), and each failure gets its class:
 
 - `kit`: a false positive. The gate or script is wrong, not the code. It does not count as a verify round. Write a Stops line with the kit fix you propose. If the kit offers a narrow way for exactly this case (an approved fake value in `.claude/secrets-allow.tsv`, a test pattern for a test file) and `.claude/bin/gate config` is `auto`, apply it in its own commit and log it under Decisions to review; otherwise ask. Never relax a threshold, a key format, a hook or a strict path to get past it.
 - `test`: the test or the test stack is wrong (a selector, timing, an auth throttle, shared Redis or database state). The `test-writer` fixes it, the product code stays as it is, and the round continues.

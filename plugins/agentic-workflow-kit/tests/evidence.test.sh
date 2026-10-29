@@ -186,6 +186,33 @@ rm src/helpers.ts
 expect_code 0 "the structure gate passes without misplaced files" .claude/bin/evidence gates
 expect_out "| structure | pass |" "the structure gate passes"
 
+# --- later rounds: only what changed ---------------------------------------------
+
+expect_code 0 "gates --only runs only the named gates" .claude/bin/evidence gates --only typecheck,secrets
+same_gates=$(cut -f1 .work/42-total/evidence/gates.tsv | tr '\n' ' ')
+[ "$same_gates" = "typecheck secrets " ] && ok || fail "only the named gates ran: $same_gates"
+expect_code 1 "json refuses a pack whose gates ran with --only" .claude/bin/evidence json
+expect_out "--only" "the refusal names the partial run"
+expect_code 2 "an unknown gate in --only is a usage error" .claude/bin/evidence gates --only typo
+expect_code 0 "a full run makes the pack whole again" .claude/bin/evidence gates
+[ ! -f .work/42-total/evidence/gates.partial ] && ok || fail "the full run removes the partial mark"
+
+start=$(git rev-parse HEAD)
+seq 1 20 | sed 's/^/it("SHOP-AC1: case /;s/$/", () => {});/' >>src/total.test.ts
+g commit -qam "more cases"
+since=$(git rev-parse HEAD)
+printf 'it("SHOP-AC1: one more", () => {});\n' >>src/total.test.ts
+g commit -qam "fix"
+out=$(.claude/bin/evidence scope "$since" 2>&1)
+expect_out "delta $(git rev-parse --short "$since")..$(git rev-parse --short HEAD) (4% of the diff)" "a small fix is a delta round"
+out=$(.claude/bin/evidence scope "$start" 2>&1)
+expect_out "full: the fixes are 91% of the diff, more than 20%" "a large fix is a full round"
+mkdir -p db/migrations && printf 'alter table x;\n' >db/migrations/2.sql
+g add -A && g commit -qm "migration"
+out=$(KIT_CONTRACT_PATTERNS="db/migrations/*" .claude/bin/evidence scope "$since" 2>&1)
+expect_out "full: db/migrations/2.sql is a contract file (KIT_CONTRACT_PATTERNS)" "a contract file forces a full round"
+git reset -q --hard "$start"
+
 # --- edge-case matrix -----------------------------------------------------------
 
 expect_code 0 "gates pass again" .claude/bin/evidence gates

@@ -31,6 +31,10 @@ When you are given a screenshot folder from an evidence pack, judge the images a
 
 Report one row per image (`file | criterion | matches / mismatch / cannot judge | what you see`), then the findings. A mismatch with the criterion text is high; a layout problem that hides content is high; a cosmetic difference is low. Do not guess what an unreadable image shows: say "cannot judge". Then stop.
 
+## Reviewing a later round
+
+When you are given the previous round's findings and a commit range, check each finding first: closed (say where), or still open. Then review only the commits in that range and the criteria they touch, with the checks below. Do not re-review the rest of the branch; say in the report that the round was a delta and which range it covered.
+
 ## Reviewing a diff
 
 Gather:

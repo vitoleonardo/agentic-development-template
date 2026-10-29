@@ -8,6 +8,7 @@
 #   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main>
 #   stop <step> <class> <trigger> <what was tried> <resolution>   (one per line under "## Stops" in .work/<branch>.md)
 #   round <review|verify> <n> <full|delta> <commit range> <result>   (one per line under "## Rounds")
+#   review <n> <tokens>   (the reviewer's tokens per review round, from .claude/bin/usage reviews)
 # Tokens count input, output and cache writes, as in .claude/bin/usage. RUNS_TODAY overrides the date (tests).
 set -u
 
@@ -39,6 +40,7 @@ case ${1:-} in
     {
       printf '%s\n' "$usage" | awk -F '\t' -v d="${RUNS_TODAY:-$(date -u +%Y-%m-%d)}" -v f="${feature:-–}" -v b="$branch" \
         '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", d, f, b, $9, $8, $7, $1, $2, $3, $4, $5 }'
+      .claude/bin/usage reviews | sed 's/^/review	/'
       [ -f "$state" ] && awk -v classes="$classes" '
         BEGIN { n = split(classes, c, " "); for (i = 1; i <= n; i++) known[c[i]] = 1 }
         /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); next }
@@ -77,6 +79,7 @@ case ${1:-} in
         if ($8 > 0) share[++nsh] = $12 * 100 / $8
         next
       }
+      $1 == "review" { if ($2 == 1) first[++nfirst] = $3; else later[++nlater] = $3; next }
       $1 == "round" && $2 == "verify" {
         if (!(cur in vrounds)) nvr++
         vrounds[cur]++; all_vr++
@@ -111,6 +114,10 @@ case ${1:-} in
         print ""
         if (nvr) {
           printf "Verify rounds: %d in %d runs (mean %.1f). Failed by a kit false positive: %d. Failed on the screenshot review: %d.\n\n", all_vr, nvr, all_vr / nvr, vr_kit, vr_shots
+        }
+        if (nfirst || nlater) {
+          printf "Reviewer tokens per review round: round 1 median %s (%d rounds), later rounds median %s (%d rounds).\n\n", \
+            (nfirst ? med(first, nfirst) : "–"), nfirst, (nlater ? med(later, nlater) : "–"), nlater
         }
         print "## Stops by class"
         print ""
