@@ -78,9 +78,9 @@ case $tool in
       *reviewer) block "the reviewer is read-only and never edits files." ;;
       *test-writer)
         rel=$(relative_path "$path")
-        test_patterns=$(test_patterns "$(package_of "$rel")")
+        test_patterns="$(test_patterns "$(package_of "$rel")") $(conf_value . KIT_E2E_PATTERNS)"
         matches_any "$rel" "$test_patterns" ||
-          block "the test-writer may only edit test files ($test_patterns), not $rel."
+          block "the test-writer may only edit test and e2e files ($test_patterns), not $rel."
         ;;
     esac
     # A new source file must go where the structure map puts its kind (.claude/rules/structure.md).

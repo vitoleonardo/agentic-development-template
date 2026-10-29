@@ -115,6 +115,11 @@ expect allow Edit file_path "$project/src/app.test.ts" test-writer
 expect allow Write file_path "$project/tests/e2e/login.spec.ts" test-writer
 expect block Edit file_path "$project/src/app.ts" test-writer
 expect block Edit file_path "$project/src/app.ts" my-plugin:test-writer
+cp "$project/.claude/kit.conf" "$project/kit.conf.orig"
+printf 'KIT_TEST_PATTERNS="*.test.* *.spec.*"\nKIT_E2E_PATTERNS="e2e/*.spec.* e2e/*.screenshots.*"\n' >>"$project/.claude/kit.conf"
+expect allow Edit file_path "$project/apps/client/e2e/ask.screenshots.ts" test-writer
+expect block Edit file_path "$project/apps/client/src/ask.ts" test-writer
+mv "$project/kit.conf.orig" "$project/.claude/kit.conf"
 expect block Edit file_path "$project/src/app.test.ts" reviewer
 expect allow Bash command "git diff main...HEAD" reviewer
 expect allow Bash command ".claude/bin/check test" test-writer
