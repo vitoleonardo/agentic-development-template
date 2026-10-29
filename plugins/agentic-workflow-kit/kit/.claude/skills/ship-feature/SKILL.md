@@ -30,6 +30,8 @@ If the feature has no approved spec, follow `${CLAUDE_SKILL_DIR}/../spec-feature
 
 Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` until the plan is approved. If you are on the base branch, create the branch (`git checkout -b <issue>-<slug>`), move the state file to the branch name if it differs, and run `.claude/bin/usage adopt <the branch you started on>`, so the tokens of the spec and the plan count for this feature. If you are already on a branch made for this feature (`.claude/bin/autopilot` creates it before planning), keep it: the state file and the usage record are already there. Either way, write the branch into the feature's Branch column in `specs/README.md`.
 
+Then decide the base once for the whole run and write it as `Base: <branch>` under the plan's title: `KIT_BASE` if it is set (`.claude/bin/autopilot` sets it for stacked branches), else the open PR's base (`gh pr view --json baseRefName --jq .baseRefName`), else the branch you started on when it is not `main` (a stacked feature), else `main`. Review, verify and the PR use this base; the kit's scripts read it from the state file, so a stacked branch never counts the earlier branches' changes as its own.
+
 Everything the build needs is now in files. If the plan gate asked, suggest that the user runs `/clear` and then `/ship-feature` again: it resumes at step 3 with a context that no longer carries the interview and the exploration.
 
 ## 3. Build, one task at a time
@@ -49,7 +51,7 @@ Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep thei
 
 ## 5. Independent review
 
-Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the base branch, and that it reviews the diff against the spec and the rules. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
+Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
 
 ## 6. Verify
 

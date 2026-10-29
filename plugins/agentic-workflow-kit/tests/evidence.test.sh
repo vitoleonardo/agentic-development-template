@@ -327,5 +327,24 @@ out=$(.claude/bin/evidence e2e-select 2>&1)
 expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
 git checkout -q .claude/kit.conf
 
+# --- one base for stacked branches ----------------------------------------------
+
+git checkout -q main
+git checkout -qb m4
+printf '{\n  "name": "shop",\n  "dependencies": {\n    "zod": "4.0.0",\n    "left-pad": "1.3.0"\n  }\n}\n' >package.json
+g commit -qam "m4 adds left-pad"
+git checkout -qb m5
+printf 'export const total = 7;\n' >src/total.ts
+g commit -qam "m5 changes the total"
+printf '# Plan: Total (spec: specs/total.md)\n\n- Approved dependencies: none\n' >.work/m5.md
+expect_code 1 "without a recorded base, the stacked branch counts the earlier milestone" .claude/bin/evidence gates
+expect_out "| dependencies | fail |" "the inherited dependency fails"
+printf '# Plan: Total (spec: specs/total.md)\nBase: m4\n\n- Approved dependencies: none\n' >.work/m5.md
+expect_code 0 "the state file's base leaves the earlier milestone out" .claude/bin/evidence gates
+expect_out "| dependencies | pass |" "the dependency from m4 is not this branch's"
+expect_out "| size | pass | 0s | 2 changed lines" "the size counts only this branch"
+grep -q "base m4" .work/m5/evidence/gates.md && ok || fail "gates.md names the base: $(head -n 3 .work/m5/evidence/gates.md)"
+KIT_BASE=main expect_code 1 "KIT_BASE wins over the state file" .claude/bin/evidence gates
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

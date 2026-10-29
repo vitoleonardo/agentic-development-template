@@ -1,12 +1,12 @@
 ---
 name: verify-feature
 description: Prove a reviewed branch before its PR - hard gates, an edge-case matrix with a passing test per case, seeded and mocked data runs, screenshots on the branch and the base checked against the criteria - and push the evidence pack for CI. Runs after the last review round with no high findings.
-argument-hint: [base branch, default main]
+argument-hint: [base branch, default the state file's Base, else main]
 ---
 
 # Verify a feature
 
-Base branch: $ARGUMENTS (use `main` if empty). Set `KIT_BASE` to it for every command below.
+Base branch: $ARGUMENTS (if empty: the `Base:` line of `.work/<branch>.md`, which `/ship-feature` writes, else `main`). The kit's scripts read the same line; set `KIT_BASE` only when the argument differs from it.
 
 Review finds problems in the code; verify proves the behaviour, with artefacts a human can check in minutes. The pack goes to `.work/<branch>/evidence/`. `.claude/bin/evidence` decides everything a script can decide; you write only the matrix and the screenshot judgement, and you never edit what the script wrote.
 

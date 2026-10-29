@@ -48,9 +48,16 @@ conf_value() {
   )
 }
 
-# base_ref: the base branch, KIT_BASE or origin's default branch, else main.
+# base_ref: the base branch. KIT_BASE, else the "Base:" line /ship-feature writes into .work/<branch>.md
+# (stacked branches build on the previous one), else origin's default branch, else main.
 base_ref() {
   if [ -n "${KIT_BASE:-}" ]; then printf '%s' "$KIT_BASE"; return; fi
+  _branch=$(git branch --show-current 2>/dev/null)
+  _base=$(sed -n 's/^Base:[[:space:]]*`\{0,1\}\([^`[:space:]]*\).*/\1/p' "${KIT_ROOT:-.}/.work/$_branch.md" 2>/dev/null | head -n 1)
+  if [ -n "$_branch" ] && [ -n "$_base" ]; then
+    if git rev-parse -q --verify "$_base^{commit}" >/dev/null 2>&1; then printf '%s' "$_base"; return; fi
+    if git rev-parse -q --verify "origin/$_base^{commit}" >/dev/null 2>&1; then printf 'origin/%s' "$_base"; return; fi
+  fi
   git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || printf 'main'
 }
 

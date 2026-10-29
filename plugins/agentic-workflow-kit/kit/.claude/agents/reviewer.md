@@ -35,7 +35,7 @@ Report one row per image (`file | criterion | matches / mismatch / cannot judge 
 
 Gather:
 
-1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
+1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (the base you were given; else the `Base:` line of `.work/<branch>.md`, else `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
 2. The spec for this branch: find it through the Branch column in `specs/README.md`, then read `specs/<feature>.md`. Read `.work/<branch>.md` if it exists.
 3. The rules: read every file in `.claude/rules/`.
 
