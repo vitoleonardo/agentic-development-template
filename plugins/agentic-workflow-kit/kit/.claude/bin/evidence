@@ -110,6 +110,21 @@ deps() {
   esac | sort -u
 }
 
+# gitleaks_config: a gitleaks config with the project's rules and one path-and-value allowlist per row of
+# .claude/secrets-allow.tsv whose value is no key format.
+gitleaks_config() {
+  if [ -f .gitleaks.toml ]; then printf '[extend]\npath = "%s"\n' "$root/.gitleaks.toml"; else printf '[extend]\nuseDefault = true\n'; fi
+  [ -f .claude/secrets-allow.tsv ] || return 0
+  grep -v '^#' .claude/secrets-allow.tsv | while IFS="$tab" read -r path value; do
+    [ -n "$path" ] && [ -n "$value" ] || continue
+    printf '%s' "$value" | grep -Eq "$key_format" && continue
+    printf "\n[[allowlists]]\ncondition = \"AND\"\nregexTarget = \"match\"\npaths = ['''^%s\$''']\nregexes = ['''%s''']\n" \
+      "$(regex_escape "$path")" "$(regex_escape "$value")"
+  done
+}
+
+regex_escape() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
+
 gates() {
   mkdir -p "$dir"
   : >"$dir/gates.tsv"
@@ -165,15 +180,24 @@ gates() {
   done >"$tmp/log-protected"
   if [ -s "$tmp/log-protected" ]; then gate protected fail 0 "files changed in protected paths: $(tr '\n' ' ' <"$tmp/log-protected")"; else gate protected pass 0 "no protected path changed (${protected_list:-none configured})"; fi
 
+  # .claude/secrets-allow.tsv lists approved fake values as "<path> TAB <exact value>"; it never covers a key format.
+  key_format='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})'
   if command -v gitleaks >/dev/null 2>&1; then
+    # The branch's commits, so findings keep their paths for the allowlist; uncommitted changes through stdin.
+    gitleaks_config >"$tmp/gitleaks.toml"
+    pathspecs=". $(excludes | tr '\n' ' '):(exclude)reports/runs"
+    gitleaks git --no-banner --redact -c "$tmp/gitleaks.toml" --log-opts "$mb..HEAD -- $pathspecs" . >"$tmp/log-secrets" 2>&1
+    code=$?
     # shellcheck disable=SC2046
-    git diff "$mb" -- . $(excludes) ':(exclude)reports/runs' | gitleaks stdin --no-banner >"$tmp/log-secrets" 2>&1
-    if [ $? -eq 0 ]; then gate secrets pass 0 "gitleaks: no leaks in the diff"; else gate secrets fail 0 "gitleaks found secrets in the diff"; fi
+    git diff HEAD -- . $(excludes) ':(exclude)reports/runs' >"$tmp/uncommitted"
+    if [ -s "$tmp/uncommitted" ]; then
+      gitleaks stdin --no-banner --redact -c "$tmp/gitleaks.toml" <"$tmp/uncommitted" >>"$tmp/log-secrets" 2>&1 || code=1
+    fi
+    if [ "$code" -eq 0 ]; then gate secrets pass 0 "gitleaks: no leaks in the branch's commits"; else gate secrets fail 0 "gitleaks found secrets (redacted in the log)"; fi
   else
     # Without gitleaks, key formats fail and "name = value" matches only warn: fake values in tests and seeds
-    # match them too. .claude/secrets-allow.tsv lists approved fake values as "<path> TAB <exact value>".
+    # match them too.
     grep -v '^reports/runs/' "$tmp/added" >"$tmp/added-scanned"
-    key_format='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})'
     assignment='(api[_-]?key|secret|token|password)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{12,}'
     grep -Ei "$key_format" "$tmp/added-scanned" | cut -f1 | sort -u >"$tmp/log-secrets"
     git diff --name-only --diff-filter=A "$mb" -- 2>/dev/null | grep -E '(^|/)\.env(\.[^/]*)?$' | grep -vE '\.env\.(example|sample|template)$' >>"$tmp/log-secrets"

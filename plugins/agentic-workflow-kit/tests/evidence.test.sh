@@ -135,6 +135,27 @@ printf 'stop\t6 verify\tkit\tsecrets flagged token = "ghp_%s"\t-\t-\n' "abcdefgh
 expect_code 0 "run records are never scanned for secrets" .claude/bin/evidence gates
 rm -r reports
 
+# A fake gitleaks records its arguments and the config it was given; GITLEAKS_EXIT is its result.
+mkdir -p "$work/fakebin"
+cat >"$work/fakebin/gitleaks" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$work/gitleaks.args"
+while [ \$# -gt 0 ]; do [ "\$1" = -c ] && cat "\$2" >>"$work/gitleaks.config"; shift; done
+exit \${GITLEAKS_EXIT:-0}
+EOF
+chmod +x "$work/fakebin/gitleaks"
+printf 'src/total.test.ts\tfake-value-for-tests\nsrc/total.test.ts\tghp_%s\n' "abcdefghijklmnopqrstuvwxyz0123456789" >.claude/secrets-allow.tsv
+PATH=$work/fakebin:$PATH expect_code 0 "gitleaks without findings passes" .claude/bin/evidence gates
+expect_out "| secrets | pass | 0s | gitleaks" "the gate names gitleaks"
+args=$(cat "$work/gitleaks.args")
+case $args in *"git "*"--log-opts"*"$(git merge-base main HEAD)..HEAD -- . :(exclude)vendor/ee :(exclude)reports/runs"*) ok ;; *) fail "gitleaks scans the branch's commits without protected paths and run records: $args" ;; esac
+grep -q "useDefault = true" "$work/gitleaks.config" && ok || fail "the generated config extends the default rules"
+grep -q "fake-value-for-tests" "$work/gitleaks.config" && grep -q 'src/total\\.test\\.ts' "$work/gitleaks.config" && ok || fail "the allowlist row reaches gitleaks: $(cat "$work/gitleaks.config")"
+grep -q "ghp_" "$work/gitleaks.config" && fail "a key format in the allowlist reaches gitleaks" || ok
+GITLEAKS_EXIT=1 PATH=$work/fakebin:$PATH expect_code 1 "gitleaks findings fail the gate" .claude/bin/evidence gates
+expect_out "| secrets | fail |" "the gitleaks failure is recorded"
+rm .claude/secrets-allow.tsv "$work/gitleaks.args" "$work/gitleaks.config"
+
 mkdir -p src/lib
 seq 1 30 | sed 's/^/export const x/;s/$/ = 1;/' >src/lib/many.ts
 expect_code 0 "above the size limit is a warning" .claude/bin/evidence gates

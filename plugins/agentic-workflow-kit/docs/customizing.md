@@ -103,7 +103,9 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 - key formats (private keys, `AKIA…`, `ghp_…`, `github_pat_…`, `xox…-`, `sk-…`) and a newly added `.env` file fail the gate;
 - `api_key|secret|token|password = "<12+ characters>"` only warns in the gate's detail, because the fake values `rules/security.md` asks for match it too.
 
-Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. A row silences the warning for that value in that file only, and never a key format. Each row needs the user's approval and the reason in its commit message.
+With gitleaks, the gate scans the branch's commits (`gitleaks git`, protected paths and `reports/runs/` left out by pathspec) and pipes uncommitted changes through `gitleaks stdin`. Findings are redacted in the evidence pack. The project's `.gitleaks.toml` and `.gitleaksignore` apply.
+
+Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. Without gitleaks a row silences the warning for that value in that file; with gitleaks it becomes a path-and-value allowlist in the generated config. A row whose value is a key format is ignored on both paths. Each row needs the user's approval and the reason in its commit message.
 
 ## Route models by task
 
