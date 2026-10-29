@@ -212,6 +212,16 @@ expect_code 0 "every case has a passing test or a reason" .claude/bin/evidence m
 expect_code 0 "seed and e2e run, mocked is n/a" .claude/bin/evidence data
 grep -q "seed: fixtures-v2" .work/42-total/evidence/data-runs.md && ok || fail "the seed version is recorded"
 grep -q "n/a: the app calls no external service" .work/42-total/evidence/data-runs.md && ok || fail "the mocked n/a reason is recorded"
+cp .claude/kit.conf kit.conf.orig
+cat >>.claude/kit.conf <<'EOF'
+KIT_RUN_DB="shop_e2e"
+KIT_RUN_REDIS_DB="14"
+KIT_RUN_PORT="3101"
+KIT_SEED="echo \"seed: \$KIT_RUN_DB redis \$KIT_RUN_REDIS_DB port \$KIT_RUN_PORT\""
+EOF
+expect_code 0 "data runs with the run's own resources" .claude/bin/evidence data
+grep -q "seed: shop_e2e redis 14 port 3101" .work/42-total/evidence/data-runs.md && ok || fail "KIT_RUN_DB, KIT_RUN_REDIS_DB and KIT_RUN_PORT reach the commands: $(cat .work/42-total/evidence/data-runs.md)"
+mv kit.conf.orig .claude/kit.conf
 
 # --- evidence.json, push, CI check, comment -------------------------------------
 

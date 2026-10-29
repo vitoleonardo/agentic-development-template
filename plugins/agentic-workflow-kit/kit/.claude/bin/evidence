@@ -378,7 +378,15 @@ e2e_results() {
   cp "$tmp/tests" "$dir/tests.tsv"
 }
 
+# run_resources: the test stack's own database, Redis db and port from kit.conf, for the seed, e2e and screenshot
+# commands, so parallel runs and other suites do not share state.
+run_resources() {
+  KIT_RUN_DB=$(conf_value . KIT_RUN_DB) KIT_RUN_REDIS_DB=$(conf_value . KIT_RUN_REDIS_DB) KIT_RUN_PORT=$(conf_value . KIT_RUN_PORT)
+  export KIT_RUN_DB KIT_RUN_REDIS_DB KIT_RUN_PORT
+}
+
 data() {
+  run_resources
   mkdir -p "$dir"
   : >"$dir/data-runs.tsv"
   : >"$tmp/data-table"
@@ -439,6 +447,7 @@ base_lacks() {
 
 # KIT_SCREENSHOTS writes <AC-ID>-<step>-<desktop|mobile><KIT_SCREENSHOT_SUFFIX>.png into $KIT_SCREENSHOT_DIR.
 screenshots() {
+  run_resources
   with_base=1 all=""
   for arg; do
     case $arg in --no-base) with_base=0 ;; --all) all=--all ;; esac

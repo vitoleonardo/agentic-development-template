@@ -256,6 +256,16 @@ A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the
 
 The selection can miss a feature whose code a change breaks without naming it. The `Full e2e` job in `evidence.yml` covers that: it runs `evidence data --all` after every merge to `main`, one run per merge, so a failure points at the merge that caused it. Add files your e2e tests share (helpers, page objects, global setup) to `KIT_E2E_FULL_PATTERNS`. For other runners, set `KIT_E2E_RELATED` to a command that takes test files as arguments (`uv run pytest`, `cypress run --spec` needs a comma list, so wrap it in a script).
 
+## Isolate the test stack
+
+The seed, e2e and screenshot runs share a machine with the dev server, other suites and other branches. In the Docmost run, two collisions cost two verify rounds: the e2e logins hit the app's auth throttle (10 per 60 s, kept in Redis across runs), and a legacy e2e suite started queue workers on the shared Redis and took the other suites' jobs.
+
+- Declare the run's own resources in `.claude/kit.conf`: `KIT_RUN_DB` (database name), `KIT_RUN_REDIS_DB` (Redis db number) and `KIT_RUN_PORT`. `evidence data` and `evidence screenshots` export them to `KIT_SEED`, `KIT_E2E` and `KIT_SCREENSHOTS`; point the app's database URL, Redis URL and port at them in those scripts.
+- Reset only what is yours: drop and seed `KIT_RUN_DB`, flush `KIT_RUN_REDIS_DB` (`redis-cli -n "$KIT_RUN_REDIS_DB" flushdb`), never `flushall`. Flush at the start of the run, so counters such as login throttles never carry over.
+- Log in once per test user, not once per test: a Playwright setup project saves `storageState` per user, and the tests reuse it. That keeps logins far below any throttle.
+- An e2e suite does not start queue workers on a Redis other suites use. Give workers the run's Redis db, or turn them off in e2e.
+- The base-branch screenshot run gets `KIT_BASE_ENV` (an env file) for the variables the base needs to start.
+
 ## Change the CI thresholds
 
 - `KIT_COVERAGE_THRESHOLD` in `.claude/kit.conf` (default 70): minimum line coverage of the source files a pull request changes. The same value applies locally and in CI.
