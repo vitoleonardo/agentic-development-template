@@ -96,6 +96,15 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 2. **Deny rules** `Read(./<path>/**)` and `Edit(./<path>/**)` stop the file tools, and Claude Code applies Read denies to Grep and Glob as well.
 3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`. A single `git diff`, `git show` or `git log` gets the missing excludes appended by the guard. Chained ones are blocked.
 
+## Secret scan
+
+`/verify-feature`'s secrets gate scans the branch's added lines, never `reports/runs/` (run records quote stop messages). Install [gitleaks](https://github.com/gitleaks/gitleaks); `/onboard` and the gate report a missing one as a setup gap. Without it, a pattern scan stands in:
+
+- key formats (private keys, `AKIA…`, `ghp_…`, `github_pat_…`, `xox…-`, `sk-…`) and a newly added `.env` file fail the gate;
+- `api_key|secret|token|password = "<12+ characters>"` only warns in the gate's detail, because the fake values `rules/security.md` asks for match it too.
+
+Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. A row silences the warning for that value in that file only, and never a key format. Each row needs the user's approval and the reason in its commit message.
+
 ## Route models by task
 
 Dispatched agents run on a tier, and `.claude/kit.conf` maps tiers to models:

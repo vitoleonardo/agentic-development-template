@@ -167,13 +167,27 @@ gates() {
 
   if command -v gitleaks >/dev/null 2>&1; then
     # shellcheck disable=SC2046
-    git diff "$mb" -- . $(excludes) | gitleaks stdin --no-banner >"$tmp/log-secrets" 2>&1
+    git diff "$mb" -- . $(excludes) ':(exclude)reports/runs' | gitleaks stdin --no-banner >"$tmp/log-secrets" 2>&1
     if [ $? -eq 0 ]; then gate secrets pass 0 "gitleaks: no leaks in the diff"; else gate secrets fail 0 "gitleaks found secrets in the diff"; fi
   else
-    secret='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|(api[_-]?key|secret|token|password)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{12,})'
-    grep -Ei "$secret" "$tmp/added" | cut -f1 | sort -u >"$tmp/log-secrets"
+    # Without gitleaks, key formats fail and "name = value" matches only warn: fake values in tests and seeds
+    # match them too. .claude/secrets-allow.tsv lists approved fake values as "<path> TAB <exact value>".
+    grep -v '^reports/runs/' "$tmp/added" >"$tmp/added-scanned"
+    key_format='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})'
+    assignment='(api[_-]?key|secret|token|password)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{12,}'
+    grep -Ei "$key_format" "$tmp/added-scanned" | cut -f1 | sort -u >"$tmp/log-secrets"
     git diff --name-only --diff-filter=A "$mb" -- 2>/dev/null | grep -E '(^|/)\.env(\.[^/]*)?$' | grep -vE '\.env\.(example|sample|template)$' >>"$tmp/log-secrets"
-    if [ -s "$tmp/log-secrets" ]; then gate secrets fail 0 "possible secrets (pattern scan, gitleaks not installed): $(tr '\n' ' ' <"$tmp/log-secrets")"; else gate secrets pass 0 "pattern scan, gitleaks not installed: nothing found"; fi
+    grep -Ei "$assignment" "$tmp/added-scanned" | awk -F '\t' -v allowed=.claude/secrets-allow.tsv '
+      BEGIN { while ((getline line < allowed) > 0) if (line !~ /^#/ && split(line, f, "\t") >= 2) { n++; path[n] = f[1]; value[n] = f[2] } }
+      { for (i = 1; i <= n; i++) if (path[i] == $1 && index($2, value[i])) next; print $1 }' | sort -u >"$tmp/warn-secrets"
+    gap="setup gap: gitleaks not installed"
+    if [ -s "$tmp/log-secrets" ]; then
+      gate secrets fail 0 "key formats or a new .env file (pattern scan, $gap): $(tr '\n' ' ' <"$tmp/log-secrets")"
+    elif [ -s "$tmp/warn-secrets" ]; then
+      gate secrets pass 0 "warning: possible secrets in $(tr '\n' ' ' <"$tmp/warn-secrets")(name = value pattern, $gap). Approved fake values go into .claude/secrets-allow.tsv"
+    else
+      gate secrets pass 0 "pattern scan, $gap: no key formats, no name = value matches"
+    fi
   fi
 
   max=$(conf_value . KIT_MAX_CHANGED_LINES)

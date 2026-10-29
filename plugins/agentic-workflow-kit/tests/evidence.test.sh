@@ -110,6 +110,30 @@ printf 'const token = "ghp_%s";\n' "abcdefghijklmnopqrstuvwxyz0123456789" >src/c
 expect_code 1 "a token in the diff fails the secret scan" .claude/bin/evidence gates
 expect_out "| secrets | fail |" "the secret gate fails"
 rm src/config.ts
+printf 'const key = "AKIA%s";\n' "ABCDEFGHIJKLMNOP" >src/aws.test.ts
+expect_code 1 "a key format fails in a test file too" .claude/bin/evidence gates
+expect_out "| secrets | fail |" "the key format fails the secret gate"
+rm src/aws.test.ts
+printf 'export const login = { password: "demo-password-for-seed" };\n' >>src/total.ts
+expect_code 0 "a name = value match without a key format is only a warning" .claude/bin/evidence gates
+expect_out "| secrets | pass |" "the heuristic does not fail the gate"
+expect_out "warning: possible secrets in src/total.ts" "the warning names the file"
+expect_out "setup gap: gitleaks not installed" "the missing gitleaks is reported"
+printf 'src/total.ts\tdemo-password-for-seed\n' >.claude/secrets-allow.tsv
+expect_code 0 "an allowlisted value passes" .claude/bin/evidence gates
+case $out in *"warning: possible secrets"*) fail "an allowlisted value still warns: $out" ;; *) ok ;; esac
+printf 'src/other.ts\tdemo-password-for-seed\n' >.claude/secrets-allow.tsv
+expect_code 0 "an allowlist row for another path does not apply" .claude/bin/evidence gates
+expect_out "warning: possible secrets in src/total.ts" "the value still warns in a path the row does not name"
+printf 'src/total.ts\tAKIA%s\n' "ABCDEFGHIJKLMNOP" >.claude/secrets-allow.tsv
+printf 'const key = "AKIA%s";\n' "ABCDEFGHIJKLMNOP" >>src/total.ts
+expect_code 1 "the allowlist never covers a key format" .claude/bin/evidence gates
+git checkout -q -- src/total.ts
+rm .claude/secrets-allow.tsv
+mkdir -p reports/runs
+printf 'stop\t6 verify\tkit\tsecrets flagged token = "ghp_%s"\t-\t-\n' "abcdefghijklmnopqrstuvwxyz0123456789" >reports/runs/42-total.tsv
+expect_code 0 "run records are never scanned for secrets" .claude/bin/evidence gates
+rm -r reports
 
 mkdir -p src/lib
 seq 1 30 | sed 's/^/export const x/;s/$/ = 1;/' >src/lib/many.ts

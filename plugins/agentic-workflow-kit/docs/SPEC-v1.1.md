@@ -163,7 +163,7 @@ The pack is valid only for the commit in `head`. Any push after verify (a review
 - no focus or skip added in the diff: `.only`, `.skip`, `xit`, `xdescribe`, `fit`, `fdescribe`, `test.todo`, `@pytest.mark.skip`, `@pytest.mark.xfail`, `@unittest.skip`, `pytest.skip(`
 - no new dependency in a manifest that the plan's `Approved dependencies` line does not list. `/plan-feature` gets that line in its template, default "none".
 - no file in a protected path changed
-- secret scan on the diff (gitleaks if installed, else the guard's patterns)
+- secret scan on the diff, without `reports/runs/`: gitleaks if installed; else key formats fail and `name = "value"` matches warn (a missing gitleaks is reported as a setup gap), with exact fake values allowed in `.claude/secrets-allow.tsv`
 - diff size: warning above `KIT_MAX_CHANGED_LINES` (default 400), gate failure above twice that value. CI reads the same key from `kit.conf` instead of its own env value.
 
 **Edge-case matrix.** For each criterion, the plan's test cases plus the reviewer's spec checklist (errors, empty data, duplicates, double submits, missing permissions, limits, concurrent edits) become rows: case, input, expected, test name, result. A case marked "not applicable" needs a one-line reason. A case without a test is a failure, not a note. The test-writer agent adds missing tests; it does not change code.
