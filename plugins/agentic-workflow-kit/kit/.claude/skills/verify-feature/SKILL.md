@@ -47,7 +47,7 @@ The e2e run covers only the tests the change affects when `KIT_E2E_RELATED` is s
 
 ## 4. Screenshots
 
-Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` (with the same selection as the e2e run) on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. A criterion without UI has no screenshots.
+Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` (with the same selection as the e2e run) on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. The base run gets the variables of `KIT_BASE_ENV`. When no e2e test on the base names this feature, it is skipped and recorded as `n/a: base has no <FEATURE>`, which is not a failure. A criterion without UI has no screenshots.
 
 Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `model` from `.claude/bin/route review`) with: the spec path, the screenshot folder, and the instruction to check the screenshots as described in its agent file. Save its report to `.work/<branch>/evidence/screenshots-review.md`. A mismatch between an image and the criterion text is a high finding: verify fails, and the fix goes through the implementer and review. The implementer and the review round have judged these flows already, so this check confirms them at the final commit. A finding here is one they missed: mark the round `(screenshots)` under Rounds, so `/improve-kit` can count it.
 

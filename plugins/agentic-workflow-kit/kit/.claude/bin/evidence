@@ -403,6 +403,21 @@ data() {
 
 # --- screenshots ---------------------------------------------------------------
 
+# base_lacks <merge base>: the features (SHOP in SHOP-AC1) whose criterion IDs the diff adds, when no e2e test
+# file on the base names any of them; empty when the base has one of them or the diff names none.
+base_lacks() {
+  e2e_patterns=$(conf_value . KIT_E2E_PATTERNS)
+  [ -n "$e2e_patterns" ] || return 0
+  features=$(diff_all -U0 | grep '^+' | grep -v '^+++' | grep -oE '[A-Z][A-Z0-9]*-AC[0-9]+' | sed 's/-AC[0-9]*$//' | sort -u | tr '\n' ' ')
+  [ -n "$features" ] || return 0
+  git ls-tree -r --name-only "$1" | while IFS= read -r f; do matches_any "$f" "$e2e_patterns" && printf '%s\n' "$f"; done >"$tmp/base-e2e"
+  if [ -s "$tmp/base-e2e" ]; then
+    # shellcheck disable=SC2046
+    git grep -qE "(^|[^A-Z0-9])($(printf '%s' "$features" | sed 's/ *$//; s/ /|/g'))-AC[0-9]" "$1" -- $(cat "$tmp/base-e2e") && return 0
+  fi
+  printf '%s' "${features% }"
+}
+
 # KIT_SCREENSHOTS writes <AC-ID>-<step>-<desktop|mobile><KIT_SCREENSHOT_SUFFIX>.png into $KIT_SCREENSHOT_DIR.
 screenshots() {
   with_base=1 all=""
@@ -421,17 +436,28 @@ screenshots() {
     echo "screenshots: KIT_SCREENSHOTS failed on the branch." >&2
     return 1
   fi
-  if [ "$with_base" -eq 1 ]; then
-    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install).
+  if [ "$with_base" -eq 0 ]; then
+    printf 'taken; base: not run (--no-base)\n' >"$dir/screenshots.txt"
+  elif missing=$(base_lacks "$(merge_base)") && [ -n "$missing" ]; then
+    echo "screenshots on the base: n/a: base has no $missing"
+    printf 'taken; base: n/a: base has no %s\n' "$missing" >"$dir/screenshots.txt"
+  else
+    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install)
+    # and with the variables of KIT_BASE_ENV, an env file that is read for this run and never copied.
     wt=$tmp/base
     git worktree add -q --detach "$wt" "$(merge_base)" || return 1
     cp .claude/kit.conf "$wt/.claude/kit.conf" 2>/dev/null
     setup=$(conf_value . KIT_SETUP)
+    base_env=$(conf_value . KIT_BASE_ENV)
+    case $base_env in '' | /*) ;; *) base_env=$root/$base_env ;; esac
     echo "screenshots on the base ($(git rev-parse --short "$(merge_base)"))"
-    if (cd "$wt" && { [ -z "$setup" ] || sh -c "$setup"; } && KIT_SCREENSHOT_DIR=$shots KIT_SCREENSHOT_SUFFIX=".main" sh -c "$cmd") </dev/null; then
-      :
+    # shellcheck source=/dev/null
+    if (cd "$wt" && { [ -z "$base_env" ] || { set -a && . "$base_env" && set +a; }; } && { [ -z "$setup" ] || sh -c "$setup"; } &&
+      KIT_SCREENSHOT_DIR=$shots KIT_SCREENSHOT_SUFFIX=".main" sh -c "$cmd") </dev/null; then
+      printf 'taken; base: taken\n' >"$dir/screenshots.txt"
     else
       echo "screenshots: the base run failed; pages that do not exist there have no .main image." >&2
+      printf 'taken; base: the run failed\n' >"$dir/screenshots.txt"
     fi
     git worktree remove --force "$wt"
   fi

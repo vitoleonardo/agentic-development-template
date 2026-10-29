@@ -255,6 +255,7 @@ tab=$(printf '\t')
 cat >bin/fake-e2e <<'EOF'
 #!/bin/sh
 printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
+[ -n "${BASE_HINT:-}" ] && printf 'env:%s\n' "$BASE_HINT" >>"$E2E_LOG"
 [ -n "${KIT_SCREENSHOT_DIR:-}" ] && : >"$KIT_SCREENSHOT_DIR/SHOP-AC1-1-desktop$KIT_SCREENSHOT_SUFFIX.png"
 exit 0
 EOF
@@ -303,6 +304,22 @@ expect_code 0 "data --all runs the whole suite" .claude/bin/evidence data --all
 : >"$E2E_LOG"
 expect_code 0 "screenshots of the related tests" .claude/bin/evidence screenshots --no-base
 grep -q "^SHOTS e2e/shop.spec.ts$" "$E2E_LOG" && ok || fail "KIT_SCREENSHOTS_RELATED gets the selected files: $(cat "$E2E_LOG")"
+
+: >"$E2E_LOG"
+printf 'BASE_HINT=from-the-env-file\n' >"$work/base.env"
+printf 'KIT_BASE_ENV="%s"\n' "$work/base.env" >>.claude/kit.conf
+expect_code 0 "screenshots on the branch and the base" .claude/bin/evidence screenshots
+[ "$(grep -c '^env:from-the-env-file$' "$E2E_LOG")" -eq 1 ] && ok || fail "only the base run gets KIT_BASE_ENV: $(cat "$E2E_LOG")"
+[ -f .work/sel-feature/evidence/screenshots/SHOP-AC1-1-desktop.main.png ] && ok || fail "the base run writes .main images"
+git checkout -q .claude/kit.conf
+
+branch_with sel-newfeature "printf 'export const other = 2;\n' >src/other.ts; printf 'test(\"NEWF-AC1: shows the new page\", () => {});\n' >e2e/newf.spec.ts"
+: >"$E2E_LOG"
+expect_code 0 "screenshots pass when the base has no e2e test of the feature" .claude/bin/evidence screenshots
+expect_out "n/a: base has no NEWF" "the skipped base run says why"
+case $out in *"base run failed"*) fail "a base without the feature is not a failure: $out" ;; *) ok ;; esac
+grep -q "base: n/a: base has no NEWF" .work/sel-newfeature/evidence/screenshots.txt && ok || fail "the pack records the skipped base: $(cat .work/sel-newfeature/evidence/screenshots.txt 2>&1)"
+[ "$(grep -c . "$E2E_LOG")" -eq 1 ] && ok || fail "only the branch run ran: $(cat "$E2E_LOG")"
 
 branch_with sel-e2e "printf 'test(\"CART-AC2: removes the last item\", () => {});\n' >>e2e/cart.spec.ts"
 expect_out "e2e/cart.spec.ts" "a changed e2e test file runs"
