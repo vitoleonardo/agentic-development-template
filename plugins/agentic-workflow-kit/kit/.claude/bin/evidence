@@ -58,6 +58,10 @@ check_gate() {
   code=$?
   secs=$(($(now) - started))
   summary=$(grep -E '^(tests|lint|typecheck|coverage) in |n/a:|not configured|legacy|flaky|new clones' "$tmp/log-$name" | head -n 3 | tr '\n' ';')
+  if [ "$code" -eq 0 ] && grep -q 'is required\.$' "$tmp/log-$name"; then
+    gate "$name" fail "$secs" "printed a value below its threshold but exited 0; $summary"
+    return
+  fi
   case $code in
     0) gate "$name" pass "$secs" "$summary" ;;
     4) gate "$name" n/a "$secs" "$(grep -o 'n/a:.*' "$tmp/log-$name" | head -n 1)" ;;

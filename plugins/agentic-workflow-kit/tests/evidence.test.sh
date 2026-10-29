@@ -128,6 +128,12 @@ expect_code 1 "an unconfigured duplicates gate fails" .claude/bin/evidence gates
 expect_out "| duplicates | fail | 0s | not configured" "the unconfigured duplicates gate is named"
 sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="true"/' .claude/kit.conf
 
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="echo \\"coverage in web: 0% of the lines in the changed files are covered; at least 70% is required.\\""/' .claude/kit.conf
+expect_code 1 "a check that prints a failing value but exits 0 fails its gate" .claude/bin/evidence gates
+expect_out "| duplicates | fail |" "the inconsistent gate is named"
+expect_out "printed a value below its threshold but exited 0" "the inconsistency is explained"
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="true"/' .claude/kit.conf
+
 printf 'export const helper = 1;\n' >src/helpers.ts
 expect_code 1 "a new source file outside the Map fails the structure gate" .claude/bin/evidence gates
 expect_out "| structure | fail |" "the structure gate fails"

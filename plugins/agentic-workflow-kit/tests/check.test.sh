@@ -221,6 +221,13 @@ mkdir -p tests && printf 'export const helper = 1\n' >tests/helper.ts
 out=$(.claude/bin/check --against-baseline coverage 2>&1)
 case $out in *tests/helper.ts*) fail "a file in a top-level tests/ folder is not a source file: $out" ;; *) ok ;; esac
 rm -r tests
+cp .claude/kit.conf root.conf.orig
+printf 'KIT_TEST_PATTERNS="*.test.* *.spec.*"\nKIT_E2E_PATTERNS="e2e/*.spec.* e2e/*.screenshots.*"\n' >>.claude/kit.conf
+mkdir -p apps/web/e2e && printf 'export const flow = 1\n' >apps/web/e2e/ask.screenshots.ts
+expect_code 0 "a changed e2e flow is not measured as source" .claude/bin/check --against-baseline coverage
+case $out in *"ask.screenshots.ts | 0/"*) fail "the e2e flow counted as 0%: $out" ;; *) ok ;; esac
+rm -r apps
+mv root.conf.orig .claude/kit.conf
 
 # --- a later package that passes keeps an earlier failure -----------------------
 

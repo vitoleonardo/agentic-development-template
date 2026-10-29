@@ -238,8 +238,7 @@ compare_test() {
   : >"$tmp/vanished"
   if [ -s "$tmp/gone" ]; then
     # Only removed lines of test files count, so a renamed fixture or a comment elsewhere explains nothing.
-    patterns=$(configured "$pkg" KIT_TEST_PATTERNS)
-    patterns=${patterns:-"*.test.* *.spec.* *_test.* test_*.* __tests__/* test/* tests/* e2e/* spec/*"}
+    patterns=$(test_patterns "$pkg")
     : >"$tmp/removed-lines"
     git diff --name-only "$(merge_base)" -- 2>/dev/null | while IFS= read -r f; do
       [ "$(package_of "$f")" = "$pkg" ] && matches_any "$f" "$patterns" || continue
@@ -317,7 +316,8 @@ compare_coverage() {
   threshold=$(configured "$pkg" KIT_COVERAGE_THRESHOLD)
   tolerance=$(configured "$pkg" KIT_COVERAGE_TOLERANCE)
   sources=$(configured "$pkg" KIT_SOURCE_PATTERNS)
-  tests=$(configured "$pkg" KIT_TEST_PATTERNS)
+  tests=$(test_patterns "$pkg")
+  e2e=$(conf_value . KIT_E2E_PATTERNS)
   exclude=$(configured "$pkg" KIT_COVERAGE_EXCLUDE)
   if [ -z "$files_cmd" ]; then
     echo "coverage in $pkg: KIT_COVERAGE_FILES is not configured, so coverage of the changed files cannot be measured."
@@ -336,7 +336,7 @@ compare_coverage() {
     # The kit's own tooling is not application code.
     case $f in .claude/*) continue ;; esac
     matches_any "$f" "$sources" || continue
-    matches_any "$f" "${tests:-*.test.* *.spec.* __tests__/* tests/*}" && continue
+    matches_any "$f" "$tests $e2e" && continue
     [ -n "$exclude" ] && matches_any "$f" "$exclude" && continue
     # The line count stands in for a file the report leaves out: it counts as untested.
     printf '%s\t%s\n' "$f" "$(wc -l <"$pkg/$f" | tr -d ' ')"
