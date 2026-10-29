@@ -6,12 +6,12 @@ cd "$KIT_ROOT" || exit 1
 
 # shellcheck source=../bin/conf.sh
 . "$(dirname -- "$0")/../bin/conf.sh"
-approval_from_environment=$(export -p | grep -E '^(export|declare -x) KIT_(APPROVAL|GATE_[A-Z]+)=')
+kit_from_environment=$(export -p | grep -E '^(export|declare -x) KIT_(APPROVAL|GATE_[A-Z]+|BUDGET_TOKENS|IMPROVE)=')
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
   . ./.claude/kit.conf
 fi
-eval "$approval_from_environment"
+eval "$kit_from_environment"
 
 # file_value <path relative to the root> <variable>: the variable from the config of the file's package.
 # In a monorepo a package's .claude/kit.conf decides its own source and test patterns.

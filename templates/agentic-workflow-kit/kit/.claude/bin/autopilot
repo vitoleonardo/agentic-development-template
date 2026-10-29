@@ -1,0 +1,214 @@
+#!/bin/sh
+set -u
+
+usage() {
+  echo "usage: .claude/bin/autopilot [feature-slug ...]" >&2
+  echo "  Builds approved specs one after another, each in fresh headless sessions, on stacked branches." >&2
+  echo "  Without slugs: every row of specs/README.md that is approved, planned, building or in-review, in file order." >&2
+  exit 2
+}
+case ${1:-} in -h | --help) usage ;; esac
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+cd "$root" || exit 2
+# shellcheck source=conf.sh
+. "$root/.claude/bin/conf.sh"
+budget_from_environment=${KIT_BUDGET_TOKENS:-}
+if [ -f .claude/kit.conf ]; then
+  # shellcheck source=/dev/null
+  . ./.claude/kit.conf
+fi
+KIT_BUDGET_TOKENS=${budget_from_environment:-${KIT_BUDGET_TOKENS:-}}
+
+max_answers=${AUTOPILOT_MAX_ANSWERS:-2}
+answerable_classes="question plan tier test"
+log_dir=.work/autopilot
+mkdir -p "$log_dir"
+run_id=$(date +%Y%m%d-%H%M%S)
+run_log=$log_dir/run-$run_id.md
+
+spec_file_of_row='function spec_file(f) { gsub(/[ `]/, "", f); sub(/^\[/, "", f); sub(/\].*$/, "", f); sub(/^(\.\/)?(specs\/)?/, "", f); return f }'
+
+row_field() {
+  [ -f specs/README.md ] || return 0
+  awk -F '|' -v spec="$1.md" -v col="$2" "$spec_file_of_row"'
+    { s = spec_file($3) }
+    s == spec { v = $col; gsub(/^ +| +$/, "", v); print v; exit }
+  ' specs/README.md
+}
+status_of() { row_field "$1" 4; }
+pr_of() { gh pr view "$1" --json url --jq .url 2>/dev/null; }
+phase_done() {
+  case $1 in
+    plan) case $(status_of "$slug") in planned | building | in-review | done) return 0 ;; esac; return 1 ;;
+    build) [ -n "$(pr_of "$branch")" ] ;;
+  esac
+}
+branch_of() {
+  _branch=$(row_field "$1" 5)
+  case $_branch in '' | -* | –* | _*) printf '%s' "$1" ;; *) printf '%s' "$_branch" ;; esac
+}
+
+section_rows() {
+  [ -f "$1" ] || { echo 0; return; }
+  awk -v name="$2" '
+    /^## / { inside = ($0 == "## " name); next }
+    inside && /^- / && !/^- </ { n++ }
+    END { print n + 0 }
+  ' "$1"
+}
+last_stop_class() {
+  awk '
+    /^## / { inside = ($0 == "## Stops"); next }
+    inside && /^- / && !/^- </ { n = split($0, p, "|"); c = (n >= 2) ? p[2] : ""; gsub(/^ +| +$/, "", c) }
+    END { print c }
+  ' "$1" 2>/dev/null
+}
+
+json_string() {
+  printf '%s' "$1" | sed -nE 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' |
+    sed -e 's/\\"/"/g' -e 's/\\\//\//g' -e 's/\\n/ /g' -e 's/\\t/ /g' -e 's/\\\\/\\/g'
+}
+
+denied_commands() {
+  printf '%s' "$result_line" | sed 's/.*"permission_denials"//' |
+    grep -oE '"(command|file_path)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -n 5 |
+    sed -E 's/^"[a-z_]+"[[:space:]]*:[[:space:]]*"//; s/"$//; s/\\n/ /g' | cut -c 1-100 | tr '\n' ';' | sed 's/;$//; s/;/; /g'
+}
+
+log() { printf '%s\n' "$*" >>"$run_log"; }
+
+halt() {
+  log "| $slug | $branch | stopped: $1 | $2 | $(session_ids) |"
+  log ""
+  log "Stopped at $slug: $2"
+  echo "autopilot: stopped at $slug ($1): $2" >&2
+  if [ -n "${session:-}" ]; then
+    echo "Answer it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
+  fi
+  echo "Run log: $run_log" >&2
+  exit 1
+}
+
+sessions=""
+session_ids() { printf '%s' "${sessions:-–}"; }
+
+unattended_tools="Bash(.claude/bin/*),Bash(./.claude/bin/*),Bash($root/.claude/bin/*),Bash(git checkout *),Bash(git switch *),Bash(git restore *),Bash(git stash *),Bash(git commit *),Bash(git push *),Bash(gh pr create *),Bash(gh pr view *)"
+
+run_claude() {
+  _transcript=$1
+  shift
+  KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS \
+    claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
+    --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
+    >"$_transcript" 2>&1
+  result_line=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)
+}
+
+ask_answerer() {
+  _question=$1
+  _transcript=$log_dir/$run_id-$slug-answer-$answers.jsonl
+  KIT_BASE=$base claude -p "You answer one question for the product owner of this project, who is away. \
+The source of truth is the approved spec specs/$slug.md; the work so far is in .work/$branch.md. \
+Read both, and the code if needed. Answer only what the spec settles or clearly implies; never widen or narrow its scope, \
+never approve skipping a test, a check or a security rule. Reply with exactly one line: \
+'ANSWER: <the answer and why, one or two sentences>' or 'ESCALATE: <why a human must decide>'. Question: $_question" \
+    --output-format stream-json --verbose --allowedTools Read Grep Glob --permission-mode dontAsk --permission-prompts none \
+    >"$_transcript" 2>&1
+  json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)" result
+}
+
+run_phase() {
+  _phase=$1 _prompt=$2
+  _stops_before=$(section_rows ".work/$branch.md" Stops)
+  run_claude "$log_dir/$run_id-$slug-$_phase.jsonl" "$_prompt"
+  while :; do
+    session=$(json_string "$result_line" session_id)
+    [ -n "$session" ] && case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
+    phase_done "$_phase" && return 0
+    [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $log_dir/$run_id-$slug-$_phase.jsonl"
+    _question=$(json_string "$result_line" result)
+    if printf '%s' "$result_line" | grep -Eq '"permission_denials"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{'; then
+      halt permission "denied: $(denied_commands); the session said: $_question"
+    fi
+    _class=question
+    if [ "$(section_rows ".work/$branch.md" Stops)" -gt "$_stops_before" ]; then
+      _class=$(last_stop_class ".work/$branch.md")
+    fi
+    case " $answerable_classes " in *" $_class "*) ;; *) halt "$_class" "$_question" ;; esac
+    [ "$answers" -lt "$max_answers" ] || halt "$_class" "more than $max_answers answers needed: $_question"
+    answers=$((answers + 1))
+    _reply=$(ask_answerer "$_question")
+    case $_reply in
+      ANSWER:*) ;;
+      *) halt "$_class" "the answerer escalated (${_reply:-no reply}): $_question" ;;
+    esac
+    log "- $slug, $_phase, answer $answers: Q: $_question A: ${_reply#ANSWER: }"
+    _stops_before=$(section_rows ".work/$branch.md" Stops)
+    run_claude "$log_dir/$run_id-$slug-$_phase-$answers.jsonl" --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
+Log it under Decisions to review as 'answered-by-autopilot | <the question> | <the answer>' and continue."
+  done
+}
+
+if [ $# -eq 0 ] && [ -f specs/README.md ]; then
+  # shellcheck disable=SC2046
+  set -- $(awk -F '|' "$spec_file_of_row"'
+    { s = spec_file($3); t = $4; gsub(/^ +| +$/, "", t) }
+    s ~ /\.md$/ && (t == "approved" || t == "planned" || t == "building" || t == "in-review") { sub(/\.md$/, "", s); print s }
+  ' specs/README.md)
+fi
+[ $# -gt 0 ] || { echo "autopilot: no approved specs in specs/README.md." >&2; exit 2; }
+
+for slug in "$@"; do
+  case $(status_of "$slug") in
+    approved | planned | building | in-review | done) ;;
+    '') echo "autopilot: specs/$slug.md has no row in specs/README.md." >&2; exit 2 ;;
+    *) echo "autopilot: specs/$slug.md is $(status_of "$slug"), not approved. Approve every queued spec first." >&2; exit 2 ;;
+  esac
+done
+[ -n "$KIT_BUDGET_TOKENS" ] || { echo "autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, before an unattended run." >&2; exit 2; }
+[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "autopilot: commit or stash your changes first." >&2; exit 2; }
+command -v claude >/dev/null 2>&1 || { echo "autopilot: claude is not on PATH." >&2; exit 2; }
+gh auth status >/dev/null 2>&1 || { echo "autopilot: gh is not logged in; the sessions open the PRs." >&2; exit 2; }
+case $(claude -p "Reply with OK." --model haiku --max-turns 1 --output-format json 2>&1 >/dev/null) in
+  *"not been trusted"*)
+    echo "autopilot: Claude Code has not trusted $root yet, so headless sessions ignore the allowlist in .claude/settings.json and every check is denied. Run claude here once and accept the trust dialog." >&2
+    exit 2
+    ;;
+esac
+
+base=$(base_ref)
+log "# Autopilot run $(date +%d.%m.%Y\ %H:%M)"
+log ""
+log "Queue: $*. First base: $base. Budget per feature: $KIT_BUDGET_TOKENS tokens. Answers per feature: at most $max_answers."
+log ""
+log "| Feature | Branch | Result | Details | Sessions |"
+log "|---|---|---|---|---|"
+
+for slug in "$@"; do
+  branch=$(branch_of "$slug")
+  sessions="" session="" answers=0
+  if [ "$(status_of "$slug")" = "done" ] || phase_done build; then
+    log "| $slug | $branch | skipped, already has a PR or is done | $(pr_of "$branch" || printf '–') | – |"
+    git rev-parse -q --verify "refs/heads/$branch" >/dev/null && base=$branch
+    continue
+  fi
+  if git rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
+    git checkout -q "$branch" || halt env "cannot check out $branch"
+  else
+    git checkout -q -b "$branch" "$base" || halt env "cannot create $branch from $base"
+  fi
+  started=$(date +%s)
+  phase_done plan || run_phase plan "/plan-feature $slug"
+  run_phase build "/ship-feature $slug"
+  minutes=$((($(date +%s) - started + 59) / 60))
+  pr=$(pr_of "$branch")
+  decisions=$(section_rows ".work/$branch.md" "Decisions to review")
+  log "| $slug | $branch | in-review | $pr; ${minutes} min; $(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
+  base=$branch
+done
+
+log ""
+log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."
+.claude/bin/runs report >/dev/null 2>&1
+echo "autopilot: done. Run log: $run_log"

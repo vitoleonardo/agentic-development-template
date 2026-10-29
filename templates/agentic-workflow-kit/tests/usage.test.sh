@@ -103,6 +103,8 @@ sed -i 's/^KIT_BUDGET_TOKENS="2800"$/KIT_BUDGET_TOKENS="2000"/' .claude/kit.conf
 out=$(hook "$pre" 2>&1)
 code=$?
 [ "$code" -eq 2 ] && case $out in *"Stop before the next dispatch and ask the user"*) true ;; *) false ;; esac && ok || fail "a used-up budget blocks the next dispatch (ROUTE-AC3): $code $out"
+out=$(KIT_BUDGET_TOKENS=100000 hook "$pre" 2>&1)
+same "$?:$out" "0:" "the budget from the environment wins over kit.conf (autopilot sets it per run)"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

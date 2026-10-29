@@ -6,7 +6,7 @@ argument-hint: [base branch, default main]
 
 # Write the PR description
 
-Base branch: $ARGUMENTS (use `main` if empty).
+Base branch: $ARGUMENTS (if empty: `$KIT_BASE` when it is set, which `.claude/bin/autopilot` does for stacked branches, else `main`).
 
 Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, say that the pack is stale and that `/verify-feature` must run again; do not use it.
 
