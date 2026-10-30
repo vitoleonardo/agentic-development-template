@@ -1,0 +1,347 @@
+#!/bin/sh
+set -u
+
+usage() {
+  cat <<'EOF'
+Usage: scan [--lang de|en] [--gh]
+Read-only scan of the git repository in the current folder. Writes .repo-check/report.md and
+.repo-check/.gitignore, nothing else.
+  --lang  report language, en (default) or de
+  --gh    also read merged PRs from GitHub through leadtime (gh, read-only GraphQL query)
+GH names the gh command, LEADTIME_TODAY and REPO_CHECK_NOW (epoch seconds) fix the date for tests.
+EOF
+}
+
+lang=en use_gh=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --lang) lang=${2:-}; shift 2 ;;
+    --gh) use_gh=1; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+case $lang in de | en) ;; *) echo "scan: --lang takes de or en" >&2; exit 2 ;; esac
+
+here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "scan: not inside a git repository" >&2; exit 2; }
+cd "$root" || exit 2
+[ -L .repo-check ] && { echo "scan: .repo-check is a symlink; refusing to write through it" >&2; exit 2; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+now=${REPO_CHECK_NOW:-$(date -u +%s)}
+cutoff=$((now - 90 * 86400))
+ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || ref=HEAD
+
+t() {
+  case $lang:$1 in
+    en:title) echo "repo-check report" ;; de:title) echo "repo-check Bericht" ;;
+    en:jam) echo "The jam is at" ;; de:jam) echo "Der Stau steckt gerade bei" ;;
+    en:stages) echo "Stages" ;; de:stages) echo "Stufen" ;;
+    en:stage) echo "Stage" ;; de:stage) echo "Stufe" ;;
+    en:verdict) echo "Verdict" ;; de:verdict) echo "Urteil" ;;
+    en:evidence) echo "Evidence" ;; de:evidence) echo "Beleg" ;;
+    en:numbers) echo "Baseline numbers" ;; de:numbers) echo "Ausgangszahlen" ;;
+    en:number) echo "Number" ;; de:number) echo "Zahl" ;;
+    en:value) echo "Value" ;; de:value) echo "Wert" ;;
+    en:source) echo "Source" ;; de:source) echo "Quelle" ;;
+    en:count) echo "Count" ;; de:count) echo "Anzahl" ;;
+    en:steps) echo "Next steps" ;; de:steps) echo "Nächste Schritte" ;;
+    en:offer) echo "Which offer fits" ;; de:offer) echo "Welches Angebot passt" ;;
+    en:summary) echo "Summary to share" ;; de:summary) echo "Zusammenfassung zum Weitergeben" ;;
+    en:summary_intro) echo "No code, no file contents, no names, no paths. Add the repository name yourself if you want to." ;;
+    de:summary_intro) echo "Kein Code, keine Dateiinhalte, keine Namen, keine Pfade. Den Repo-Namen kannst du selbst ergänzen." ;;
+    en:green) echo "green" ;; de:green) echo "grün" ;;
+    en:yellow) echo "yellow" ;; de:yellow) echo "gelb" ;;
+    en:red) echo "red" ;; de:red) echo "rot" ;;
+    en:Schreiben) echo "Writing" ;; de:Schreiben) echo "Schreiben" ;;
+    *:Review) echo "Review" ;; *:Release) echo "Release" ;;
+    en:none) echo "none" ;; de:none) echo "keine" ;;
+    en:yes) echo "yes" ;; de:yes) echo "ja" ;;
+    en:no) echo "no" ;; de:no) echo "nein" ;;
+    en:spec_dirs) echo "spec folders" ;; de:spec_dirs) echo "Spec-Ordner" ;;
+    en:templates) echo "issue or PR templates" ;; de:templates) echo "Issue- oder PR-Vorlagen" ;;
+    en:criteria) echo "acceptance criteria" ;; de:criteria) echo "Akzeptanzkriterien" ;;
+    en:guide) echo "agent guide" ;; de:guide) echo "Agenten-Leitfaden" ;;
+    en:permissions) echo "agent permissions" ;; de:permissions) echo "Agenten-Berechtigungen" ;;
+    en:structure) echo "structure docs" ;; de:structure) echo "Struktur-Doku" ;;
+    en:ci) echo "CI files" ;; de:ci) echo "CI-Dateien" ;;
+    en:checks) echo "checks in CI" ;; de:checks) echo "Checks in der CI" ;;
+    en:tests) echo "test files" ;; de:tests) echo "Testdateien" ;;
+    en:coverage) echo "coverage threshold" ;; de:coverage) echo "Coverage-Schwelle" ;;
+    en:strict) echo "strict typing" ;; de:strict) echo "strenge Typprüfung" ;;
+    en:pr_size) echo "PR size (median changed lines)" ;; de:pr_size) echo "PR-Größe (Median geänderte Zeilen)" ;;
+    en:first_review) echo "Time to first review (median h)" ;; de:first_review) echo "Zeit bis zum ersten Review (Median h)" ;;
+    en:rounds) echo "Review rounds (median)" ;; de:rounds) echo "Review-Runden (Median)" ;;
+    en:rework) echo "Rework rate (%)" ;; de:rework) echo "Nacharbeitsquote (%)" ;;
+    en:per_week) echo "Merges per week" ;; de:per_week) echo "Merges pro Woche" ;;
+    en:tags) echo "Tags in 90 days" ;; de:tags) echo "Tags in 90 Tagen" ;;
+    en:fix_rate) echo "Follow-up fix rate (%)" ;; de:fix_rate) echo "Folgefix-Quote (%)" ;;
+    en:last) echo "days since the last merge" ;; de:last) echo "Tage seit dem letzten Merge" ;;
+    en:needs_gh) echo "n/a: needs GitHub data" ;; de:needs_gh) echo "n/a: braucht GitHub-Daten" ;;
+    en:solo) echo "n/a: one contributor" ;; de:solo) echo "n/a: eine Person" ;;
+    en:too_few) echo "Too few PRs for a reliable comparison" ;; de:too_few) echo "Zu wenige PRs für einen verlässlichen Vergleich" ;;
+    en:no_history) echo "no merges or commits in the last 90 days" ;; de:no_history) echo "keine Merges oder Commits in den letzten 90 Tagen" ;;
+    en:git_only) echo "at best yellow without GitHub review data" ;; de:git_only) echo "ohne GitHub-Review-Daten höchstens gelb" ;;
+    en:few) echo "yellow below 10, too few to judge" ;; de:few) echo "unter 10 gelb, zu wenige für ein Urteil" ;;
+    en:solo_cap) echo "at best yellow with one contributor" ;; de:solo_cap) echo "mit einer Person höchstens gelb" ;;
+    en:gh_failed) echo "gh failed, so the numbers come from git" ;; de:gh_failed) echo "gh ist fehlgeschlagen, die Zahlen kommen aus git" ;;
+    en:prs) echo "PRs" ;; de:prs) echo "PRs" ;;
+    en:merges) echo "merges" ;; de:merges) echo "Merges" ;;
+    en:commits) echo "commits" ;; de:commits) echo "Commits" ;;
+    en:contributors) echo "contributors in 90 days" ;; de:contributors) echo "Beteiligte in 90 Tagen" ;;
+    en:team) echo "Team" ;; de:team) echo "Team" ;;
+    en:numbers_from) echo "Numbers from" ;; de:numbers_from) echo "Zahlen aus" ;;
+    en:gh_source) echo "gh via leadtime, 90 days" ;; de:gh_source) echo "gh über leadtime, 90 Tage" ;;
+    en:git_history) echo "git history" ;; de:git_history) echo "git-Historie" ;;
+  esac
+}
+
+git ls-files >"$tmp/all"
+grep -Ev '(^|/)(\.env(\..*)?|[^/]*\.(env|pem|key|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|\.npmrc|\.pypirc|\.netrc|credentials[^/]*)$' "$tmp/all" >"$tmp/files"
+
+matching() { grep -E "$1" "$tmp/files"; }
+count() { matching "$1" | wc -l | tr -d ' '; }
+grep_files() {
+  pattern=$1
+  shift
+  matching "$@" | tr '\n' '\0' | xargs -0 grep -liE -- "$pattern" 2>/dev/null
+}
+show() {
+  awk -v none="$(t none)" '{ if (NR <= 2) l = l (NR > 1 ? ", " : "") $0; n = NR }
+    END { if (n == 0) print none; else if (n > 2) printf "%s (+%d)\n", l, n - 2; else print l }'
+}
+yes_no() { if [ "$1" -gt 0 ]; then t yes; else t no; fi; }
+gt() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a != "" && a + 0 > b + 0) }'; }
+le() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a != "" && a + 0 <= b + 0) }'; }
+
+spec_re='^(specs|docs/specs|rfcs|docs/rfcs|adr|docs/adr|docs/decisions)/'
+template_re='^\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|pull_request_template)|^\.gitlab/(issue_templates|merge_request_templates)/|^(docs/)?(PULL_REQUEST_TEMPLATE|pull_request_template)\.md$'
+matching "$spec_re" | sed -E 's#^((docs/)?[^/]+)/.*#\1/#' | sort -u >"$tmp/spec_dirs"
+matching "$template_re" >"$tmp/templates"
+grep_files 'acceptance criteria|akzeptanzkriterien|given .+ when .+ then' '\.mdx?$' >"$tmp/criteria"
+spec_n=$(wc -l <"$tmp/spec_dirs" | tr -d ' ')
+template_n=$(wc -l <"$tmp/templates" | tr -d ' ')
+criteria_n=$(wc -l <"$tmp/criteria" | tr -d ' ')
+if [ $((spec_n + template_n)) -gt 0 ] && [ "$criteria_n" -gt 0 ]; then intent=green
+elif [ $((spec_n + template_n + criteria_n)) -eq 0 ]; then intent=red
+else intent=yellow; fi
+intent_evidence="$(t spec_dirs): $(show <"$tmp/spec_dirs"); $(t templates): $(show <"$tmp/templates"); $(t criteria): $(show <"$tmp/criteria")"
+intent_summary="$(t spec_dirs) $spec_n, $(t templates) $template_n, $(t criteria) $(yes_no "$criteria_n")"
+
+matching '(^|/)(CLAUDE\.md|AGENTS\.md|\.cursorrules)$|^\.cursor/rules/|^\.github/copilot-instructions\.md$' >"$tmp/guide"
+: >"$tmp/permissions"
+if grep -qx '.claude/settings.json' "$tmp/files" && grep -q '"permissions"' .claude/settings.json 2>/dev/null; then
+  echo .claude/settings.json >"$tmp/permissions"
+fi
+matching '^(ARCHITECTURE\.md|CONTRIBUTING\.md|docs/ARCHITECTURE\.md|docs/architecture\.md|\.github/CONTRIBUTING\.md)$|^docs/(adr|architecture)/' >"$tmp/structure"
+guide_n=$(wc -l <"$tmp/guide" | tr -d ' ')
+perm_n=$(wc -l <"$tmp/permissions" | tr -d ' ')
+structure_n=$(wc -l <"$tmp/structure" | tr -d ' ')
+if [ "$guide_n" -gt 0 ] && [ "$perm_n" -gt 0 ]; then build=green
+elif [ $((guide_n + perm_n + structure_n)) -eq 0 ]; then build=red
+else build=yellow; fi
+build_evidence="$(t guide): $(show <"$tmp/guide"); $(t permissions): $(show <"$tmp/permissions"); $(t structure): $(show <"$tmp/structure")"
+build_summary="$(t guide) $(yes_no "$guide_n"), $(t permissions) $(yes_no "$perm_n"), $(t structure) $(yes_no "$structure_n")"
+
+ci_re='^\.github/workflows/[^/]+\.ya?ml$|^\.gitlab-ci\.yml$|^Jenkinsfile$|^\.circleci/config\.yml$|^azure-pipelines\.yml$|^bitbucket-pipelines\.yml$'
+matching "$ci_re" >"$tmp/ci"
+ci_n=$(wc -l <"$tmp/ci" | tr -d ' ')
+checks=""
+if [ "$ci_n" -gt 0 ]; then
+  for kind in "test:(^|[^a-z])(test|tests|pytest|vitest|jest|mocha|phpunit|rspec)([^a-z]|$)" \
+    "lint:lint|biome|ruff|flake8|golangci|rubocop|clippy" \
+    "typecheck:typecheck|type-check|tsc|mypy|pyright|check-types" \
+    "build:(^|[^a-z])build([^a-z]|$)" \
+    "coverage:coverage|--cov|codecov"; do
+    name=${kind%%:*}
+    [ -n "$(grep_files "${kind#*:}" "$ci_re")" ] && checks="$checks${checks:+, }$name"
+  done
+fi
+test_n=$(count '(^|/)(__tests__|tests?|e2e|spec)/|\.(test|spec)\.[[:alnum:]]+$|_test\.[[:alnum:]]+$|(^|/)test_[^/]*\.py$')
+grep_files 'thresholds?|fail_under|fail-under|coverageThreshold|cov-fail-under|check-coverage' \
+  "(^|/)((vitest|vite|jest)\.config\.[cm]?[jt]s|package\.json|pyproject\.toml|setup\.cfg|\.coveragerc|\.nycrc(\.json)?|codecov\.ya?ml)$|$ci_re" >"$tmp/coverage"
+{
+  grep_files '"strict"[[:space:]]*:[[:space:]]*true' '(^|/)tsconfig[^/]*\.json$'
+  grep_files '^[[:space:]]*strict[[:space:]]*=[[:space:]]*true|typeCheckingMode.*strict' '(^|/)(pyproject\.toml|mypy\.ini|setup\.cfg|pyrightconfig\.json)$'
+} >"$tmp/strict"
+coverage_n=$(wc -l <"$tmp/coverage" | tr -d ' ')
+strict_n=$(wc -l <"$tmp/strict" | tr -d ' ')
+full_checks=1
+for kind in test lint typecheck; do
+  case ", $checks," in *", $kind,"*) ;; *) full_checks=0 ;; esac
+done
+if [ "$ci_n" -eq 0 ] || [ "$test_n" -eq 0 ]; then gates=red
+elif [ "$full_checks" -eq 1 ] && [ "$strict_n" -gt 0 ]; then gates=green
+else gates=yellow; fi
+gates_evidence="$(t ci): $(show <"$tmp/ci"); $(t checks): ${checks:-$(t none)}; $(t tests): $test_n (git ls-files); $(t coverage): $(show <"$tmp/coverage"); $(t strict): $(show <"$tmp/strict")"
+gates_summary="$(t ci) $ci_n, $(t checks) ${checks:-$(t none)}, $(t tests) $test_n, $(t coverage) $(yes_no "$coverage_n"), $(t strict) $(yes_no "$strict_n")"
+
+git_log_cmd="git log --first-parent -m --numstat $ref"
+git log --since="@$((cutoff - 14 * 86400))" --first-parent -m --numstat --format='@%ct%x09%P%x09%s' "$ref" >"$tmp/log" 2>/dev/null || : >"$tmp/log"
+git log --format='%ct %ae' "$ref" 2>/dev/null | awk -v c="$cutoff" '$1 >= c && !($2 in seen) { seen[$2] = 1; n++ } END { print n + 0 }' >"$tmp/people"
+people=$(cat "$tmp/people")
+tags=$(git for-each-ref --format='%(creatordate:unix)' refs/tags 2>/dev/null | awk -v c="$cutoff" '$1 >= c { n++ } END { print n + 0 }')
+awk -F '\t' -v cutoff="$cutoff" -v now="$now" '
+  function flush() { if (cur) { size[cur] = lines; files[cur] = flist } }
+  /^@/ { flush(); cur = ++n; t[cur] = substr($1, 2) + 0; np = split($2, ps, " "); merge[cur] = (np > 1)
+         if (merge[cur]) merges++; fix[cur] = (tolower($3) ~ /^(fix|revert)/); lines = 0; flist = "|"; next }
+  NF == 3 && cur { lines += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2); flist = flist $3 "|" }
+  END {
+    flush()
+    usemerge = 0
+    for (i = 1; i <= n; i++) if (merge[i] && t[i] >= cutoff) usemerge = 1
+    last = -1; k = 0
+    for (i = 1; i <= n; i++) {
+      if (usemerge && !merge[i]) continue
+      if (t[i] > last) last = t[i]
+      if (t[i] < cutoff) continue
+      v[++k] = size[i]; unit[k] = i
+    }
+    for (a = 2; a <= k; a++) { x = v[a]; for (b = a - 1; b > 0 && v[b] > x; b--) v[b + 1] = v[b]; v[b + 1] = x }
+    med = ""
+    if (k > 0) med = sprintf("%.1f", (k % 2) ? v[(k + 1) / 2] : (v[k / 2] + v[k / 2 + 1]) / 2)
+    rw = 0
+    for (q = 1; q <= k; q++) {
+      i = unit[q]; hit = 0
+      for (j = 1; j <= n && !hit; j++) {
+        if (j == i || !fix[j] || (usemerge && !merge[j]) || t[j] <= t[i] || t[j] - t[i] > 14 * 86400) continue
+        m = split(files[i], f, "|")
+        for (x = 1; x <= m && !hit; x++) if (f[x] != "" && index(files[j], "|" f[x] "|")) hit = 1
+      }
+      rw += hit
+    }
+    printf "units=%d\nkind=%s\nsize=%s\nper_week=%.1f\nfix_rate=%s\nlast_days=%s\n", k, (usemerge ? "merges" : "commits"), med,
+      k * 7 / 90, (k ? sprintf("%.1f", rw * 100 / k) : ""), (last < 0 ? "" : int((now - last) / 86400))
+  }' "$tmp/log" >"$tmp/git.env"
+value() { sed -n "s/^$1=//p" "$2"; }
+git_units=$(value units "$tmp/git.env")
+git_kind=$(value kind "$tmp/git.env")
+git_size=$(value size "$tmp/git.env")
+git_per_week=$(value per_week "$tmp/git.env")
+git_fix=$(value fix_rate "$tmp/git.env")
+last_days=$(value last_days "$tmp/git.env")
+
+gh_ok=0 gh_note=""
+if [ "$use_gh" -eq 1 ]; then
+  if LEADTIME_ROOT="$root" "$here/leadtime" --baseline --stdout >"$tmp/lt.csv" 2>"$tmp/lt.err"; then
+    gh_ok=1
+    awk -F ',' '$2 == "all" { print $3 "=" $5; print $3 "_n=" $4 }' "$tmp/lt.csv" >"$tmp/gh.env"
+  else
+    gh_note=" $(t gh_failed)."
+  fi
+fi
+
+numbers=$tmp/numbers
+: >"$numbers"
+row() { printf '| %s | %s | %s | %s |\n' "$1" "$2" "$3" "$4" >>"$numbers"; }
+if [ "$gh_ok" -eq 1 ]; then
+  prs=$(value prs "$tmp/gh.env"); prs=${prs:-0}
+  solo=$(value solo_n "$tmp/gh.env")
+  size=$(value pr_size_lines "$tmp/gh.env")
+  first=$(value first_review_h "$tmp/gh.env")
+  rounds=$(value review_rounds "$tmp/gh.env")
+  rework=$(value rework_pct "$tmp/gh.env")
+  first_shown=${first:-–} rounds_shown=${rounds:-–}
+  [ -n "$solo" ] && first_shown=$(t solo) rounds_shown=$(t solo)
+  src="$(t gh_source)"
+  row "$(t pr_size)" "${size:-–}" "$src" "$prs $(t prs)"
+  row "$(t first_review)" "$first_shown" "$src" "$(value first_review_h_n "$tmp/gh.env") $(t prs)"
+  row "$(t rounds)" "$rounds_shown" "$src" "$(value review_rounds_n "$tmp/gh.env") $(t prs)"
+  row "$(t rework)" "${rework:-–}" "$src" "$prs $(t prs)"
+  units=$prs unit_word=$(t prs)
+  review_cap=""
+  if [ "$prs" -lt 10 ]; then review=yellow review_cap="; $(t few)"
+  elif gt "$size" 1000 || gt "$first" 72; then review=red
+  elif le "$size" 400 && le "$first" 24 && le "$rounds" 1; then review=green
+  else review=yellow; fi
+  if [ "$review" = green ] && [ -n "$solo" ]; then review=yellow review_cap="; $(t solo_cap)"; fi
+  review_evidence="$(t pr_size) ${size:-–}, $(t first_review) $first_shown, $(t rounds) $rounds_shown, $prs $(t prs) ($(t gh_source))$review_cap"
+  review_summary="$(t pr_size) ${size:-–}, $(t first_review) ${first:-–}, $(t rounds) ${rounds:-–}, $prs $(t prs)"
+  per_week=$(awk -v n="$prs" 'BEGIN { printf "%.1f", n * 7 / 90 }')
+  fix_rate=$rework fix_label=$(t rework)
+else
+  units=$git_units unit_word=$(t "$git_kind")
+  src="$git_log_cmd, 90 days"
+  [ "$lang" = de ] && src="$git_log_cmd, 90 Tage"
+  row "$(t pr_size)" "${git_size:-–}" "$src" "$units $unit_word"
+  row "$(t per_week)" "$git_per_week" "$src" "$units $unit_word"
+  row "$(t tags)" "$tags" "git for-each-ref refs/tags" "$tags"
+  row "$(t fix_rate)" "${git_fix:-–}" "$src" "$units $unit_word"
+  review_cap=""
+  if [ "$units" -lt 10 ]; then review=yellow review_cap="; $(t few)"
+  elif gt "$git_size" 1000; then review=red
+  else review=yellow; fi
+  review_evidence="$(t pr_size) ${git_size:-–}, $units $unit_word ($git_log_cmd); $(t first_review) $(t needs_gh); $(t rounds) $(t needs_gh); $(t git_only)$review_cap$gh_note"
+  [ "$units" -eq 0 ] && review_evidence="$(t no_history) ($git_log_cmd); $(t first_review) $(t needs_gh)$gh_note"
+  review_summary="$(t pr_size) ${git_size:-–}, $units $unit_word"
+  per_week=$git_per_week
+  fix_rate=$git_fix fix_label=$(t fix_rate)
+fi
+
+if [ "$units" -eq 0 ] || [ -z "$last_days" ] || [ "$last_days" -gt 30 ] || gt "$fix_rate" 30; then release=red
+elif ! awk -v a="$per_week" 'BEGIN { exit !(a + 0 >= 1) }'; then release=yellow
+elif le "${fix_rate:-0}" 15; then release=green
+else release=yellow; fi
+release_evidence="$(t per_week) $per_week; $(t tags) $tags (git for-each-ref refs/tags); $fix_label ${fix_rate:-–}; $(t last): ${last_days:-–} ($git_log_cmd)"
+release_summary="$(t per_week) $per_week, $(t tags) $tags, $fix_label ${fix_rate:-–}"
+
+rank() { case $1 in red) echo 2 ;; yellow) echo 1 ;; *) echo 0 ;; esac; }
+jam=Intent worst=-1
+for s in Intent:$intent Build:$build Review:$review Gates:$gates Release:$release; do
+  r=$(rank "${s#*:}")
+  [ "$r" -gt "$worst" ] && worst=$r jam=${s%%:*}
+done
+case $jam in Intent | Build) group=Schreiben ;; Review) group=Review ;; *) group=Release ;; esac
+
+mkdir -p .repo-check
+printf '*\n' >.repo-check/.gitignore
+{
+  echo "# $(t title)"
+  echo
+  echo "$(t jam): $jam ($(t "$group"))"
+  echo
+  echo "<!-- fill:reason -->"
+  echo
+  echo "## $(t stages)"
+  echo
+  echo "| $(t stage) | $(t verdict) | $(t evidence) |"
+  echo "|---|---|---|"
+  echo "| Intent | $(t "$intent") | $intent_evidence |"
+  echo "| Build | $(t "$build") | $build_evidence |"
+  echo "| Review | $(t "$review") | $review_evidence |"
+  echo "| Gates | $(t "$gates") | $gates_evidence |"
+  echo "| Release | $(t "$release") | $release_evidence |"
+  echo
+  echo "## $(t numbers)"
+  echo
+  [ "$units" -lt 10 ] && echo "**$(t too_few)** ($units)." && echo
+  echo "| $(t number) | $(t value) | $(t source) | $(t count) |"
+  echo "|---|---|---|---|"
+  cat "$numbers"
+  echo
+  echo "## $(t steps)"
+  echo
+  echo "<!-- fill:next-steps -->"
+  echo
+  echo "## $(t offer)"
+  echo
+  echo "<!-- fill:offer -->"
+  echo
+  echo "## $(t summary)"
+  echo
+  echo "$(t summary_intro)"
+  echo
+  echo "- $(t jam): $jam ($(t "$group"))"
+  echo "- Intent: $(t "$intent") ($intent_summary)"
+  echo "- Build: $(t "$build") ($build_summary)"
+  echo "- Review: $(t "$review") ($review_summary)"
+  echo "- Gates: $(t "$gates") ($gates_summary)"
+  echo "- Release: $(t "$release") ($release_summary)"
+  echo "- $(t team): $people ($(t contributors))"
+  if [ "$gh_ok" -eq 1 ]; then echo "- $(t numbers_from): $(t gh_source)"; else echo "- $(t numbers_from): $(t git_history)"; fi
+} >.repo-check/report.md
+
+echo "Wrote .repo-check/report.md"
+echo "$(t jam): $jam ($(t "$group"))"

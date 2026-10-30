@@ -1,0 +1,193 @@
+#!/bin/sh
+set -u
+
+plugin_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+scan="$plugin_root/skills/repo-check/scan"
+input=$(cat)
+
+json_string() {
+  printf '%s' "$input" | tr '\n' ' ' |
+    sed -nE 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' |
+    sed -e 's/\\"/"/g' -e 's/\\\//\//g' -e 's/\\[nt]/ /g' -e 's/\\\\/\\/g'
+}
+
+session=$(json_string session_id | tr -cd 'A-Za-z0-9_-')
+sessions=${XDG_STATE_HOME:-$HOME/.local/state}/repo-check/read-only-sessions
+if [ "${1:-}" = --start ]; then
+  mkdir -p "$sessions" && : >"$sessions/${session:-unknown}"
+else
+  [ -n "$session" ] && [ -f "$sessions/$session" ] || exit 0
+fi
+
+project=${CLAUDE_PROJECT_DIR:-$(json_string cwd)}
+project=${project%/}
+
+block() {
+  echo "Blocked by repo-check: $1" >&2
+  echo "repo-check keeps this session read-only. Start a new session to edit files or run other commands." >&2
+  exit 2
+}
+
+ask() {
+  reason=$(printf '%s' "$1" | sed 's/["\\]//g')
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$reason"
+  exit 0
+}
+
+is_secret() {
+  name=${1##*/}
+  case $name in
+    .env.example | .env.sample | .env.template | *.env.example | *.env.sample | *.env.template) return 1 ;;
+    .env | .env.* | *.env | *.pem | *.key | *.p12 | *.pfx | id_rsa* | id_ed25519* | .npmrc | .pypirc | .netrc | credentials*) return 0 ;;
+  esac
+  printf '%s' "$1" | grep -Eq '(^|[^[:alnum:]_])\.env([^.[:alnum:]_]|\.(\*|[[:alnum:]_-]*[*?[]))' && return 0
+  return 1
+}
+
+check_secret() {
+  [ -n "$1" ] && is_secret "$1" && block "$1 may contain secrets."
+  return 0
+}
+
+inside_report_dir() {
+  target=$1
+  case $target in /*) ;; *) target=$project/$target ;; esac
+  case /$target/ in */../* | */./*) return 1 ;; esac
+  [ -L "$project/.repo-check" ] && return 1
+  case $target in "$project"/.repo-check/?*) return 0 ;; esac
+  return 1
+}
+
+git_allowed() {
+  sub=$1
+  shift
+  for arg in "$@"; do
+    case $arg in
+      -p | -u | -c | --cc | -L* | --patch* | --output* | --ext-diff | --textconv | --exec* | --upload-pack* | -o) return 1 ;;
+    esac
+    check_secret "$arg"
+  done
+  case $sub in
+    status | log | rev-parse | rev-list | ls-files | ls-tree | for-each-ref | describe | merge-base | count-objects) return 0 ;;
+    diff | show)
+      stat=0
+      for arg in "$@"; do
+        case $arg in
+          --stat* | --numstat | --shortstat | --name-only | --name-status) stat=1 ;;
+          -*) ;;
+          *:*) return 1 ;;
+        esac
+      done
+      [ "$stat" -eq 1 ] ;;
+    branch | tag)
+      [ $# -eq 0 ] && return 0
+      listing=0
+      for arg in "$@"; do
+        case $arg in
+          -l | --list | -a | --all | -r | --remotes | --show-current | -v | -vv | --merged* | --no-merged* | --contains* | --sort=* | --format=*) listing=1 ;;
+          -*) return 1 ;;
+        esac
+      done
+      [ "$listing" -eq 1 ] ;;
+    remote)
+      case "$*" in "" | -v | "get-url origin" | "get-url "*) return 0 ;; esac
+      return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
+gh_decision() {
+  case "$1 ${2:-}" in
+    "repo view" | "pr list" | "pr view") ask "repo-check wants to read GitHub data with gh (read-only). Allow?" ;;
+  esac
+  [ "$1" = api ] || block "only read-only gh calls are allowed (repo view, pr list, pr view, api GET)."
+  shift
+  printf '%s' "$*" | grep -qi mutation && block "gh api calls that change data are not allowed."
+  graphql=0
+  [ "${1:-}" = graphql ] && graphql=1
+  method="" fields=0
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -X | --method) method=${2:-}; shift ;;
+      -X* ) method=${1#-X} ;;
+      --method=*) method=${1#--method=} ;;
+      -f | -F | --field | --raw-field | --input) fields=1; shift ;;
+      -f* | -F* | --field=* | --raw-field=* | --input=*) fields=1 ;;
+    esac
+    shift
+  done
+  if [ "$graphql" -eq 0 ]; then
+    case $method in "" | GET | get) ;; *) block "gh api with method $method is not allowed." ;; esac
+    [ "$fields" -eq 1 ] && [ -z "$method" ] && block "gh api with fields sends a POST; add -X GET for a read."
+  fi
+  ask "repo-check wants to read GitHub data with gh api (read-only). Allow?"
+}
+
+is_scan() {
+  [ "${1##*/}" = scan ] || return 1
+  [ "$(CDPATH='' cd -- "${1%/*}" 2>/dev/null && pwd -P)" = "$(CDPATH='' cd -- "${scan%/*}" && pwd -P)" ]
+}
+
+bash_decision() {
+  command=$1
+  case $command in
+    *[\;\&\|\<\>\`\$]* | *"
+"*) block "chaining, redirection, variables and subshells are not allowed: $command" ;;
+  esac
+  case $command in
+    \"*) program=${command#\"}; rest=${program#*\"}; program=${program%%\"*} ;;
+    \'*) program=${command#\'}; rest=${program#*\'}; program=${program%%\'*} ;;
+    *) program=${command%% *}; rest=${command#"$program"} ;;
+  esac
+  if is_scan "$program"; then
+    gh=0
+    set -- $rest
+    while [ $# -gt 0 ]; do
+      case $1 in
+        --lang) case ${2:-} in de | en) shift ;; *) block "scan takes --lang de or --lang en." ;; esac ;;
+        --gh) gh=1 ;;
+        *) block "scan takes only --lang and --gh." ;;
+      esac
+      shift
+    done
+    [ "$gh" -eq 1 ] && ask "repo-check scan wants to read merged PRs from GitHub with gh (read-only query). Allow?"
+    exit 0
+  fi
+  set -f
+  set -- $command
+  set +f
+  case ${1:-} in
+    git)
+      shift
+      [ "${1:-}" = --no-pager ] && shift
+      git_allowed "$@" && exit 0
+      block "only read-only git commands are allowed, without patches or file contents: $command" ;;
+    gh)
+      shift
+      gh_decision "$@" ;;
+  esac
+  block "repo-check runs only read-only git commands and its own scan; no install, build, test, lint, seed or migration commands: $command"
+}
+
+tool=$(json_string tool_name)
+case $tool in
+  AskUserQuestion | TodoWrite | TaskCreate | TaskUpdate | TaskGet | TaskList | ToolSearch) exit 0 ;;
+  Read)
+    check_secret "$(json_string file_path)"
+    exit 0 ;;
+  Glob)
+    check_secret "$(json_string pattern)"
+    check_secret "$(json_string path)"
+    exit 0 ;;
+  Grep)
+    [ "$(json_string output_mode)" = content ] && block "Grep may list files or count matches, not print file contents."
+    check_secret "$(json_string path)"
+    check_secret "$(json_string glob)"
+    exit 0 ;;
+  Write | Edit)
+    path=$(json_string file_path)
+    inside_report_dir "$path" && exit 0
+    block "writes are allowed only below .repo-check/, not $path." ;;
+  Bash) bash_decision "$(json_string command)" ;;
+esac
+block "the tool $tool is not available during repo-check."
