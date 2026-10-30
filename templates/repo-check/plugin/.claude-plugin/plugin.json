@@ -1,0 +1,8 @@
+{
+  "name": "repo-check",
+  "version": "0.1.0",
+  "description": "Find where your delivery is jammed right now (writing, review or release): a 10-minute interview, or a strictly read-only scan of the current repository with a report in .repo-check/. Sends nothing.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "keywords": ["assessment", "read-only", "lead-time", "review", "ci"]
+}

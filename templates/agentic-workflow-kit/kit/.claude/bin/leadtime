@@ -2,19 +2,20 @@
 # Lead time and review metrics of merged pull requests, from GitHub and git. POSIX sh, gh (with its built-in
 # --jq) and git; nothing else.
 # Usage: .claude/bin/leadtime [--since DATE] [--until DATE] [--baseline] [--split-by kit|none] [--format md|csv]
-#                             [--with-titles]
+#                             [--with-titles] [--stdout]
 #   --baseline     measure the 90 days before today; write reports/lead-time-baseline.md and .csv
 #   default        from the baseline's end until today; write reports/lead-time.md (or .csv) with the baseline next to it
 #   --split-by kit PRs with an evidence pack (the kit-evidence comment) and without, side by side
 #   --with-titles  add PR titles and authors; left out by default so the report can be shown as it is
+#   --stdout       print the CSV instead of writing reports/; LEADTIME_ROOT names the repository to measure
 # Times are wall clock, reported as median and p75 (nearest rank) in hours. Bots and dependency PRs are left out.
 # GH names the gh command (tests use a fake that serves recorded JSON). See docs/SPEC-v1.1.md, section 6.
 set -u
 
-root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+root=${LEADTIME_ROOT:-$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)} || exit 2
 cd "$root" || exit 2
 GH=${GH:-gh}
-since="" until="" baseline=0 split=none format=md titles=0
+since="" until="" baseline=0 split=none format=md titles=0 stdout=0
 while [ $# -gt 0 ]; do
   case $1 in
     --since) since=${2:?--since needs a date}; shift 2 ;;
@@ -23,7 +24,8 @@ while [ $# -gt 0 ]; do
     --split-by) split=${2:?--split-by needs kit or none}; shift 2 ;;
     --format) format=${2:?--format needs md or csv}; shift 2 ;;
     --with-titles) titles=1; shift ;;
-    -h | --help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --stdout) stdout=1; shift ;;
+    -h | --help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "leadtime: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -54,7 +56,6 @@ function secs(s) {
 shift_date() { awk -v s="$1" -v n="$2" "$dates"'BEGIN { print civil(days(substr(s, 1, 4) + 0, substr(s, 6, 2) + 0, substr(s, 9, 2) + 0) + n) }'; }
 
 today=${LEADTIME_TODAY:-$(date -u +%Y-%m-%d)}
-mkdir -p reports
 base_csv=reports/lead-time-baseline.csv
 if [ "$baseline" -eq 1 ]; then
   until=${until:-$today}
@@ -187,6 +188,11 @@ label="$since..$until"
 fetch "$since" "$until" "$tmp/prs.tsv"
 spec_times >"$tmp/specs.tsv"
 { echo "period,group,metric,n,median,p75"; metrics "$tmp/prs.tsv" "$tmp/specs.tsv" "$label" | sort; } >"$tmp/now.csv"
+if [ "$stdout" -eq 1 ]; then
+  cat "$tmp/now.csv"
+  exit 0
+fi
+mkdir -p reports
 
 # report <csv> [baseline csv]: the markdown report.
 report() {

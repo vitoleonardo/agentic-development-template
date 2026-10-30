@@ -1,0 +1,35 @@
+name: repo-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: templates/repo-check
+
+jobs:
+  repo-check:
+    name: repo-check tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shellcheck
+        run: shellcheck -s sh -S warning build plugin/hooks/read-only plugin/skills/repo-check/scan tests/*.sh
+      - name: Hook
+        run: sh tests/hook.test.sh
+      - name: Scan
+        run: sh tests/scan.test.sh
+      - name: Drift between skill and hosted prompt
+        run: sh tests/prompt.test.sh
+      - name: All suites under dash
+        run: for t in hook scan prompt; do dash "tests/$t.test.sh" || exit 1; done

@@ -92,5 +92,15 @@ has "$md" "| #102 | Show history | ana |" "--with-titles adds them"
 has "$csv" "$p,with-kit,lead_time_h,2,18.5,25.0" "PRs with an evidence pack"
 has "$csv" "$p,without-kit,prs,3,3,3" "PRs without one"
 
+# --- stdout and another repository (repo-check) ---------------------------------
+
+other=$(mktemp -d)
+(cd "$other" && git init -q -b main)
+LEADTIME_ROOT="$other" "$project/.claude/bin/leadtime" --baseline --stdout >"$project/stdout.csv" || fail "--stdout failed"
+has "$project/stdout.csv" "2026-07-02..2026-09-30,all,prs,7,7,7" "--stdout prints the CSV of the 90 days before today"
+[ ! -e "$other/reports" ] && ok || fail "--stdout writes no reports/ into the measured repository"
+[ -z "$(git -C "$other" status --porcelain --untracked-files=all)" ] && ok || fail "--stdout leaves the measured repository clean"
+rm -rf "$other"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
