@@ -65,8 +65,8 @@ Then the email draft (RC-AC8):
 
 - A subject, "repo-check: <team size>, Stau bei <stage>" (en: "repo-check: <team size>, jam at <stage>").
 - One heading per question with the answer, then the assessment.
-- A mailto link to `viktor.krawutschke@gmail.com` with subject and body URL-encoded. If the body is over 1,800 characters, the link carries only the subject and the user is told to paste the draft.
-- After that, the booking link `https://cal.com/viktor-krawutschke-robfok/30min` as an alternative, in one neutral sentence.
+- A mailto link to `hi@vito.koeln` with subject and body URL-encoded. If the body is over 1,800 characters, the link carries only the subject and the user is told to paste the draft.
+- After that, the booking link `https://calendar.app.google/N14WVsxK4fdqBhZv6` as an alternative, in one neutral sentence.
 - Both links are opened only by the user. The skill sends nothing.
 
 ### 2.3 Scan
@@ -229,7 +229,7 @@ Interview
 - RC-AC5: Exactly the ten questions of 2.2 in order, one per message, with numbered options plus free text. The intro says about ten minutes and that answers stay in the chat.
 - RC-AC6: A skipped or unclear answer is recorded as "offen"/"open", and the interview continues.
 - RC-AC7: The result names the jam (Schreiben, Review or Release) with the answers it rests on, three steps the team can take alone, and the fitting offer or "none yet" with the reason.
-- RC-AC8: The email draft has a subject and one heading per question, then the assessment. It is followed by a mailto link to `viktor.krawutschke@gmail.com` (subject and body URL-encoded; above 1,800 characters subject only, with "paste the draft") and the booking link `https://cal.com/viktor-krawutschke-robfok/30min` in one neutral sentence. Nothing is sent automatically.
+- RC-AC8: The email draft has a subject and one heading per question, then the assessment. It is followed by a mailto link to `hi@vito.koeln` (subject and body URL-encoded; above 1,800 characters subject only, with "paste the draft") and the booking link `https://calendar.app.google/N14WVsxK4fdqBhZv6` in one neutral sentence. Nothing is sent automatically.
 
 Scan: enforcement
 - RC-AC9: The `read-only` hook enforces table 5.2 from the first `/repo-check` until the session ends, also after a resume, and leaves other sessions alone (5.1). Its block message says to start a new session to edit.
