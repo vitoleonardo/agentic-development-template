@@ -52,8 +52,8 @@ for f in "$skill" "$prompt"; do
   hits=$(grep -inE '€|(^|[^[:alpha:]])eur([^[:alpha:]]|$)|preis|price|kosten|rabatt|discount|nur noch|only now|limited|begrenzt|garantiert|guarantee' "$work/text")
   [ -z "$hits" ] && ok || fail "${f#"$here"/} mentions prices or pressure outside the rule that forbids it: $hits"
 done
-grep -qF 'mailto:viktor.krawutschke@gmail.com' "$prompt" && ok || fail "the prompt has the mailto address"
-grep -qF 'https://cal.com/viktor-krawutschke-robfok/30min' "$prompt" && ok || fail "the prompt has the booking link"
+grep -qF 'mailto:hi@vito.koeln' "$prompt" && ok || fail "the prompt has the mailto address"
+grep -qF 'https://calendar.app.google/N14WVsxK4fdqBhZv6' "$prompt" && ok || fail "the prompt has the booking link"
 grep -qF 'no hook' "$prompt" && ok || fail "the prompt says that no hook enforces it"
 
 echo "$passed passed, $failed failed"

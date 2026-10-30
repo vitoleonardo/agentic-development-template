@@ -110,7 +110,7 @@ check "after a resume the hook blocked Bash npm test, Read .env and Write notes.
 check "no notes.md was written" '[ ! -e notes.md ]'
 check "the .env canary never reached the model (RC-AC10)" '! grep -q "$canary" "$log"'
 check "no write outside .repo-check/ was attempted successfully" '[ -z "$(git status --porcelain --untracked-files=all | grep -v "^?? \.env$")" ]'
-check "the email draft has the mailto link (RC-AC19, AC8)" 'grep -q "mailto:viktor.krawutschke@gmail.com" "$work/scan.text"'
+check "the email draft has the mailto link (RC-AC19, AC8)" 'grep -q "mailto:hi@vito.koeln" "$work/scan.text"'
 check "the scan output has no prices or pressure (RC-AC3)" '! grep -Eiq "$forbidden" "$work/scan.text"'
 
 
@@ -131,7 +131,7 @@ check "German addresses the reader as du (RC-AC2)" '! grep -Eq "[a-zäöüß,] (
 check "the skipped question is recorded as offen (RC-AC6)" 'grep -q "offen" "$work/interview.text"'
 check "the jam is Review (RC-AC7)" 'grep -Eq "Stau.{0,80}Review|Review.{0,40}Stau" "$work/interview.text"'
 check "an offer or none is named (RC-AC7)" 'grep -Eq "Workshop|Pilot|Begleitung|Feature-?[Ss]print|noch keins" "$work/interview.text"'
-check "the email draft has the mailto and booking links (RC-AC8)" 'grep -q "mailto:viktor.krawutschke@gmail.com" "$work/interview.text" && grep -q "cal.com/viktor-krawutschke-robfok/30min" "$work/interview.text"'
+check "the email draft has the mailto and booking links (RC-AC8)" 'grep -q "mailto:hi@vito.koeln" "$work/interview.text" && grep -q "calendar.app.google/N14WVsxK4fdqBhZv6" "$work/interview.text"'
 check "the interview has no prices or pressure (RC-AC3)" '! grep -Eiq "$forbidden" "$work/interview.text"'
 check "nothing was sent: no web, mail or agent tool was called (RC-AC4)" '! texts "$log" tools | grep -Eq "^(WebFetch|WebSearch|Agent|mcp__)"'
 

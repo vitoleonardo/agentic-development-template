@@ -141,8 +141,8 @@ Write the draft only after the user says yes. Viktor Krawutschke receives it; th
 
 Then give two links and one neutral sentence, for example "Wenn du magst, schick den Entwurf ab oder such dir direkt einen Termin aus." (en: "If you like, send the draft or pick a time directly."):
 
-- `mailto:viktor.krawutschke@gmail.com` with the subject and body URL-encoded (spaces as `%20`, line breaks as `%0A`). If the body is longer than 1,800 characters, put only the subject in the link and say "Füge den Entwurf in die Mail ein." (en: "Paste the draft into the email.").
-- Booking: https://cal.com/viktor-krawutschke-robfok/30min
+- `mailto:hi@vito.koeln` with the subject and body URL-encoded (spaces as `%20`, line breaks as `%0A`). If the body is longer than 1,800 characters, put only the subject in the link and say "Füge den Entwurf in die Mail ein." (en: "Paste the draft into the email.").
+- Booking: https://calendar.app.google/N14WVsxK4fdqBhZv6
 
 Never open the links yourself and never send anything.
 <!-- /shared:email -->
