@@ -241,6 +241,12 @@ case $reason in
   *"the branch changes db/migrations/1.sql (KIT_PUSH_ASK_PATTERNS)"*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: the push gate should name the risky file: $reason" ;;
 esac
+reason=$(cd "$risk_repo" && printf '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push origin 7-risk"}}' |
+  CLAUDE_PROJECT_DIR=$risk_repo KIT_APPROVAL=autonomous .claude/hooks/guard 2>/dev/null)
+case $reason in
+  *'"permissionDecision":"ask"'*"the branch changes db/migrations/1.sql (KIT_PUSH_ASK_PATTERNS)"*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: the guard should ask for a risky push and say why: $reason" ;;
+esac
 rm -rf "$risk_repo"
 
 # round_is <class> <n> <want> [env...]: whether verify round n, failed with this class, continues (auto) or asks.

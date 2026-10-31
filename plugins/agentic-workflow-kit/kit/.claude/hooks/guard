@@ -26,9 +26,13 @@ decide_gates() {
   [ $# -gt 0 ] || exit 0
   level=$(.claude/bin/gate level 2>/dev/null) || level=strict
   for g in "$@"; do
-    decision=ask
-    [ "$g" = commit-main ] || decision=$(.claude/bin/gate "$g" 2>/dev/null) || decision=ask
-    [ "$decision" = auto ] || permission ask "approval gate ${g%-main} (KIT_APPROVAL=$level, .claude/bin/gate). Ask the user."
+    decision=ask why=""
+    if [ "$g" != commit-main ]; then
+      gate_output=$(.claude/bin/gate "$g" 2>&1) || gate_output=ask
+      decision=$(printf '%s\n' "$gate_output" | tail -n 1)
+      why=$(printf '%s\n' "$gate_output" | sed '$d' | tr '\n' ' ')
+    fi
+    [ "$decision" = auto ] || permission ask "approval gate ${g%-main} (KIT_APPROVAL=$level, .claude/bin/gate). ${why}Ask the user."
   done
   [ "$single" = 1 ] || exit 0
   permission allow "approval gate $* is auto (KIT_APPROVAL=$level). Log the decision under Decisions to review in .work/<branch>.md."
