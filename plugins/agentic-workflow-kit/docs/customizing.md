@@ -262,7 +262,7 @@ The selection can miss a feature whose code a change breaks without naming it. T
 
 ## Isolate the test stack
 
-The seed, e2e and screenshot runs share a machine with the dev server, other suites and other branches. In the Docmost run, two collisions cost two verify rounds: the e2e logins hit the app's auth throttle (10 per 60 s, kept in Redis across runs), and a legacy e2e suite started queue workers on the shared Redis and took the other suites' jobs.
+The seed, e2e and screenshot runs share a machine with the dev server, other suites and other branches. In a pilot run, two collisions cost two verify rounds: the e2e logins hit the app's auth throttle (10 per 60 s, kept in Redis across runs), and a legacy e2e suite started queue workers on the shared Redis and took the other suites' jobs.
 
 - Declare the run's own resources in `.claude/kit.conf`: `KIT_RUN_DB` (database name), `KIT_RUN_REDIS_DB` (Redis db number) and `KIT_RUN_PORT`. `evidence data` and `evidence screenshots` export them to `KIT_SEED`, `KIT_E2E` and `KIT_SCREENSHOTS`; point the app's database URL, Redis URL and port at them in those scripts.
 - Reset only what is yours: drop and seed `KIT_RUN_DB`, flush `KIT_RUN_REDIS_DB` (`redis-cli -n "$KIT_RUN_REDIS_DB" flushdb`), never `flushall`. Flush at the start of the run, so counters such as login throttles never carry over.

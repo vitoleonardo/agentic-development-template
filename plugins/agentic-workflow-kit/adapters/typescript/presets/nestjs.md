@@ -50,7 +50,7 @@ Constructor parameter lists (`private readonly xRepo: XRepo`, `@Inject(X)`) repe
 --ignore-pattern 'constructor\s*\((?:[^()]|\([^()]*\))*\)'
 ```
 
-Measured on Docmost's `apps/server` (jscpd 5.4.2, `--ignore-identifiers`): clones containing a constructor went from 32 to 11, all clones from 499 to 469. The rest are import blocks and class headers around the constructor. `--min-tokens 70` leaves 6 such clones but drops all clones from 499 to 185, real ones included, so prefer the pattern.
+Measured on the server app of a large open-source NestJS monorepo (jscpd 5.4.2, `--ignore-identifiers`): clones containing a constructor went from 32 to 11, all clones from 499 to 469. The rest are import blocks and class headers around the constructor. `--min-tokens 70` leaves 6 such clones but drops all clones from 499 to 185, real ones included, so prefer the pattern.
 
 ## Testing
 

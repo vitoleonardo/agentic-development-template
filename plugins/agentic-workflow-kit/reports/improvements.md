@@ -1,6 +1,6 @@
 # Kit improvements
 
-The values before come from the Docmost run (M2 to M7, headless with `KIT_APPROVAL=autonomous`, 28.10.2026 and 29.10.2026; 14 verify rounds over six milestones). Copy this file into the project's `reports/` with the kit update; `/improve-kit` checks each entry after three more runs.
+The values before come from the pilot run on a NestJS and React monorepo (M2 to M7, headless with `KIT_APPROVAL=autonomous`, 28.10.2026 and 29.10.2026; 14 verify rounds over six milestones). Copy this file into the project's `reports/` with the kit update; `/improve-kit` checks each entry after three more runs.
 
 - 29.10.2026 | baseline compare keeps an earlier package's failure (coverage, lint, typecheck) | coverage gate passes whose detail prints a value below the threshold | 2 (M4 0%, M5 43.8%)
 - 29.10.2026 | coverage leaves test and e2e files out; a gate that prints a failing value fails | changed Playwright flows measured as source files | M4, M5 (apps/client)
