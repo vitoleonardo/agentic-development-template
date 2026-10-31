@@ -22,6 +22,7 @@ gate_value() {
 env_level=${KIT_APPROVAL:-}
 env_rounds=${KIT_VERIFY_ROUNDS:-}
 env_gate=$(gate_value)
+env_push_ask=${KIT_PUSH_ASK_PATTERNS:-}
 if [ -f "$root/.claude/kit.conf" ]; then
   # shellcheck source=/dev/null
   . "$root/.claude/kit.conf"
@@ -64,7 +65,24 @@ case $override in
   *) echo "gate: $gate_variable='$override' is not ask or auto; using KIT_APPROVAL=$level." >&2 ;;
 esac
 
+push_by_risk() {
+  patterns=${env_push_ask:-${KIT_PUSH_ASK_PATTERNS:-}}
+  if risky=$(
+    cd "$root" || exit 1
+    KIT_ROOT=$root && export KIT_ROOT
+    # shellcheck source=conf.sh
+    . "$root/.claude/bin/conf.sh"
+    changed_file_matching "$(merge_base)" "$patterns"
+  ); then
+    echo "gate push: the branch changes $risky (KIT_PUSH_ASK_PATTERNS); a person approves this push." >&2
+    echo ask
+  else
+    echo auto
+  fi
+}
+
 case $level:$name in
   strict:* | standard:spec | standard:plan) echo ask ;;
+  *:push) push_by_risk ;;
   *) echo auto ;;
 esac
