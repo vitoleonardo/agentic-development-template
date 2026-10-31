@@ -2,6 +2,7 @@
 
 - Never read, print, copy or edit `.env` files (`.env`, `.env.local`, `.env.production`, ...) or files that hold secrets (`*.pem`, `*.key`, credential and service-account files). `.env.example` is fine. If you need a value, ask for the variable name, never the value.
 - Never hardcode secrets, tokens or passwords, not even in tests. Use clearly fake values (`test-token`) in fixtures.
+- Do not rename or derive a fake value to get past the secret scan. Without gitleaks, `/verify-feature` only warns about `name = "value"` matches; a fake value the user approved goes into `.claude/secrets-allow.tsv` as `<path from the root> TAB <exact value>`, with the reason in the commit message. Key formats (private keys, `AKIA…`, `ghp_…`, `sk-…`) always fail, allowlisted or not.
 - Never log secrets, tokens, passwords, session ids or full request bodies that may contain them.
 - Validate all external input at the boundary with a schema: request bodies, query and route params, form data, webhooks, environment variables, file uploads.
 - Every endpoint, Server Action, resolver and mutation checks authorization itself: not only "is the user logged in" but "may this user touch this record". User A must never read or change user B's data.

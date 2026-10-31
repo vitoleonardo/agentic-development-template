@@ -6,6 +6,7 @@
 #   .claude/bin/usage line      the one line for the PR description
 #   .claude/bin/usage tsv       one line for .claude/bin/runs: total, fast, standard, deep, main, other tokens,
 #                               review rounds, escalations, tasks (TAB separated)
+#   .claude/bin/usage reviews   tokens per review round: "<round> TAB <tokens>", from the "review round <n>" dispatches
 #   .claude/bin/usage adopt <branch>   move another branch's record here (spec and plan run before the branch exists)
 # usage.tsv:  <agent id or main:<session id>> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
 # agents.tsv: <agent id> TAB <description> TAB <agent type> TAB <requested model> TAB <resolved model>
@@ -77,6 +78,14 @@ case ${1:-} in
       }
     ' "$usage"
     ;;
+  reviews)
+    [ -f "$usage" ] && [ -f "$agents" ] || exit 0
+    awk -F '\t' '
+      NR == FNR { if (match(tolower($2), /^review round [0-9]+/)) round[$1] = substr($2, 14, RLENGTH - 13) + 0; next }
+      $1 in round { tokens[round[$1]] += $3 + $4 + $6 }
+      END { for (r in tokens) printf "%d\t%d\n", r, tokens[r] }
+    ' "$agents" "$usage" | sort -n
+    ;;
   adopt)
     from=.work/${2:?usage: usage adopt <branch>}
     [ "$from" != "$dir" ] || exit 0
@@ -93,5 +102,5 @@ case ${1:-} in
     done
     echo "Moved the usage record of ${2} to ${branch}."
     ;;
-  *) sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

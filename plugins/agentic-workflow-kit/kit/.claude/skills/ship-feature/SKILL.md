@@ -12,7 +12,7 @@ You orchestrate. Subagents do the implementation in fresh contexts; you own the 
 
 ## Approval gates
 
-Run `.claude/bin/gate level` once and tell the user the level. Every gate below runs `.claude/bin/gate <name>` first. `ask`: stop and ask, as written. `auto`: decide, add one line under Decisions to review in the state file, and continue. Failure stops (retries, review and verify rounds, the budget, the `spec`, `kit` and `env` classes) ask at every level.
+Run `.claude/bin/gate level` once and tell the user the level. Every gate below runs `.claude/bin/gate <name>` first. `ask`: stop and ask, as written. `auto`: decide, add one line under Decisions to review in the state file, and continue. Failure stops (retries, review rounds, the budget, the `spec` and `env` classes) ask at every level; verify rounds ask when `.claude/bin/gate round` says so.
 
 ## 0. Resume or start
 
@@ -30,14 +30,16 @@ If the feature has no approved spec, follow `${CLAUDE_SKILL_DIR}/../spec-feature
 
 Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` until the plan is approved. If you are on the base branch, create the branch (`git checkout -b <issue>-<slug>`), move the state file to the branch name if it differs, and run `.claude/bin/usage adopt <the branch you started on>`, so the tokens of the spec and the plan count for this feature. If you are already on a branch made for this feature (`.claude/bin/autopilot` creates it before planning), keep it: the state file and the usage record are already there. Either way, write the branch into the feature's Branch column in `specs/README.md`.
 
+Then decide the base once for the whole run and write it as `Base: <branch>` under the plan's title: `KIT_BASE` if it is set (`.claude/bin/autopilot` sets it for stacked branches), else the open PR's base (`gh pr view --json baseRefName --jq .baseRefName`), else the branch you started on when it is not `main` (a stacked feature), else `main`. Review, verify and the PR use this base; the kit's scripts read it from the state file, so a stacked branch never counts the earlier branches' changes as its own.
+
 Everything the build needs is now in files. If the plan gate asked, suggest that the user runs `/clear` and then `/ship-feature` again: it resumes at step 3 with a context that no longer carries the interview and the exploration.
 
 ## 3. Build, one task at a time
 
 For each task in the plan's order:
 
-1. Dispatch the `implementer` subagent on the task's tier. Give it the spec path, the state file path (its Notes section holds what earlier tasks left for later ones), the task row, its criteria, the test cases and the `path:line` anchors from planning. It shares none of your context, so be complete. One task at a time: implementers share the working tree and the edit hooks, so a second one would typecheck the first one's half-finished edits.
-2. Check what it returns. Every criterion needs a red run and a green run. Run `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` yourself. Do not take its word for it.
+1. Dispatch the `implementer` subagent on the task's tier. Give it the spec path, the state file path (its Notes section holds what earlier tasks left for later ones), the task row, its criteria, the test cases and the `path:line` anchors from planning. For a task that changes UI, tell it to check its screenshots (its agent file says how). It shares none of your context, so be complete. One task at a time: implementers share the working tree and the edit hooks, so a second one would typecheck the first one's half-finished edits.
+2. Check what it returns. Every criterion needs a red run and a green run. Run `.claude/bin/check typecheck` and `.claude/bin/check test-related <files>` yourself. A UI task returns a screenshot folder; open two of its images yourself. Do not take its word for it.
 3. Update the state file: tick the task in Progress, add the evidence to the Verify log, and add one or two lines to Notes: its deviations, open issues, and any new helper or interface a later task needs (`path:line`).
 4. Commit the task (one logical change per commit, gate: commit), so every finished task is a safe point to stop.
 
@@ -49,11 +51,13 @@ Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep thei
 
 ## 5. Independent review
 
-Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the base branch, and that it reviews the diff against the spec and the rules. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
+Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. If the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff. Wording, a missing item, and layout that hides content are found here, not at verify. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
+
+Round 1 reviews the full diff. A later round reviews only what changed, when `.claude/bin/evidence scope <the commit the previous round reviewed>` prints `delta <range>`: give the reviewer the previous round's findings and that commit range. It checks that each finding is closed and reviews those commits and the criteria they touch. When `scope` prints `full: <reason>` (the fixes are more than 20% of the diff, or touch a file in `KIT_CONTRACT_PATTERNS`: auth, migrations, public routes), the round reviews the full diff again. Record every round under `## Rounds` in the state file: `- review <n> | <full|delta> | <commit range> | <high findings, or pass>`.
 
 ## 6. Verify
 
-Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, edge-case matrix, data runs, screenshots, and the evidence pack. If verify fails, the fix goes through the implementer and then back to step 5. After two failed verify rounds, stop and ask. Pushing the pack is gate push.
+Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. If verify fails, classify every failure as in "Verify failures" below and run `.claude/bin/gate round <class> <n>`, where n counts this branch's failed verify rounds of that class. `ask`: stop and ask. `auto`: fix it as the class says, log the round under Decisions to review, and verify again. Pushing the pack is gate push.
 
 ## 7. PR (gate: push)
 
@@ -63,7 +67,7 @@ Finally, report in at most eight lines: the branch, the commits, the review verd
 
 ## When something does not work
 
-The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier higher, two review rounds, two verify rounds, and a stop when the same fix failed twice. Every retry and every stop, including a review round with open high findings and a failed verify round, gets one line under Stops in the state file:
+The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier higher, two review rounds, the verify rounds `gate round` allows, and a stop when the same failure came back after two fixes, at every level. Every retry and every stop, including a review round with open high findings and a failed verify round, gets one line under Stops in the state file:
 
 `- <step> | <class> | <trigger> | <what was tried> | <resolution>`
 
@@ -72,7 +76,18 @@ Pick the class by the cause, not the symptom, and fix it where it belongs:
 - `spec`: the spec is wrong, unclear or untestable. Stop and ask. Once the user has decided, amend it through `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md` (new criterion IDs or a `removed` mark, a Decisions entry, `spec-lint`, approval again), update the affected tasks, and continue.
 - `plan`: a task is too big, in the wrong order, or misses an anchor. Propose the change to the plan and continue once the user approves it.
 - `tier`: the model was too weak for the task. Retry a tier higher as in step 3.
-- `test`: a test is flaky or tests the wrong thing. Dispatch the `test-writer`; never weaken the test.
-- `kit`: a hook, the guard, a check command or a rule is wrong, too slow, or blocks something harmless. Never edit `.claude/` to get past it; ask the user, and write the fix you would propose into the resolution.
+- `test`: a test or its setup is flaky or tests the wrong thing. Dispatch the `test-writer`; never weaken the test.
+- `hotfix`: the product is wrong while the spec stays as written. The implementer writes a red test first, then the fix.
+- `kit`: a hook, the guard, a check command or a rule is wrong, too slow, or blocks something harmless. Never edit `.claude/` to get past it; ask the user, and write the fix you would propose into the resolution. In verify, see "Verify failures".
 - `env`: a dependency, the network, credentials or a step only a human can do. Ask, and add it to the plan's Human-only steps.
 - `budget`: the token budget blocked a dispatch. Ask whether to raise it or stop.
+
+### Verify failures
+
+A verify round that fails gets one line under `## Rounds` in the state file (`- verify <n> | <full|delta> | <commit range> | fail: <classes>`, with `(screenshots)` when the screenshot review found it), and each failure gets its class:
+
+- `kit`: a false positive. The gate or script is wrong, not the code. It does not count as a verify round. Write a Stops line with the kit fix you propose. If the kit offers a narrow way for exactly this case (an approved fake value in `.claude/secrets-allow.tsv`, a test pattern for a test file) and `.claude/bin/gate config` is `auto`, apply it in its own commit and log it under Decisions to review; otherwise ask. Never relax a threshold, a key format, a hook or a strict path to get past it.
+- `test`: the test or the test stack is wrong (a selector, timing, an auth throttle, shared Redis or database state). The `test-writer` fixes it, the product code stays as it is, and the round continues.
+- `hotfix`: the product is wrong and the spec stays as written (layout, a missing state, responsive behaviour). The implementer writes a red test and the fix, then one review round on the fix (step 5), then verify.
+- `spec`: the criterion itself has to change. Always stop and ask.
+

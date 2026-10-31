@@ -221,6 +221,35 @@ mkdir -p tests && printf 'export const helper = 1\n' >tests/helper.ts
 out=$(.claude/bin/check --against-baseline coverage 2>&1)
 case $out in *tests/helper.ts*) fail "a file in a top-level tests/ folder is not a source file: $out" ;; *) ok ;; esac
 rm -r tests
+cp .claude/kit.conf root.conf.orig
+printf 'KIT_TEST_PATTERNS="*.test.* *.spec.*"\nKIT_E2E_PATTERNS="e2e/*.spec.* e2e/*.screenshots.*"\n' >>.claude/kit.conf
+mkdir -p apps/web/e2e && printf 'export const flow = 1\n' >apps/web/e2e/ask.screenshots.ts
+expect_code 0 "a changed e2e flow is not measured as source" .claude/bin/check --against-baseline coverage
+case $out in *"ask.screenshots.ts | 0/"*) fail "the e2e flow counted as 0%: $out" ;; *) ok ;; esac
+rm -r apps
+mv root.conf.orig .claude/kit.conf
+
+# --- a later package that passes keeps an earlier failure -----------------------
+
+cp packages/py/.claude/kit.conf py.conf.orig
+cat >>packages/py/.claude/kit.conf <<EOF
+KIT_TYPECHECK="true"
+KIT_COVERAGE="true"
+KIT_COVERAGE_FILES="printf 'app/new.py\t1\t1\n'"
+EOF
+printf 'x = 2\n' >packages/py/app/new.py
+printf 'src/a.ts\t5\t10\n' >root.cov
+expect_code 1 "coverage fails when an earlier package fails and a later one passes" .claude/bin/check --against-baseline coverage
+expect_out "at least 70% is required" "the failing package is reported"
+printf 'src/a.ts\t9\t10\n' >root.cov
+git checkout -q -- packages/py/app/new.py
+mv py.conf.orig packages/py/.claude/kit.conf
+cp .claude/kit.conf root.conf.orig
+printf 'src/a.ts:1:1: lint/style wrong\n' >root.lint
+printf 'KIT_LINT="cat %s; test ! -s %s"\n' "'$project/root.lint'" "'$project/root.lint'" >>.claude/kit.conf
+expect_code 1 "lint fails when an earlier package fails and a later one has only legacy errors" .claude/bin/check --against-baseline lint
+expect_out "error in a changed file: src/a.ts" "the failing package is reported"
+mv root.conf.orig .claude/kit.conf
 
 # --- loosened baselines ---------------------------------------------------------
 
@@ -261,6 +290,46 @@ expect_out "new clones" "the clone count is shown"
 rm jscpd.fail
 mv kit.conf.orig .claude/kit.conf
 expect_code 3 "duplicates without a command is not configured" .claude/bin/check duplicates
+
+# --- duplicates-new.mjs: a new clone inside a clone the base already has is legacy -----------------------
+
+# The fake jscpd writes the clones of $FAKE_HEAD (a run with --baseline-from-ref) or $FAKE_BASE (the base scan)
+# as a jscpd 5 JSON report into --output, and logs where it ran.
+cat >bin/jscpd-json <<'EOF'
+#!/bin/sh
+out="" mode=base
+while [ $# -gt 0 ]; do
+  case $1 in --output) out=$2; shift ;; --baseline-from-ref) mode=head; shift ;; esac
+  shift
+done
+echo "$mode $PWD" >>"$JSCPD_LOG"
+mkdir -p "$out"
+if [ "$mode" = head ]; then cp "$FAKE_HEAD" "$out/jscpd-report.json"; else cp "$FAKE_BASE" "$out/jscpd-report.json"; fi
+EOF
+chmod +x bin/jscpd-json
+# clone <first> <second> <fragment> <isNew>: one jscpd 5 duplicate.
+clone() {
+  printf '{"firstFile": {"name": "%s", "start": 1, "end": 9}, "secondFile": {"name": "%s", "start": 3, "end": 11}, "fragment": "%s", "isNew": %s, "tokens": 60}' "$1" "$2" "$3" "$4"
+}
+report() { printf '{"duplicates": [%s], "statistics": {}}\n' "$1"; }
+dupnew() { KIT_BASE=main JSCPD_LOG=$project/jscpd.log FAKE_HEAD=$project/head.json FAKE_BASE=$project/base.json expect_code "$1" "$2" node "$here/adapters/typescript/.claude/bin/duplicates-new.mjs" "$project/bin/jscpd-json" . --format typescript; }
+: >jscpd.log
+report "$(clone src/x.ts src/y.ts 'let a = 1;\n  let b = 2;' false)" >head.json
+report "" >base.json
+dupnew 0 "only legacy clones pass without a base scan"
+[ "$(grep -c '^base' jscpd.log)" -eq 0 ] && ok || fail "no base scan without new clones: $(cat jscpd.log)"
+report "$(clone src/x.ts src/y.ts 'let a = 1;\n  let b = 2;' true)" >head.json
+report "$(clone src/y.ts src/x.ts 'const z = 0;\n  let a = 1;   let b = 2;\n  let c = 3;' false)" >base.json
+dupnew 0 "a new clone inside a clone the same file pair has on the base is legacy"
+expect_out "inside a clone the base already has: src/x.ts:1-9 ~ src/y.ts:3-11" "the legacy clone is named"
+grep -q "^base .*/" jscpd.log && ok || fail "the base is scanned in a worktree: $(cat jscpd.log)"
+[ -z "$(git worktree list | sed 1d)" ] && ok || fail "the base worktree is removed: $(git worktree list)"
+report "$(clone src/x.ts src/w.ts 'let a = 1;\n  let b = 2;' true)" >head.json
+dupnew 1 "a clone in a file pair the base does not have is new"
+expect_out "1 new clones" "the new clone is counted"
+expect_out "src/x.ts:1-9 ~ src/w.ts:3-11" "the new clone is named"
+report "$(clone src/x.ts src/y.ts 'const z = 0;\n  let a = 1;   let b = 2;\n  let c = 3;\n  let d = 4;' true)" >head.json
+dupnew 1 "a clone that grew past the base's clone is new"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

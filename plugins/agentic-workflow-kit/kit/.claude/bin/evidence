@@ -1,7 +1,9 @@
 #!/bin/sh
 # Evidence pack for /verify-feature: the parts a script can decide, so the model only writes the judgements.
 # Usage:
-#   .claude/bin/evidence gates                 run every hard gate; write gates.md and gates.tsv; exit 1 if one fails
+#   .claude/bin/evidence gates [--only a,b]    run every hard gate (or only the named ones, for a round that reruns
+#                                              what failed; json refuses that pack); write gates.md and gates.tsv
+#   .claude/bin/evidence scope <commit>        whether a later round covers the commits since <commit> or the whole branch
 #   .claude/bin/evidence matrix                check edge-cases.md: every case has a passing test or "n/a: <reason>"
 #   .claude/bin/evidence data [--all]          run KIT_SEED + the affected e2e tests and KIT_TEST_MOCKED; write data-runs.md
 #   .claude/bin/evidence screenshots [--no-base] [--all]   screenshots of the affected tests, on the branch and the base
@@ -41,6 +43,7 @@ json_str() {
 
 # gate <name> <result> <seconds> <detail>: record one gate.
 gate() {
+  want "$1" || return 0
   printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$(printf '%s' "$4" | tr '\t\n' '  ' | cut -c1-300)" >>"$dir/gates.tsv"
   printf '| %s | %s | %ss | %s |\n' "$1" "$2" "$3" "$(printf '%s' "$4" | tr '|\n' '/ ' | cut -c1-300)" >>"$tmp/gates-table"
   [ "$2" = fail ] && [ -s "$tmp/log-$1" ] && { printf '\n### %s\n\n```text\n' "$1"; tail -n 40 "$tmp/log-$1"; printf '```\n'; } >>"$tmp/gates-logs"
@@ -51,6 +54,7 @@ gate() {
 # check_gate <name> <check arguments...>: a gate run through .claude/bin/check; n/a passes with its reason,
 # "not configured" fails (a hard gate has to be configured or say why not).
 check_gate() {
+  want "$1" || return 0
   name=$1
   shift
   started=$(now)
@@ -58,6 +62,10 @@ check_gate() {
   code=$?
   secs=$(($(now) - started))
   summary=$(grep -E '^(tests|lint|typecheck|coverage) in |n/a:|not configured|legacy|flaky|new clones' "$tmp/log-$name" | head -n 3 | tr '\n' ';')
+  if [ "$code" -eq 0 ] && grep -q 'is required\.$' "$tmp/log-$name"; then
+    gate "$name" fail "$secs" "printed a value below its threshold but exited 0; $summary"
+    return
+  fi
   case $code in
     0) gate "$name" pass "$secs" "$summary" ;;
     4) gate "$name" n/a "$secs" "$(grep -o 'n/a:.*' "$tmp/log-$name" | head -n 1)" ;;
@@ -106,7 +114,39 @@ deps() {
   esac | sort -u
 }
 
+# gitleaks_config: a gitleaks config with the project's rules and one path-and-value allowlist per row of
+# .claude/secrets-allow.tsv whose value is no key format.
+gitleaks_config() {
+  if [ -f .gitleaks.toml ]; then printf '[extend]\npath = "%s"\n' "$root/.gitleaks.toml"; else printf '[extend]\nuseDefault = true\n'; fi
+  [ -f .claude/secrets-allow.tsv ] || return 0
+  grep -v '^#' .claude/secrets-allow.tsv | while IFS="$tab" read -r path value; do
+    [ -n "$path" ] && [ -n "$value" ] || continue
+    printf '%s' "$value" | grep -Eq "$key_format" && continue
+    printf "\n[[allowlists]]\ncondition = \"AND\"\nregexTarget = \"match\"\npaths = ['''^%s\$''']\nregexes = ['''%s''']\n" \
+      "$(regex_escape "$path")" "$(regex_escape "$value")"
+  done
+}
+
+regex_escape() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
+
+all_gates="typecheck lint build test coverage duplicates structure focus dependencies protected secrets size"
+
+# want <gate>: true unless gates --only leaves the gate out.
+want() {
+  [ -z "${only:-}" ] && return 0
+  case " $only " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
 gates() {
+  only=""
+  if [ "${1:-}" = --only ]; then
+    only=$(printf '%s' "${2:-}" | tr ',' ' ')
+    for g in $only; do
+      case " $all_gates " in *" $g "*) ;; *) echo "evidence gates: unknown gate '$g'; the gates are: $all_gates" >&2; return 2 ;; esac
+    done
+    [ -n "$only" ] || { echo "evidence gates: --only needs gate names, for example --only secrets,coverage" >&2; return 2; }
+  fi
   mkdir -p "$dir"
   : >"$dir/gates.tsv"
   : >"$tmp/gates-table"
@@ -161,15 +201,38 @@ gates() {
   done >"$tmp/log-protected"
   if [ -s "$tmp/log-protected" ]; then gate protected fail 0 "files changed in protected paths: $(tr '\n' ' ' <"$tmp/log-protected")"; else gate protected pass 0 "no protected path changed (${protected_list:-none configured})"; fi
 
+  # .claude/secrets-allow.tsv lists approved fake values as "<path> TAB <exact value>"; it never covers a key format.
+  key_format='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,})'
   if command -v gitleaks >/dev/null 2>&1; then
+    # The branch's commits, so findings keep their paths for the allowlist; uncommitted changes through stdin.
+    gitleaks_config >"$tmp/gitleaks.toml"
+    pathspecs=". $(excludes | tr '\n' ' '):(exclude)reports/runs"
+    gitleaks git --no-banner --redact -c "$tmp/gitleaks.toml" --log-opts "$mb..HEAD -- $pathspecs" . >"$tmp/log-secrets" 2>&1
+    code=$?
     # shellcheck disable=SC2046
-    git diff "$mb" -- . $(excludes) | gitleaks stdin --no-banner >"$tmp/log-secrets" 2>&1
-    if [ $? -eq 0 ]; then gate secrets pass 0 "gitleaks: no leaks in the diff"; else gate secrets fail 0 "gitleaks found secrets in the diff"; fi
+    git diff HEAD -- . $(excludes) ':(exclude)reports/runs' >"$tmp/uncommitted"
+    if [ -s "$tmp/uncommitted" ]; then
+      gitleaks stdin --no-banner --redact -c "$tmp/gitleaks.toml" <"$tmp/uncommitted" >>"$tmp/log-secrets" 2>&1 || code=1
+    fi
+    if [ "$code" -eq 0 ]; then gate secrets pass 0 "gitleaks: no leaks in the branch's commits"; else gate secrets fail 0 "gitleaks found secrets (redacted in the log)"; fi
   else
-    secret='(-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|(api[_-]?key|secret|token|password)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{12,})'
-    grep -Ei "$secret" "$tmp/added" | cut -f1 | sort -u >"$tmp/log-secrets"
+    # Without gitleaks, key formats fail and "name = value" matches only warn: fake values in tests and seeds
+    # match them too.
+    grep -v '^reports/runs/' "$tmp/added" >"$tmp/added-scanned"
+    assignment='(api[_-]?key|secret|token|password)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"'[:space:]]{12,}'
+    grep -Ei "$key_format" "$tmp/added-scanned" | cut -f1 | sort -u >"$tmp/log-secrets"
     git diff --name-only --diff-filter=A "$mb" -- 2>/dev/null | grep -E '(^|/)\.env(\.[^/]*)?$' | grep -vE '\.env\.(example|sample|template)$' >>"$tmp/log-secrets"
-    if [ -s "$tmp/log-secrets" ]; then gate secrets fail 0 "possible secrets (pattern scan, gitleaks not installed): $(tr '\n' ' ' <"$tmp/log-secrets")"; else gate secrets pass 0 "pattern scan, gitleaks not installed: nothing found"; fi
+    grep -Ei "$assignment" "$tmp/added-scanned" | awk -F '\t' -v allowed=.claude/secrets-allow.tsv '
+      BEGIN { while ((getline line < allowed) > 0) if (line !~ /^#/ && split(line, f, "\t") >= 2) { n++; path[n] = f[1]; value[n] = f[2] } }
+      { for (i = 1; i <= n; i++) if (path[i] == $1 && index($2, value[i])) next; print $1 }' | sort -u >"$tmp/warn-secrets"
+    gap="setup gap: gitleaks not installed"
+    if [ -s "$tmp/log-secrets" ]; then
+      gate secrets fail 0 "key formats or a new .env file (pattern scan, $gap): $(tr '\n' ' ' <"$tmp/log-secrets")"
+    elif [ -s "$tmp/warn-secrets" ]; then
+      gate secrets pass 0 "warning: possible secrets in $(tr '\n' ' ' <"$tmp/warn-secrets")(name = value pattern, $gap). Approved fake values go into .claude/secrets-allow.tsv"
+    else
+      gate secrets pass 0 "pattern scan, $gap: no key formats, no name = value matches"
+    fi
   fi
 
   max=$(conf_value . KIT_MAX_CHANGED_LINES)
@@ -182,18 +245,22 @@ gates() {
 
   {
     printf '# Hard gates\n\nHead %s, base %s (%s).\n\n' "$(git rev-parse --short HEAD)" "$(base_ref)" "$(git rev-parse --short "$mb")"
+    [ -n "$only" ] && printf 'Partial run (--only %s): not an evidence pack. Run every gate at the final commit.\n\n' "$only"
     printf '| Gate | Result | Time | Detail |\n|------|--------|------|--------|\n'
     cat "$tmp/gates-table"
     [ -s "$tmp/gates-logs" ] && { printf '\n## Output\n'; cat "$tmp/gates-logs"; }
   } >"$dir/gates.md"
-  # The test gate's flaky tests go into the pack.
-  sed -n 's/^  flaky (passed on the rerun): //p' "$tmp/log-test" >"$dir/flaky.txt" 2>/dev/null
-  # The JUnit reports of this run, so the matrix can check test names against what actually ran.
-  : >"$dir/tests.tsv"
-  for pkg in $(packages); do
-    report=$(conf_value "$pkg" KIT_TEST_REPORT)
-    [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" >>"$dir/tests.tsv"
-  done
+  if [ -n "$only" ]; then printf '%s\n' "$only" >"$dir/gates.partial"; else rm -f "$dir/gates.partial"; fi
+  if want test; then
+    # The test gate's flaky tests go into the pack.
+    sed -n 's/^  flaky (passed on the rerun): //p' "$tmp/log-test" >"$dir/flaky.txt" 2>/dev/null
+    # The JUnit reports of this run, so the matrix can check test names against what actually ran.
+    : >"$dir/tests.tsv"
+    for pkg in $(packages); do
+      report=$(conf_value "$pkg" KIT_TEST_REPORT)
+      [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" >>"$dir/tests.tsv"
+    done
+  fi
   cat "$tmp/gates-table"
   if [ -n "$failed" ]; then
     echo "Failed gates:$failed. Details in $dir/gates.md."
@@ -324,7 +391,27 @@ run_step() {
   [ "$code" -eq 0 ]
 }
 
+# e2e_results: the KIT_E2E_REPORT results of this run replace the e2e rows of tests.tsv (third field "e2e"), so the
+# matrix counts cases that only an e2e test covers.
+e2e_results() {
+  [ -f "$dir/tests.tsv" ] || return 0
+  grep -v "${tab}e2e\$" "$dir/tests.tsv" >"$tmp/tests"
+  for pkg in $(packages); do
+    report=$(conf_value "$pkg" KIT_E2E_REPORT)
+    [ -n "$report" ] && [ -f "$pkg/$report" ] && .claude/bin/baseline junit "$pkg/$report" | sed "s/\$/${tab}e2e/" >>"$tmp/tests"
+  done
+  cp "$tmp/tests" "$dir/tests.tsv"
+}
+
+# run_resources: the test stack's own database, Redis db and port from kit.conf, for the seed, e2e and screenshot
+# commands, so parallel runs and other suites do not share state.
+run_resources() {
+  KIT_RUN_DB=$(conf_value . KIT_RUN_DB) KIT_RUN_REDIS_DB=$(conf_value . KIT_RUN_REDIS_DB) KIT_RUN_PORT=$(conf_value . KIT_RUN_PORT)
+  export KIT_RUN_DB KIT_RUN_REDIS_DB KIT_RUN_PORT
+}
+
 data() {
+  run_resources
   mkdir -p "$dir"
   : >"$dir/data-runs.tsv"
   : >"$tmp/data-table"
@@ -344,8 +431,15 @@ data() {
           printf 'e2e\tfail\t0\tnot run: the seed failed\n' >>"$dir/data-runs.tsv"; status=1; continue
         fi
         label=""
-        [ "$name" = e2e ] && label=$(head -n 1 "$tmp/selection")
+        if [ "$name" = e2e ]; then
+          label=$(head -n 1 "$tmp/selection")
+          for pkg in $(packages); do
+            report=$(conf_value "$pkg" KIT_E2E_REPORT)
+            [ -n "$report" ] && rm -f "$pkg/$report"
+          done
+        fi
         run_step "$name" "$cmd" "$label" || status=1
+        [ "$name" = e2e ] && e2e_results
         ;;
     esac
   done
@@ -361,8 +455,24 @@ data() {
 
 # --- screenshots ---------------------------------------------------------------
 
+# base_lacks <merge base>: the features (SHOP in SHOP-AC1) whose criterion IDs the diff adds, when no e2e test
+# file on the base names any of them; empty when the base has one of them or the diff names none.
+base_lacks() {
+  e2e_patterns=$(conf_value . KIT_E2E_PATTERNS)
+  [ -n "$e2e_patterns" ] || return 0
+  features=$(diff_all -U0 | grep '^+' | grep -v '^+++' | grep -oE '[A-Z][A-Z0-9]*-AC[0-9]+' | sed 's/-AC[0-9]*$//' | sort -u | tr '\n' ' ')
+  [ -n "$features" ] || return 0
+  git ls-tree -r --name-only "$1" | while IFS= read -r f; do matches_any "$f" "$e2e_patterns" && printf '%s\n' "$f"; done >"$tmp/base-e2e"
+  if [ -s "$tmp/base-e2e" ]; then
+    # shellcheck disable=SC2046
+    git grep -qE "(^|[^A-Z0-9])($(printf '%s' "$features" | sed 's/ *$//; s/ /|/g'))-AC[0-9]" "$1" -- $(cat "$tmp/base-e2e") && return 0
+  fi
+  printf '%s' "${features% }"
+}
+
 # KIT_SCREENSHOTS writes <AC-ID>-<step>-<desktop|mobile><KIT_SCREENSHOT_SUFFIX>.png into $KIT_SCREENSHOT_DIR.
 screenshots() {
+  run_resources
   with_base=1 all=""
   for arg; do
     case $arg in --no-base) with_base=0 ;; --all) all=--all ;; esac
@@ -379,17 +489,28 @@ screenshots() {
     echo "screenshots: KIT_SCREENSHOTS failed on the branch." >&2
     return 1
   fi
-  if [ "$with_base" -eq 1 ]; then
-    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install).
+  if [ "$with_base" -eq 0 ]; then
+    printf 'taken; base: not run (--no-base)\n' >"$dir/screenshots.txt"
+  elif missing=$(base_lacks "$(merge_base)") && [ -n "$missing" ]; then
+    echo "screenshots on the base: n/a: base has no $missing"
+    printf 'taken; base: n/a: base has no %s\n' "$missing" >"$dir/screenshots.txt"
+  else
+    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install)
+    # and with the variables of KIT_BASE_ENV, an env file that is read for this run and never copied.
     wt=$tmp/base
     git worktree add -q --detach "$wt" "$(merge_base)" || return 1
     cp .claude/kit.conf "$wt/.claude/kit.conf" 2>/dev/null
     setup=$(conf_value . KIT_SETUP)
+    base_env=$(conf_value . KIT_BASE_ENV)
+    case $base_env in '' | /*) ;; *) base_env=$root/$base_env ;; esac
     echo "screenshots on the base ($(git rev-parse --short "$(merge_base)"))"
-    if (cd "$wt" && { [ -z "$setup" ] || sh -c "$setup"; } && KIT_SCREENSHOT_DIR=$shots KIT_SCREENSHOT_SUFFIX=".main" sh -c "$cmd") </dev/null; then
-      :
+    # shellcheck source=/dev/null
+    if (cd "$wt" && { [ -z "$base_env" ] || { set -a && . "$base_env" && set +a; }; } && { [ -z "$setup" ] || sh -c "$setup"; } &&
+      KIT_SCREENSHOT_DIR=$shots KIT_SCREENSHOT_SUFFIX=".main" sh -c "$cmd") </dev/null; then
+      printf 'taken; base: taken\n' >"$dir/screenshots.txt"
     else
       echo "screenshots: the base run failed; pages that do not exist there have no .main image." >&2
+      printf 'taken; base: the run failed\n' >"$dir/screenshots.txt"
     fi
     git worktree remove --force "$wt"
   fi
@@ -397,10 +518,39 @@ screenshots() {
   [ -n "$(ls "$shots")" ] || { echo "screenshots: KIT_SCREENSHOTS wrote no images." >&2; return 1; }
 }
 
+# --- scope of a later round -----------------------------------------------------
+
+# scope <since>: whether a later review or verify round may cover only the commits since <since> ("delta") or must
+# cover the whole branch again ("full"): when the fixes are more than 20% of the branch's diff, or touch a file in
+# KIT_CONTRACT_PATTERNS (auth, migrations, public routes).
+scope() {
+  since=${1:?usage: evidence scope <commit the last round ran on>}
+  git rev-parse -q --verify "$since^{commit}" >/dev/null || { echo "evidence scope: $since is not a commit." >&2; return 2; }
+  contracts=${KIT_CONTRACT_PATTERNS:-$(conf_value . KIT_CONTRACT_PATTERNS)}
+  if [ -n "$contracts" ]; then
+    # shellcheck disable=SC2046
+    git diff --name-only "$since" -- . $(excludes) | while IFS= read -r f; do
+      matches_any "$f" "$contracts" && { printf '%s\n' "$f"; break; }
+    done >"$tmp/contract"
+    if [ -s "$tmp/contract" ]; then echo "full: $(cat "$tmp/contract") is a contract file (KIT_CONTRACT_PATTERNS)"; return 0; fi
+  fi
+  lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$'
+  total=$(diff_all --numstat | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  # shellcheck disable=SC2046
+  fixes=$(git diff --numstat "$since" -- . $(excludes) | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  pct=$(awk -v f="$fixes" -v t="$total" 'BEGIN { print (t == 0 ? 0 : int(f * 100 / t)) }')
+  if [ "$pct" -gt 20 ]; then
+    echo "full: the fixes are $pct% of the diff, more than 20%"
+  else
+    echo "delta $(git rev-parse --short "$since")..$(git rev-parse --short HEAD) ($pct% of the diff)"
+  fi
+}
+
 # --- evidence.json -------------------------------------------------------------
 
 json() {
   [ -f "$dir/gates.tsv" ] || { echo "evidence: run 'evidence gates' first." >&2; return 2; }
+  [ -f "$dir/gates.partial" ] && { echo "evidence: the last gates run was partial (--only $(cat "$dir/gates.partial")); run every gate at the final commit." >&2; return 1; }
   head=$(git rev-parse HEAD)
   mb=$(merge_base)
   review=$dir/review.md
@@ -573,7 +723,8 @@ comment() {
 command=${1:-}
 [ $# -gt 0 ] && shift
 case $command in
-  gates) gates ;;
+  gates) gates "$@" ;;
+  scope) scope "$@" ;;
   matrix) matrix ;;
   data) data "$@" ;;
   e2e-select) e2e_select "$@" ;;
@@ -582,5 +733,5 @@ case $command in
   push) push "$@" ;;
   ci-check) ci_check "$@" ;;
   comment) comment "$@" ;;
-  *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

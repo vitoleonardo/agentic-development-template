@@ -110,6 +110,51 @@ printf 'const token = "ghp_%s";\n' "abcdefghijklmnopqrstuvwxyz0123456789" >src/c
 expect_code 1 "a token in the diff fails the secret scan" .claude/bin/evidence gates
 expect_out "| secrets | fail |" "the secret gate fails"
 rm src/config.ts
+printf 'const key = "AKIA%s";\n' "ABCDEFGHIJKLMNOP" >src/aws.test.ts
+expect_code 1 "a key format fails in a test file too" .claude/bin/evidence gates
+expect_out "| secrets | fail |" "the key format fails the secret gate"
+rm src/aws.test.ts
+printf 'export const login = { password: "demo-password-for-seed" };\n' >>src/total.ts
+expect_code 0 "a name = value match without a key format is only a warning" .claude/bin/evidence gates
+expect_out "| secrets | pass |" "the heuristic does not fail the gate"
+expect_out "warning: possible secrets in src/total.ts" "the warning names the file"
+expect_out "setup gap: gitleaks not installed" "the missing gitleaks is reported"
+printf 'src/total.ts\tdemo-password-for-seed\n' >.claude/secrets-allow.tsv
+expect_code 0 "an allowlisted value passes" .claude/bin/evidence gates
+case $out in *"warning: possible secrets"*) fail "an allowlisted value still warns: $out" ;; *) ok ;; esac
+printf 'src/other.ts\tdemo-password-for-seed\n' >.claude/secrets-allow.tsv
+expect_code 0 "an allowlist row for another path does not apply" .claude/bin/evidence gates
+expect_out "warning: possible secrets in src/total.ts" "the value still warns in a path the row does not name"
+printf 'src/total.ts\tAKIA%s\n' "ABCDEFGHIJKLMNOP" >.claude/secrets-allow.tsv
+printf 'const key = "AKIA%s";\n' "ABCDEFGHIJKLMNOP" >>src/total.ts
+expect_code 1 "the allowlist never covers a key format" .claude/bin/evidence gates
+git checkout -q -- src/total.ts
+rm .claude/secrets-allow.tsv
+mkdir -p reports/runs
+printf 'stop\t6 verify\tkit\tsecrets flagged token = "ghp_%s"\t-\t-\n' "abcdefghijklmnopqrstuvwxyz0123456789" >reports/runs/42-total.tsv
+expect_code 0 "run records are never scanned for secrets" .claude/bin/evidence gates
+rm -r reports
+
+# A fake gitleaks records its arguments and the config it was given; GITLEAKS_EXIT is its result.
+mkdir -p "$work/fakebin"
+cat >"$work/fakebin/gitleaks" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$work/gitleaks.args"
+while [ \$# -gt 0 ]; do [ "\$1" = -c ] && cat "\$2" >>"$work/gitleaks.config"; shift; done
+exit \${GITLEAKS_EXIT:-0}
+EOF
+chmod +x "$work/fakebin/gitleaks"
+printf 'src/total.test.ts\tfake-value-for-tests\nsrc/total.test.ts\tghp_%s\n' "abcdefghijklmnopqrstuvwxyz0123456789" >.claude/secrets-allow.tsv
+PATH=$work/fakebin:$PATH expect_code 0 "gitleaks without findings passes" .claude/bin/evidence gates
+expect_out "| secrets | pass | 0s | gitleaks" "the gate names gitleaks"
+args=$(cat "$work/gitleaks.args")
+case $args in *"git "*"--log-opts"*"$(git merge-base main HEAD)..HEAD -- . :(exclude)vendor/ee :(exclude)reports/runs"*) ok ;; *) fail "gitleaks scans the branch's commits without protected paths and run records: $args" ;; esac
+grep -q "useDefault = true" "$work/gitleaks.config" && ok || fail "the generated config extends the default rules"
+grep -q "fake-value-for-tests" "$work/gitleaks.config" && grep -q 'src/total\\.test\\.ts' "$work/gitleaks.config" && ok || fail "the allowlist row reaches gitleaks: $(cat "$work/gitleaks.config")"
+grep -q "ghp_" "$work/gitleaks.config" && fail "a key format in the allowlist reaches gitleaks" || ok
+GITLEAKS_EXIT=1 PATH=$work/fakebin:$PATH expect_code 1 "gitleaks findings fail the gate" .claude/bin/evidence gates
+expect_out "| secrets | fail |" "the gitleaks failure is recorded"
+rm .claude/secrets-allow.tsv "$work/gitleaks.args" "$work/gitleaks.config"
 
 mkdir -p src/lib
 seq 1 30 | sed 's/^/export const x/;s/$/ = 1;/' >src/lib/many.ts
@@ -128,12 +173,45 @@ expect_code 1 "an unconfigured duplicates gate fails" .claude/bin/evidence gates
 expect_out "| duplicates | fail | 0s | not configured" "the unconfigured duplicates gate is named"
 sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="true"/' .claude/kit.conf
 
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="echo \\"coverage in web: 0% of the lines in the changed files are covered; at least 70% is required.\\""/' .claude/kit.conf
+expect_code 1 "a check that prints a failing value but exits 0 fails its gate" .claude/bin/evidence gates
+expect_out "| duplicates | fail |" "the inconsistent gate is named"
+expect_out "printed a value below its threshold but exited 0" "the inconsistency is explained"
+sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="true"/' .claude/kit.conf
+
 printf 'export const helper = 1;\n' >src/helpers.ts
 expect_code 1 "a new source file outside the Map fails the structure gate" .claude/bin/evidence gates
 expect_out "| structure | fail |" "the structure gate fails"
 rm src/helpers.ts
 expect_code 0 "the structure gate passes without misplaced files" .claude/bin/evidence gates
 expect_out "| structure | pass |" "the structure gate passes"
+
+# --- later rounds: only what changed ---------------------------------------------
+
+expect_code 0 "gates --only runs only the named gates" .claude/bin/evidence gates --only typecheck,secrets
+same_gates=$(cut -f1 .work/42-total/evidence/gates.tsv | tr '\n' ' ')
+[ "$same_gates" = "typecheck secrets " ] && ok || fail "only the named gates ran: $same_gates"
+expect_code 1 "json refuses a pack whose gates ran with --only" .claude/bin/evidence json
+expect_out "--only" "the refusal names the partial run"
+expect_code 2 "an unknown gate in --only is a usage error" .claude/bin/evidence gates --only typo
+expect_code 0 "a full run makes the pack whole again" .claude/bin/evidence gates
+[ ! -f .work/42-total/evidence/gates.partial ] && ok || fail "the full run removes the partial mark"
+
+start=$(git rev-parse HEAD)
+seq 1 20 | sed 's/^/it("SHOP-AC1: case /;s/$/", () => {});/' >>src/total.test.ts
+g commit -qam "more cases"
+since=$(git rev-parse HEAD)
+printf 'it("SHOP-AC1: one more", () => {});\n' >>src/total.test.ts
+g commit -qam "fix"
+out=$(.claude/bin/evidence scope "$since" 2>&1)
+expect_out "delta $(git rev-parse --short "$since")..$(git rev-parse --short HEAD) (4% of the diff)" "a small fix is a delta round"
+out=$(.claude/bin/evidence scope "$start" 2>&1)
+expect_out "full: the fixes are 91% of the diff, more than 20%" "a large fix is a full round"
+mkdir -p db/migrations && printf 'alter table x;\n' >db/migrations/2.sql
+g add -A && g commit -qm "migration"
+out=$(KIT_CONTRACT_PATTERNS="db/migrations/*" .claude/bin/evidence scope "$since" 2>&1)
+expect_out "full: db/migrations/2.sql is a contract file (KIT_CONTRACT_PATTERNS)" "a contract file forces a full round"
+git reset -q --hard "$start"
 
 # --- edge-case matrix -----------------------------------------------------------
 
@@ -161,6 +239,16 @@ expect_code 0 "every case has a passing test or a reason" .claude/bin/evidence m
 expect_code 0 "seed and e2e run, mocked is n/a" .claude/bin/evidence data
 grep -q "seed: fixtures-v2" .work/42-total/evidence/data-runs.md && ok || fail "the seed version is recorded"
 grep -q "n/a: the app calls no external service" .work/42-total/evidence/data-runs.md && ok || fail "the mocked n/a reason is recorded"
+cp .claude/kit.conf kit.conf.orig
+cat >>.claude/kit.conf <<'EOF'
+KIT_RUN_DB="shop_e2e"
+KIT_RUN_REDIS_DB="14"
+KIT_RUN_PORT="3101"
+KIT_SEED="echo \"seed: \$KIT_RUN_DB redis \$KIT_RUN_REDIS_DB port \$KIT_RUN_PORT\""
+EOF
+expect_code 0 "data runs with the run's own resources" .claude/bin/evidence data
+grep -q "seed: shop_e2e redis 14 port 3101" .work/42-total/evidence/data-runs.md && ok || fail "KIT_RUN_DB, KIT_RUN_REDIS_DB and KIT_RUN_PORT reach the commands: $(cat .work/42-total/evidence/data-runs.md)"
+mv kit.conf.orig .claude/kit.conf
 
 # --- evidence.json, push, CI check, comment -------------------------------------
 
@@ -204,6 +292,14 @@ tab=$(printf '\t')
 cat >bin/fake-e2e <<'EOF'
 #!/bin/sh
 printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
+[ -n "${BASE_HINT:-}" ] && printf 'env:%s\n' "$BASE_HINT" >>"$E2E_LOG"
+if [ -z "${KIT_SCREENSHOT_DIR:-}" ]; then
+  mkdir -p .work
+  failure=""
+  [ -n "${E2E_FAIL:-}" ] && failure='<failure message="x"/>'
+  printf '<testsuites><testcase classname="e2e/shop.spec.ts" name="SHOP-AC1: the total updates in the browser">%s</testcase></testsuites>\n' "$failure" >.work/e2e-junit.xml
+  [ -z "${E2E_FAIL:-}" ] || exit 1
+fi
 [ -n "${KIT_SCREENSHOT_DIR:-}" ] && : >"$KIT_SCREENSHOT_DIR/SHOP-AC1-1-desktop$KIT_SCREENSHOT_SUFFIX.png"
 exit 0
 EOF
@@ -212,6 +308,7 @@ cat >>.claude/kit.conf <<EOF
 KIT_E2E="'$project/bin/fake-e2e'"
 KIT_E2E_RELATED="'$project/bin/fake-e2e'"
 KIT_E2E_PATTERNS="e2e/*.spec.ts"
+KIT_E2E_REPORT=".work/e2e-junit.xml"
 KIT_E2E_FULL_PATTERNS="package.json e2e/fixtures.ts"
 KIT_TEST_PATTERNS="*.test.ts e2e/*"
 KIT_SCREENSHOTS="'$project/bin/fake-e2e' ALL-SHOTS"
@@ -253,6 +350,38 @@ expect_code 0 "data --all runs the whole suite" .claude/bin/evidence data --all
 expect_code 0 "screenshots of the related tests" .claude/bin/evidence screenshots --no-base
 grep -q "^SHOTS e2e/shop.spec.ts$" "$E2E_LOG" && ok || fail "KIT_SCREENSHOTS_RELATED gets the selected files: $(cat "$E2E_LOG")"
 
+: >"$E2E_LOG"
+printf 'BASE_HINT=from-the-env-file\n' >"$work/base.env"
+printf 'KIT_BASE_ENV="%s"\n' "$work/base.env" >>.claude/kit.conf
+expect_code 0 "screenshots on the branch and the base" .claude/bin/evidence screenshots
+[ "$(grep -c '^env:from-the-env-file$' "$E2E_LOG")" -eq 1 ] && ok || fail "only the base run gets KIT_BASE_ENV: $(cat "$E2E_LOG")"
+[ -f .work/sel-feature/evidence/screenshots/SHOP-AC1-1-desktop.main.png ] && ok || fail "the base run writes .main images"
+git checkout -q .claude/kit.conf
+
+branch_with sel-newfeature "printf 'export const other = 2;\n' >src/other.ts; printf 'test(\"NEWF-AC1: shows the new page\", () => {});\n' >e2e/newf.spec.ts"
+: >"$E2E_LOG"
+expect_code 0 "screenshots pass when the base has no e2e test of the feature" .claude/bin/evidence screenshots
+expect_out "n/a: base has no NEWF" "the skipped base run says why"
+case $out in *"base run failed"*) fail "a base without the feature is not a failure: $out" ;; *) ok ;; esac
+grep -q "base: n/a: base has no NEWF" .work/sel-newfeature/evidence/screenshots.txt && ok || fail "the pack records the skipped base: $(cat .work/sel-newfeature/evidence/screenshots.txt 2>&1)"
+[ "$(grep -c . "$E2E_LOG")" -eq 1 ] && ok || fail "only the branch run ran: $(cat "$E2E_LOG")"
+
+# An e2e-only case passes or fails with the e2e run instead of being n/a.
+git checkout -q sel-feature
+.claude/bin/evidence gates >/dev/null 2>&1
+cat >.work/sel-feature/evidence/edge-cases.md <<'EOF'
+| Criterion | Case | Input | Expected | Test | Result |
+|-----------|------|-------|----------|------|--------|
+| SHOP-AC1 | in the browser | add an item | the total updates | SHOP-AC1: the total updates in the browser | |
+EOF
+expect_code 1 "before the data run, an e2e-only case has no result" .claude/bin/evidence matrix
+expect_code 0 "the data run passes" .claude/bin/evidence data
+expect_code 0 "after the data run, the e2e case passes" .claude/bin/evidence matrix
+E2E_FAIL=1 expect_code 1 "a failing e2e run fails the data run" .claude/bin/evidence data
+expect_code 1 "a failing e2e case fails the matrix" .claude/bin/evidence matrix
+expect_out "fail: fail" "the failing e2e case is reported"
+[ "$(grep -c 'the total updates in the browser' .work/sel-feature/evidence/tests.tsv)" -eq 1 ] && ok || fail "a rerun replaces the e2e rows: $(cat .work/sel-feature/evidence/tests.tsv)"
+
 branch_with sel-e2e "printf 'test(\"CART-AC2: removes the last item\", () => {});\n' >>e2e/cart.spec.ts"
 expect_out "e2e/cart.spec.ts" "a changed e2e test file runs"
 
@@ -275,6 +404,25 @@ sed -i '/KIT_E2E_RELATED/d' .claude/kit.conf
 out=$(.claude/bin/evidence e2e-select 2>&1)
 expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
 git checkout -q .claude/kit.conf
+
+# --- one base for stacked branches ----------------------------------------------
+
+git checkout -q main
+git checkout -qb m4
+printf '{\n  "name": "shop",\n  "dependencies": {\n    "zod": "4.0.0",\n    "left-pad": "1.3.0"\n  }\n}\n' >package.json
+g commit -qam "m4 adds left-pad"
+git checkout -qb m5
+printf 'export const total = 7;\n' >src/total.ts
+g commit -qam "m5 changes the total"
+printf '# Plan: Total (spec: specs/total.md)\n\n- Approved dependencies: none\n' >.work/m5.md
+expect_code 1 "without a recorded base, the stacked branch counts the earlier milestone" .claude/bin/evidence gates
+expect_out "| dependencies | fail |" "the inherited dependency fails"
+printf '# Plan: Total (spec: specs/total.md)\nBase: m4\n\n- Approved dependencies: none\n' >.work/m5.md
+expect_code 0 "the state file's base leaves the earlier milestone out" .claude/bin/evidence gates
+expect_out "| dependencies | pass |" "the dependency from m4 is not this branch's"
+expect_out "| size | pass | 0s | 2 changed lines" "the size counts only this branch"
+grep -q "base m4" .work/m5/evidence/gates.md && ok || fail "gates.md names the base: $(head -n 3 .work/m5/evidence/gates.md)"
+KIT_BASE=main expect_code 1 "KIT_BASE wins over the state file" .claude/bin/evidence gates
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

@@ -32,8 +32,15 @@ add_stop() {
 }
 RESULT=done
 DENIED=""
+TURNS=1
+COST=0.5
+EXTRA=""
+SLEEP=0
 eval "$(sed -n "${n}p" "$FAKE_DIR/script")"
-printf '{"type":"system","subtype":"init"}\n{"type":"result","session_id":"s%s","result":"%s","permission_denials":[%s]}\n' "$n" "$RESULT" "$DENIED"
+printf '{"type":"system","subtype":"init"}\n'
+[ -z "$EXTRA" ] || printf '%s\n' "$EXTRA"
+sleep "$SLEEP"
+printf '{"type":"result","session_id":"s%s","result":"%s","num_turns":%s,"total_cost_usd":%s,"permission_denials":[%s]}\n' "$n" "$RESULT" "$TURNS" "$COST" "$DENIED"
 EOF
 cat >"$work/bin/gh" <<'EOF'
 #!/bin/sh
@@ -47,6 +54,7 @@ chmod +x "$work/bin/claude" "$work/bin/gh"
 PATH=$work/bin:$PATH
 export PATH FAKE_DIR="$fake" KIT_BUDGET_TOKENS=100000
 unset KIT_BASE KIT_APPROVAL KIT_IMPROVE AUTOPILOT_MAX_ANSWERS
+export AUTOPILOT_POLL_SECONDS=1
 
 failed=0
 passed=0
@@ -208,6 +216,58 @@ script 'set_status alpha planned' 'set_status alpha in-review; open_pr' 'set_sta
 autopilot
 same "$?" 0 "a row whose spec cell is a markdown link is queued"
 contains "$(call 3)" "-p /plan-feature beta" "the linked spec is planned after alpha"
+
+# --- sessions: metrics, watchdog, usage limit ------------------------------------
+
+tool_call='{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"npm test"}}],"container":null,"stop_reason":null,"usage":{"output_tokens":7}},"parent_tool_use_id":null}'
+segment='{"type":"result","session_id":"s1","result":"waiting for the background task","num_turns":53,"total_cost_usd":4.25}'
+
+setup alpha:planned
+script "EXTRA='$segment'; TURNS=30; COST=6.5; set_status alpha in-review; open_pr"
+autopilot
+same "$?" 0 "a session with several result segments runs through"
+row=$(grep '^[0-9]' .work/autopilot/sessions.tsv | tail -n 1)
+same "$(printf '%s' "$row" | cut -f 2-3,6-8)" "alpha	build	83	6.5	2" "turns are summed over every result line, the cost is the last (cumulative) one"
+same "$(printf '%s' "$row" | cut -f 9)" "ended" "the session ended on its own"
+
+setup alpha:planned
+script "SLEEP=4" "set_status alpha in-review; open_pr"
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+same "$?" 0 "an idle session is stopped and the phase starts once more"
+contains "$(cat .work/alpha.md)" "| budget | watchdog: no output for 2 s | stopped the session | started a fresh session" "the watchdog stop is recorded"
+contains "$(cut -f 9 .work/autopilot/sessions.tsv)" "watchdog: no output for 2 s" "the stopped session's row says why"
+same "$(calls | wc -l | tr -d ' ')" 2 "one fresh session after the watchdog stop"
+
+setup alpha:planned
+script "SLEEP=4" "SLEEP=4"
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+same "$?" 1 "a second watchdog stop halts the run"
+contains "$(cat "$work/err")" "stopped at alpha (budget)" "the halt names the budget class"
+
+setup alpha:planned
+printf '%s\n%s\n%s\n' "$tool_call" "$tool_call" "$tool_call" >"$work/three-calls"
+script "EXTRA=\"\$(cat '$work/three-calls')\"; SLEEP=4" "set_status alpha in-review; open_pr"
+AUTOPILOT_MAX_IDENTICAL_CALLS=3 autopilot
+contains "$(cat .work/alpha.md)" "watchdog: the same tool call 3 times in a row: Bash" "repeated identical tool calls stop the session"
+
+setup alpha:planned
+script "SLEEP=4" "set_status alpha in-review; open_pr"
+AUTOPILOT_MAX_SESSION_SECONDS=2 autopilot
+contains "$(cat .work/alpha.md)" "watchdog: ran longer than 2 s" "a session over its time limit is stopped"
+
+setup alpha:planned
+past=$(($(date +%s) - 300))
+script "EXTRA='{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":$past}}'; RESULT='You have hit your limit'" "set_status alpha in-review; open_pr"
+autopilot
+same "$?" 0 "a session stopped by the usage limit waits and starts again"
+contains "$(cat .work/autopilot/run-*.md)" "waits for the usage limit" "the wait is logged"
+contains "$(cut -f 9 .work/autopilot/sessions.tsv)" "usage limit" "the session row names the usage limit"
+case $(cat .work/alpha.md 2>/dev/null) in *watchdog*) fail "a usage-limit wait is not a watchdog stop" ;; *) ok ;; esac
+
+setup alpha:planned
+script "EXTRA='{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":$past,\"overageStatus\":\"rejected\",\"unifiedWindows\":{\"five_hour\":{\"status\":\"rejected\",\"resetsAt\":$past}}}}'; set_status alpha in-review; open_pr"
+autopilot
+same "$(cut -f 9 .work/autopilot/sessions.tsv | tail -n 1)" "ended" "an allowed session with a rejected overage does not wait"
 
 setup alpha:approved
 same "$(KIT_IMPROVE=1 .claude/bin/runs report)" "No run records in reports/runs/ yet." "KIT_IMPROVE from the environment turns run records on"

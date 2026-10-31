@@ -31,13 +31,18 @@ When you are given a screenshot folder from an evidence pack, judge the images a
 
 Report one row per image (`file | criterion | matches / mismatch / cannot judge | what you see`), then the findings. A mismatch with the criterion text is high; a layout problem that hides content is high; a cosmetic difference is low. Do not guess what an unreadable image shows: say "cannot judge". Then stop.
 
+## Reviewing a later round
+
+When you are given the previous round's findings and a commit range, check each finding first: closed (say where), or still open. Then review only the commits in that range and the criteria they touch, with the checks below. Do not re-review the rest of the branch; say in the report that the round was a delta and which range it covered.
+
 ## Reviewing a diff
 
 Gather:
 
-1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (base defaults to `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
+1. The diff: `git diff <base>...HEAD` and `git diff HEAD` for uncommitted work (the base you were given; else the `Base:` line of `.work/<branch>.md`, else `main`). List new files with `git status --porcelain`. If `.claude/kit.conf` sets `KIT_PROTECTED_PATHS`, end every `git diff`, `git show` and `git log -p` with `-- .` and one `':(exclude)<path>'` per protected path; you never read those paths.
 2. The spec for this branch: find it through the Branch column in `specs/README.md`, then read `specs/<feature>.md`. Read `.work/<branch>.md` if it exists.
 3. The rules: read every file in `.claude/rules/`.
+4. A screenshot folder, if you were given one: judge every image as in "Reviewing screenshots" and add its rows to your report. A finding there counts like any other.
 
 Check:
 

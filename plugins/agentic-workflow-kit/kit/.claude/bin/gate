@@ -3,11 +3,12 @@ set -u
 
 gates="spec plan deps split config commit push"
 name=${1:-}
-case " $gates level " in
+case " $gates level round " in
   *" $name "*) ;;
   *)
     echo "usage: .claude/bin/gate <$(printf '%s' "$gates" | tr ' ' '|')>   prints ask or auto" >&2
     echo "       .claude/bin/gate level   prints strict, standard or autonomous" >&2
+    echo "       .claude/bin/gate round <kit|test|hotfix|spec> <n>   prints whether failed verify round n continues (auto) or asks" >&2
     exit 2
     ;;
 esac
@@ -19,6 +20,7 @@ gate_value() {
 }
 
 env_level=${KIT_APPROVAL:-}
+env_rounds=${KIT_VERIFY_ROUNDS:-}
 env_gate=$(gate_value)
 if [ -f "$root/.claude/kit.conf" ]; then
   # shellcheck source=/dev/null
@@ -31,6 +33,24 @@ case $level in
   strict | standard | autonomous) ;;
   *) echo "gate: KIT_APPROVAL='$level' is not strict, standard or autonomous; using strict." >&2; level=strict ;;
 esac
+
+if [ "$name" = round ]; then
+  # A failed verify round n of a class: kit false positives never count, spec changes always ask, and test and
+  # hotfix rounds continue up to their KIT_VERIFY_ROUNDS limit; at autonomous they continue past it.
+  class=${2:-} n=${3:-}
+  case $n in '' | *[!0-9]*) echo "usage: .claude/bin/gate round <kit|test|hotfix|spec> <verify round>" >&2; exit 2 ;; esac
+  rounds=${env_rounds:-${KIT_VERIFY_ROUNDS:-}}
+  limit=$(printf '%s\n' "test:3 hotfix:2 $rounds" | tr ' ' '\n' | sed -n "s/^$class:\([0-9][0-9]*\)$/\1/p" | tail -n 1)
+  case $class in
+    kit) echo auto ;;
+    spec) echo ask ;;
+    test | hotfix)
+      if [ "$n" -le "$limit" ] || [ "$level" = autonomous ]; then echo auto; else echo ask; fi
+      ;;
+    *) echo "usage: .claude/bin/gate round <kit|test|hotfix|spec> <verify round>" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
 
 if [ "$name" = level ]; then
   printf '%s\n' "$level"

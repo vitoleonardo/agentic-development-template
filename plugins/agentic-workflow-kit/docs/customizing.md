@@ -28,7 +28,7 @@ Write rules as instructions that can be checked ("amounts are integers in cents"
 
 `/onboard` writes the Map from the repository: it copies the homes the code already uses, puts the extra homes of a kind under `## Legacy` (no new files there), and keeps the kit's default where the repository has none. Add a home through a pull request, in the same change as the first file that needs it. The Python adapter ships its own map.
 
-Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out.
+Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out. In the TypeScript adapter, `KIT_DUPLICATES` runs jscpd through `duplicates-new.mjs`: jscpd matches clones by fingerprint, so editing one copy of a legacy clone splits it into pieces jscpd reports as new; a clone inside one the same file pair already has on the base counts as legacy. The NestJS preset documents an `--ignore-pattern` for constructor parameter lists.
 
 ## Add a stack preset
 
@@ -96,6 +96,17 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 2. **Deny rules** `Read(./<path>/**)` and `Edit(./<path>/**)` stop the file tools, and Claude Code applies Read denies to Grep and Glob as well.
 3. **`KIT_PROTECTED_PATHS`** makes the guard block Read, Edit, Grep and Glob calls into the path, commands that name it, and git commands that would print it (`git diff`, `git show`, `git log -p`) unless they exclude it: `git diff main...HEAD -- . ':(exclude)packages/ee'`. A single `git diff`, `git show` or `git log` gets the missing excludes appended by the guard. Chained ones are blocked.
 
+## Secret scan
+
+`/verify-feature`'s secrets gate scans the branch's added lines, never `reports/runs/` (run records quote stop messages). Install [gitleaks](https://github.com/gitleaks/gitleaks); `/onboard` and the gate report a missing one as a setup gap. Without it, a pattern scan stands in:
+
+- key formats (private keys, `AKIA…`, `ghp_…`, `github_pat_…`, `xox…-`, `sk-…`) and a newly added `.env` file fail the gate;
+- `api_key|secret|token|password = "<12+ characters>"` only warns in the gate's detail, because the fake values `rules/security.md` asks for match it too.
+
+With gitleaks, the gate scans the branch's commits (`gitleaks git`, protected paths and `reports/runs/` left out by pathspec) and pipes uncommitted changes through `gitleaks stdin`. Findings are redacted in the evidence pack. The project's `.gitleaks.toml` and `.gitleaksignore` apply.
+
+Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. Without gitleaks a row silences the warning for that value in that file; with gitleaks it becomes a path-and-value allowlist in the generated config. A row whose value is a key format is ignored on both paths. Each row needs the user's approval and the reason in its commit message.
+
 ## Route models by task
 
 Dispatched agents run on a tier, and `.claude/kit.conf` maps tiers to models:
@@ -138,7 +149,7 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 Off by default. Set `KIT_IMPROVE="1"` in `.claude/kit.conf` to turn it on.
 
-Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `kit`, `env`, `budget`. `/ship-feature` describes how each class is fixed.
+Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `hotfix`, `kit`, `env`, `budget`. Verify rounds also get a line under Rounds (`- verify <n> | full | <range> | pass` or `fail: <classes>`), which `runs report` counts per run and by cause. `/ship-feature` describes how each class is fixed.
 
 With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before the gates and commits `reports/runs/<branch>.tsv` together with the `in-review` status, so the evidence pack stays valid for that commit. The record holds: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
 
@@ -172,7 +183,8 @@ Some things are never optional, at every level:
 - The `permissions.deny` rules still apply.
 - `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
 - A commit on `main` or `master` always asks.
-- Failure stops still ask: a task that fails twice, review or verify rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+- Failure stops still ask: a task that fails twice, review rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
+- Verify failures are classified by cause, and `.claude/bin/gate round <class> <n>` decides whether round n continues. `kit` (a false positive of the kit) never counts as a round. `test` (the test or its setup) and `hotfix` (a product fix that keeps the spec) continue up to `KIT_VERIFY_ROUNDS` (default `test:3 hotfix:2`), and at `autonomous` past it. `spec` always asks. The same failure coming back after two fixes stops at every level.
 
 ## Run a backlog unattended
 
@@ -199,13 +211,17 @@ A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-r
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
 
 - an action was denied (`permission_denials`): everything in the list above stays yours. The stop names the denied commands.
-- the stop class is `spec`, `kit`, `env` or `budget`
+- the stop class is `spec`, `hotfix`, `kit`, `env` or `budget`
 - the answerer escalates
 - the cap is reached
 
 Later features wait, because they build on the stopped one. Answer with the printed `claude --resume <session id>`, then run `autopilot` again.
 
-**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript. With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
+**Watchdog and usage limit.** Autopilot watches each session and stops it when it runs longer than `AUTOPILOT_MAX_SESSION_SECONDS` (default 14400, four hours), writes nothing for `AUTOPILOT_MAX_IDLE_SECONDS` (default 1200), or one agent makes the same tool call `AUTOPILOT_MAX_IDENTICAL_CALLS` times in a row (default 6). The stop goes under Stops with class `budget`, and a fresh session starts once; it resumes from `.work/<branch>.md` like any `/ship-feature` run. A second watchdog stop for the same phase halts the run. A session the usage limit stopped (a rejected `rate_limit_event`) is not counted: autopilot waits until two minutes after the reset and starts the phase again, at most `AUTOPILOT_MAX_WAITS` times (default 3).
+
+**Sessions.** `.work/autopilot/sessions.tsv` gets one row per session: date, feature, phase, transcript, minutes, turns, cost in USD, result lines and what ended it (`ended`, `watchdog: …`, `usage limit`). A session writes one `result` line per segment, because it resumes after background tasks. `num_turns` counts only that segment, so the turns are summed. `total_cost_usd` covers the whole session, so the last one is the cost.
+
+**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript (with `-restart-<n>`, `-wait-<n>` or the answer number for later sessions of the phase). With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
 
 If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
@@ -243,6 +259,16 @@ A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the
 - **none**: only tests and docs changed.
 
 The selection can miss a feature whose code a change breaks without naming it. The `Full e2e` job in `evidence.yml` covers that: it runs `evidence data --all` after every merge to `main`, one run per merge, so a failure points at the merge that caused it. Add files your e2e tests share (helpers, page objects, global setup) to `KIT_E2E_FULL_PATTERNS`. For other runners, set `KIT_E2E_RELATED` to a command that takes test files as arguments (`uv run pytest`, `cypress run --spec` needs a comma list, so wrap it in a script).
+
+## Isolate the test stack
+
+The seed, e2e and screenshot runs share a machine with the dev server, other suites and other branches. In a pilot run, two collisions cost two verify rounds: the e2e logins hit the app's auth throttle (10 per 60 s, kept in Redis across runs), and a legacy e2e suite started queue workers on the shared Redis and took the other suites' jobs.
+
+- Declare the run's own resources in `.claude/kit.conf`: `KIT_RUN_DB` (database name), `KIT_RUN_REDIS_DB` (Redis db number) and `KIT_RUN_PORT`. `evidence data` and `evidence screenshots` export them to `KIT_SEED`, `KIT_E2E` and `KIT_SCREENSHOTS`; point the app's database URL, Redis URL and port at them in those scripts.
+- Reset only what is yours: drop and seed `KIT_RUN_DB`, flush `KIT_RUN_REDIS_DB` (`redis-cli -n "$KIT_RUN_REDIS_DB" flushdb`), never `flushall`. Flush at the start of the run, so counters such as login throttles never carry over.
+- Log in once per test user, not once per test: a Playwright setup project saves `storageState` per user, and the tests reuse it. That keeps logins far below any throttle.
+- An e2e suite does not start queue workers on a Redis other suites use. Give workers the run's Redis db, or turn them off in e2e.
+- The base-branch screenshot run gets `KIT_BASE_ENV` (an env file) for the variables the base needs to start.
 
 ## Change the CI thresholds
 

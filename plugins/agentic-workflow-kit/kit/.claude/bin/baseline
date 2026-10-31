@@ -238,8 +238,7 @@ compare_test() {
   : >"$tmp/vanished"
   if [ -s "$tmp/gone" ]; then
     # Only removed lines of test files count, so a renamed fixture or a comment elsewhere explains nothing.
-    patterns=$(configured "$pkg" KIT_TEST_PATTERNS)
-    patterns=${patterns:-"*.test.* *.spec.* *_test.* test_*.* __tests__/* test/* tests/* e2e/* spec/*"}
+    patterns=$(test_patterns "$pkg")
     : >"$tmp/removed-lines"
     git diff --name-only "$(merge_base)" -- 2>/dev/null | while IFS= read -r f; do
       [ "$(package_of "$f")" = "$pkg" ] && matches_any "$f" "$patterns" || continue
@@ -317,7 +316,8 @@ compare_coverage() {
   threshold=$(configured "$pkg" KIT_COVERAGE_THRESHOLD)
   tolerance=$(configured "$pkg" KIT_COVERAGE_TOLERANCE)
   sources=$(configured "$pkg" KIT_SOURCE_PATTERNS)
-  tests=$(configured "$pkg" KIT_TEST_PATTERNS)
+  tests=$(test_patterns "$pkg")
+  e2e=$(conf_value . KIT_E2E_PATTERNS)
   exclude=$(configured "$pkg" KIT_COVERAGE_EXCLUDE)
   if [ -z "$files_cmd" ]; then
     echo "coverage in $pkg: KIT_COVERAGE_FILES is not configured, so coverage of the changed files cannot be measured."
@@ -336,7 +336,7 @@ compare_coverage() {
     # The kit's own tooling is not application code.
     case $f in .claude/*) continue ;; esac
     matches_any "$f" "$sources" || continue
-    matches_any "$f" "${tests:-*.test.* *.spec.* __tests__/* tests/*}" && continue
+    matches_any "$f" "$tests $e2e" && continue
     [ -n "$exclude" ] && matches_any "$f" "$exclude" && continue
     # The line count stands in for a file the report leaves out: it counts as untested.
     printf '%s\t%s\n' "$f" "$(wc -l <"$pkg/$f" | tr -d ' ')"
@@ -385,12 +385,12 @@ compare() {
   esac
   [ -f .claude/kit.conf ] || { echo "check: .claude/kit.conf is missing." >&2; exit 2; }
   [ -f "$baseline_file" ] || echo "No $baseline_file yet: every failure blocks. /onboard records one."
-  result=3
+  verdict=3
   for pkg in $(packages); do
     cmd=$(configured "$pkg" "$var")
     case $cmd in
       '') continue ;;
-      n/a:*) [ "$result" -eq 3 ] && result=4; echo "$check in $pkg: $cmd"; continue ;;
+      n/a:*) [ "$verdict" -eq 3 ] && verdict=4; echo "$check in $pkg: $cmd"; continue ;;
     esac
     case $check in
       test) compare_test "$pkg" ;;
@@ -399,13 +399,13 @@ compare() {
     esac
     code=$?
     case $code in
-      0) [ "$result" -ne 1 ] && result=0 ;;
+      0) [ "$verdict" -ne 1 ] && verdict=0 ;;
       3) ;;
-      *) result=1 ;;
+      *) verdict=1 ;;
     esac
   done
-  [ "$result" -eq 3 ] && echo "check: '$check' is not configured in any .claude/kit.conf." >&2
-  return "$result"
+  [ "$verdict" -eq 3 ] && echo "check: '$check' is not configured in any .claude/kit.conf." >&2
+  return "$verdict"
 }
 
 # --- loosened ------------------------------------------------------------------

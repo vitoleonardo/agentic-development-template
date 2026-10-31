@@ -21,6 +21,7 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 
 ```markdown
 # Plan: <feature> (spec: specs/<feature>.md)
+Base: <the branch this one builds on; /ship-feature fills it in>
 
 ## Design
 - Parts: <which UI, server and data pieces change, and how they connect>
@@ -52,6 +53,9 @@ Write it to `.work/<branch>.md`, using the current branch or, if you are on `mai
 
 ## Stops
 - <step> | <class> | <trigger> | <what was tried> | <resolution>
+
+## Rounds
+- <review|verify> <n> | <full|delta> | <commit range> | <pass, or fail: <classes>>
 
 ## Decisions to review
 - <gate> | <what was decided> | <why>

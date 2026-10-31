@@ -1,12 +1,12 @@
 ---
 name: pr-description
 description: Write a pull request description from the diff, the spec, the verify log and the evidence pack - what, why, how it was tested, and how to review it in five minutes. Does not push or open the PR.
-argument-hint: [base branch, default main]
+argument-hint: [base branch, default the state file's Base, else main]
 ---
 
 # Write the PR description
 
-Base branch: $ARGUMENTS (if empty: `$KIT_BASE` when it is set, which `.claude/bin/autopilot` does for stacked branches, else `main`).
+Base branch: $ARGUMENTS (if empty: `$KIT_BASE` when it is set, else the `Base:` line of `.work/<branch>.md`, else `main`). Open the PR against it (`gh pr create --base <base>`).
 
 Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, say that the pack is stale and that `/verify-feature` must run again; do not use it.
 
