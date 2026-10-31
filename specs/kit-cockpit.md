@@ -90,6 +90,10 @@ Cockpit plugin:
 - **COCKPIT-AC39**: Given no evidence pack for the branch, when the status command runs with `--json`, then `evidence` is `null`.
 - **COCKPIT-AC40**: Given the newest autopilot run log has no closing line and its newest session transcript changed 1200 or more seconds ago, when the status command runs with `--json`, then `autopilot.active` is `false`.
 - **COCKPIT-AC41**: Given the newest autopilot run log has no closing line, its last line says the run waits for the usage limit to reset, with a reset time 1 hour from now, and its newest transcript changed 3 hours ago, when the status command runs with `--json`, then `autopilot.active` is `true`.
+- **COCKPIT-AC56**: Given a branch without a feature row and without a state file, when the developer runs `/cockpit`, then the pane shows `No feature on this branch.` above the Autopilot section and no other section.
+- **COCKPIT-AC57**: Given the pane is open and no autopilot run log exists, when an autopilot run starts in another terminal and 10 seconds pass without any action, then the Autopilot section shows the run.
+- **COCKPIT-AC58**: Given the status command prints JSON without the `line`, `criteria` or `autopilot` keys, when the cockpit refreshes, then the status line shows `cockpit: error` and the pane shows `status printed an unexpected shape`.
+- **COCKPIT-AC59**: Given the pane is open and shows an active autopilot run whose log has stopped changing, when 60 seconds pass without any action and the status command now reports no active run, then the Autopilot section no longer shows `● live`.
 - **COCKPIT-AC55**: Given the newest autopilot run log has no closing line and its last line says the run waits for a usage limit reset that passed more than the idle limit ago, when the status command runs with `--json`, then `autopilot.active` is `false`.
 - **COCKPIT-AC42**: Given no autopilot run log exists, when the status command runs with `--json`, then `autopilot` is `null`.
 - **COCKPIT-AC43**: Given a kit project with a state file, a session record and an evidence pack, when the status command runs 10 times, then every file in the project outside `.git/` has the same content and modification time as before.
@@ -122,5 +126,7 @@ Cockpit plugin:
 - 31.10.2026: An autopilot run counts as active within the autopilot's own idle limit after its last transcript change, or while it waits for a usage limit, so that a killed run does not show as active forever.
 - 31.10.2026: Evidence counts as current when it was made on the current commit, as CI judges it; uncommitted changes are not checked.
 - 31.10.2026: Red checks drop to 0 once the kit's Stop hook clears the turn's record; the status line shows what the record holds at refresh time.
-- 31.10.2026: The pane polls every 5 seconds only while it is open and a run is active; everything else refreshes on events, so an idle session runs no command.
+- 31.10.2026: The pane polls every 5 seconds only while it is open and a run is active; everything else refreshes on events, so an idle session runs no command. Refined by the folder check below.
+- 31.10.2026: While the pane is open, the cockpit lists the autopilot's folder every 5 seconds without running a command, and runs the status command only when something in it changed. A run started after the pane opened is then seen, and AC51 and AC52 still hold. Found in review round 1 of the plugin.
+- 31.10.2026: While the pane shows an active run, the cockpit also runs the status command once a minute, because a killed run leaves its log unchanged and would otherwise stay live.
 - 31.10.2026: The kit's version goes to 0.3.0 with the status command, so the cockpit can name the version it needs.
