@@ -1,13 +1,13 @@
 ---
 name: improve-kit
-description: Optional retrospective over recorded feature runs - read the run records, token usage and lead time, check whether earlier kit changes worked, and propose evidence-backed changes to routing, rules, hooks, checks and skills. Proposes only; changes nothing before approval and never touches application code. Needs KIT_IMPROVE in .claude/kit.conf.
-argument-hint: [focus, for example "tokens" or "stops"]
+description: Optional retrospective over recorded feature runs - read the run records, token usage and lead time, check whether earlier kit changes worked, and propose evidence-backed changes to routing, rules, hooks, checks and skills. With `deep`, a workflow of read-only agents finds the causes behind the numbers and verifies each proposal. Proposes only; changes nothing before approval and never touches application code. Needs KIT_IMPROVE in .claude/kit.conf.
+argument-hint: [deep] [focus, for example "tokens" or "stops"]
 disable-model-invocation: true
 ---
 
 # Improve the kit
 
-Focus: $ARGUMENTS (everything if empty)
+Arguments: $ARGUMENTS. `deep` as the first word runs the deep pass (see "Deep pass" below); the rest is the focus (everything if empty).
 
 This is a retrospective, not a pipeline step. Run it every five merged features or once a month. You propose; the user decides. Never edit application code, and never change `.claude/` or `kit.conf` before the user approves the proposal.
 
@@ -21,6 +21,24 @@ Run `.claude/bin/runs report`. If it says run records are off, tell the user tha
 - If `gh` works, run `.claude/bin/leadtime` and read `reports/lead-time.md`: lead time, review rounds and rework from GitHub.
 - `reports/improvements.md`, the log of earlier changes, if it exists.
 - For a recurring review finding, the merged PRs' review comments (`gh pr view <n> --comments`). Read only what a rule below needs.
+
+Without `deep`, continue with step 2. With `deep`, run the deep pass instead of steps 2 and 3, then continue with step 4.
+
+## Deep pass (`deep` only)
+
+The rules below see only the numbers. The deep pass finds the causes: a workflow reads every run in its own read-only agent, groups the events of all runs into causes, ranks them by the rounds they cost, and proposes a change per open cause that two more agents try to refute (on its evidence, and on whether it weakens a guarantee). It costs far more tokens than the rules; run it when the report shows a problem the rules cannot explain.
+
+1. Build the arguments, as JSON values, not a string:
+   - `runs`: one entry per `reports/runs/*.tsv`: `branch` and `date` from its `run` row, `record` (the file), `state` (`.work/<branch>.md` if it exists, else `""`), `evidence` (`.work/<branch>/evidence/review.md` and `screenshots-review.md`, the ones that exist), `pr` (the PR number from `gh pr list --head <branch> --state all --json number` when `gh` works, else omit it).
+   - `improvements`: one entry per line of `reports/improvements.md` (`- <date> | <change> | <metric> | <value before>`), with the date as `YYYY-MM-DD`.
+   - `models`: `{ "read": "<.claude/bin/route implement>", "judge": "<.claude/bin/route review>" }`.
+   - `today` (`YYYY-MM-DD`), `focus` (the rest of the arguments), `maxProposals: 5`.
+2. Tell the user how many agents it will start, about runs + improvement entries + 25 at most, and that each reads its files anew. Go on unless they stop you.
+3. Call the Workflow tool with `name: "improve-kit"` and these `args`. It runs `.claude/workflows/improve-kit.js`. It changes no file.
+4. Write its result to `.work/improve/<YYYY-MM-DD>-deep.md` in the format of step 4, with `earlier` under Earlier changes, `proposals` under Proposals (when a proposal's `evidenceNote` corrects a number, use the corrected one) and `notEnoughData` under Not enough data, plus:
+   - `## Causes`: one line per cause: title, rounds, runs, and `addressed by <change>` when an earlier change targets it.
+   - `## Dropped by verification`: each dropped proposal with the reason the check gave.
+   - One line each for `overLimit`, `notProposed` and `unread`, if not empty.
 
 ## 2. Check earlier changes first
 

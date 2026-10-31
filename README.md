@@ -59,7 +59,7 @@ templates/
 
 Every product has its own CI workflow that runs on each pull request and on `main`:
 
-- **agentic-workflow-kit:** shellcheck over every script, ten test suites (hooks, spec lint, installer, checks and baseline, evidence pack, routing, lead time, run records, structure map, autopilot), and eight of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
+- **agentic-workflow-kit:** shellcheck over every script, eleven test suites (hooks, spec lint, installer, checks and baseline, evidence pack, routing, lead time, run records, structure map, autopilot, the `/improve-kit deep` workflow), and nine of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
 - **repo-check:** shellcheck, the read-only hook, the scanner, and a drift test that fails when the single-file prompt or the bundled `leadtime` differs from its source. All under `dash` as well.
 - **greenfield-nextjs:** shellcheck over the scripts, and the naming, docs, contract and design validators on the untouched template.
 

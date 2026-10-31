@@ -37,6 +37,7 @@ expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescr
 expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
 expect "full: leadtime, route and usage installed" test -x "$full/.claude/bin/leadtime" -a -x "$full/.claude/bin/route" -a -x "$full/.claude/bin/usage" -a -x "$full/.claude/hooks/usage"
 expect "full: run records and /improve-kit installed" test -x "$full/.claude/bin/runs" -a -f "$full/.claude/skills/improve-kit/SKILL.md"
+expect "full: the /improve-kit deep workflow installed" test -f "$full/.claude/workflows/improve-kit.js"
 expect "full: adapter helpers and the onboarding tools installed" test -f "$full/.claude/bin/coverage-files.mjs" -a -x "$full/.claude/bin/baseline" -a -x "$full/.claude/bin/onboard-apply" -a -f "$full/.claude/skills/onboard/SKILL.md"
 python=$(mktemp -d)
 "$here/install.sh" "$python" --adapter python >/dev/null || echo "FAIL: python install exited $?"
@@ -46,6 +47,7 @@ expect "python: the Python structure map replaced the core one" grep -q '`src/<p
 rm -rf "$python"
 
 expect "plugin: no hooks, skills or agents" test ! -e "$plugin/.claude/hooks" -a ! -e "$plugin/.claude/skills" -a ! -e "$plugin/.claude/agents"
+expect "plugin: the /improve-kit deep workflow installed as a project file" test -f "$plugin/.claude/workflows/improve-kit.js"
 expect "plugin: project files installed" test -x "$plugin/.claude/bin/check" -a -f "$plugin/CLAUDE.md" -a -f "$plugin/specs/README.md" -a -f "$plugin/.claude/kit.conf"
 expect "plugin: settings.json has no hooks" sh -c "! grep -q '\"hooks\"' '$plugin/.claude/settings.json'"
 expect "plugin: settings.json keeps the deny rules" grep -q '"deny"' "$plugin/.claude/settings.json"

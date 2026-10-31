@@ -49,8 +49,10 @@ jobs:
         run: sh tests/autopilot.test.sh
       - name: Structure map
         run: sh tests/structure.test.sh
+      - name: /improve-kit deep workflow
+        run: sh tests/improve-workflow.test.sh
       - name: All suites under dash
-        run: for t in hooks check evidence usage leadtime runs structure autopilot; do dash "tests/$t.test.sh" || exit 1; done
+        run: for t in hooks check evidence usage leadtime runs structure autopilot improve-workflow; do dash "tests/$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates
