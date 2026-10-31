@@ -18,3 +18,7 @@ The values before come from the pilot run on a NestJS and React monorepo (M2 to 
 - 29.10.2026 | later review and verify rounds scoped to what changed (evidence scope, gates --only) | reviewer tokens per review round after round 1 | not recorded before; M5: 4 review and 4 verify rounds, 52.88 USD
 - 29.10.2026 | later review and verify rounds scoped to what changed (evidence scope, gates --only) | cost per milestone | M3 26.01, M4 33.19, M5 52.88, M6 25.49, M7 38.89+ USD
 - 29.10.2026 | autopilot watchdog, usage-limit waits, sessions.tsv with summed turns | sessions whose recorded turns are wrong | M6: 3 recorded, 152 in its five result lines
+- 31.10.2026 | duplicates: a clone inside constructor parameter lists passes, *.e2e-spec.* left out, the edit hook runs the same helper | duplicates `kit` stops; refactors to satisfy the gate | 3 stops in 9 runs (M7, M8); 4 refactors (M8)
+- 31.10.2026 | red gate warns when a new criterion test passes on the base | runs with a weak-test review finding; median review rounds | 7 of 9 runs; 4
+- 31.10.2026 | the plan lists each side effect: what it waits for, where it runs, what happens on failure | `plan` stops from ordering and blocking calls | 4 in 9 runs
+- 31.10.2026 | /onboard names an empty KIT_SETUP, KIT_BASE_ENV and token budget | `env` stops; failed base screenshot runs | 5 in 9 runs; every base run since M5
