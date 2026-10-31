@@ -211,6 +211,38 @@ else
   passed=$((passed + 1))
 fi
 
+risk_repo=$(mktemp -d)
+cp -R "$project/.claude" "$risk_repo/"
+risk_git() { git -C "$risk_repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
+risk_git init -q -b main && risk_git add -A && risk_git commit -qm base && risk_git switch -qc 7-risk
+mkdir -p "$risk_repo/src" "$risk_repo/db/migrations"
+printf 'x\n' >"$risk_repo/src/users.controller.ts" && risk_git add -A && risk_git commit -qm feature
+risk_gate_is() {
+  risk_want=$1
+  shift
+  got=$(cd "$risk_repo" && env "$@" .claude/bin/gate push 2>/dev/null)
+  if [ "$got" = "$risk_want" ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    echo "FAIL: gate push in the risk repo with $*: wanted $risk_want, got '$got'"
+  fi
+}
+risk_gate_is auto KIT_APPROVAL=autonomous
+risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+printf 'alter table x;\n' >"$risk_repo/db/migrations/1.sql" && risk_git add -A && risk_git commit -qm migration
+risk_gate_is ask KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+risk_gate_is ask KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="api/*"
+risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*" KIT_GATE_PUSH=auto
+risk_gate_is ask KIT_APPROVAL=autonomous
+reason=$(cd "$risk_repo" && KIT_APPROVAL=autonomous .claude/bin/gate push 2>&1 >/dev/null)
+case $reason in
+  *"the branch changes db/migrations/1.sql (KIT_PUSH_ASK_PATTERNS)"*) passed=$((passed + 1)) ;;
+  *) failed=$((failed + 1)); echo "FAIL: the push gate should name the risky file: $reason" ;;
+esac
+rm -rf "$risk_repo"
+
 # round_is <class> <n> <want> [env...]: whether verify round n, failed with this class, continues (auto) or asks.
 round_is() {
   round_class=$1 round_n=$2 round_want=$3

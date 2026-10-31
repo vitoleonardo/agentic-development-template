@@ -96,7 +96,7 @@ cp "$project/state" .work/12-export.md
 # --- report ---------------------------------------------------------------------
 
 printf 'run\t2026-09-01\told-a\told-a\t4\t0\t2\t3000\t0\t2400\t0\t600\nstop\ttask 3\tkit\tformat hook slow\t–\twaited\nround\tverify\t1\tfull\tx..y\tpass\nreview\t1\t900\nreview\t2\t300\n' >reports/runs/old-a.tsv
-printf 'run\t2026-09-10\told-b\told-b\t0\t1\t0\t2000\t0\t1000\t0\t1000\nstop\tspec\tspec\tcriterion 4 untestable\t–\tamended\n' >reports/runs/old-b.tsv
+printf 'run\t2026-09-10\told-b\told-b\t0\t1\t0\t2000\t0\t1000\t0\t1000\nstop\tspec\tspec\tcriterion 4 untestable\t–\tuser: amended\n' >reports/runs/old-b.tsv
 .claude/bin/runs report >/dev/null
 m=reports/runs.md
 grep -q 'Too few runs for reliable numbers\*\* (3)' "$m" && ok || fail "fewer than five runs are flagged"
@@ -109,6 +109,8 @@ grep -q '^- old-a, task 3: format hook slow. Tried: –. Resolution: waited.$' "
 grep -q '| Verify rounds | 2 | 3 | 2 |' "$m" && ok || fail "verify rounds per run, only runs that record rounds: $(grep -i verify "$m")"
 grep -q 'Verify rounds: 4 in 2 runs (mean 2.0). Failed by a kit false positive: 1. Failed on the screenshot review: 1.' "$m" && ok || fail "verify rounds by cause: $(grep -i 'verify rounds:' "$m")"
 grep -q '| hotfix | 0 |' "$m" && ok || fail "hotfix is a stop class"
+grep -q '| Interventions per run (stops resolved by the user) | 0 | 1 | 3 |' "$m" && ok || fail "interventions per run: $(grep -i interventions "$m")"
+grep -q '| 2026-09-10 | old-b | 0 | 1 | 0 | 2000 | 1000 | 1 | 1 |' "$m" && ok || fail "a run row counts its interventions: $(grep old-b "$m")"
 grep -q 'Reviewer tokens per review round: round 1 median 550 (2 rounds), later rounds median 300 (1 rounds).' "$m" && ok || fail "reviewer tokens per round: $(grep -i 'reviewer tokens' "$m")"
 
 echo "$passed passed, $failed failed"
