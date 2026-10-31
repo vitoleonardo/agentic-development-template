@@ -4,18 +4,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 CHECK_MODE=false
 if [ "$1" = "--check" ] || [ "$1" = "-c" ]; then
   CHECK_MODE=true
   shift
 fi
-
-# Check for package.json script
-has_npm_script() {
-  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
-}
 
 # Detect formatter configuration
 detect_formatter() {
@@ -34,15 +29,6 @@ if $CHECK_MODE; then
   echo "Checking format..."
 else
   echo "Running format..."
-fi
-
-# Try npm script first
-if $CHECK_MODE && has_npm_script "format:check"; then
-  npm run format:check "$@"
-  exit $?
-elif ! $CHECK_MODE && has_npm_script "format"; then
-  npm run format "$@"
-  exit $?
 fi
 
 # Try direct formatter detection

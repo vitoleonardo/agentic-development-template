@@ -67,6 +67,9 @@
  *   This ensures consistent visual/UX decisions across parallel agent work.
  */
 
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 const fs = require('fs');
 const path = require('path');
 const yaml = require('yaml'); // Requires: npm install yaml

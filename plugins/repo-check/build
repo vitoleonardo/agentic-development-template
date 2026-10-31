@@ -1,0 +1,53 @@
+#!/bin/sh
+set -u
+
+usage() {
+  cat <<'EOF'
+Usage: plugins/repo-check/build [--check]
+Generates repo-check.md from the shared blocks of plugin/skills/repo-check/SKILL.md and
+prompt/repo-check.md.in, and copies the kit's leadtime into plugin/skills/repo-check/leadtime.
+  --check  write nothing; fail if a generated file differs from what the build would write
+EOF
+}
+
+check=0
+case ${1:-} in
+  "") ;;
+  --check) check=1 ;;
+  -h | --help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+skill=$here/plugin/skills/repo-check/SKILL.md
+leadtime=$here/../agentic-workflow-kit/kit/.claude/bin/leadtime
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+awk -v skill="$skill" '
+  BEGIN {
+    while ((getline line < skill) > 0) {
+      if (line ~ /^<!-- shared:[a-z-]+ -->$/) { cur = line; sub(/^<!-- shared:/, "", cur); sub(/ -->$/, "", cur); text[cur] = line; continue }
+      if (cur != "") { text[cur] = text[cur] "\n" line; if (line ~ /^<!-- \/shared:/) cur = "" }
+    }
+  }
+  /^<!-- include:[a-z-]+ -->$/ {
+    name = $0; sub(/^<!-- include:/, "", name); sub(/ -->$/, "", name)
+    if (!(name in text)) { print "build: SKILL.md has no shared block " name > "/dev/stderr"; failed = 1; exit 1 }
+    print text[name]; next
+  }
+  { print }
+' "$here/prompt/repo-check.md.in" >"$tmp/repo-check.md" || exit 1
+cp "$leadtime" "$tmp/leadtime"
+
+status=0
+for pair in "repo-check.md:$here/repo-check.md" "leadtime:$here/plugin/skills/repo-check/leadtime"; do
+  name=${pair%%:*} target=${pair#*:}
+  if [ "$check" -eq 1 ]; then
+    cmp -s "$tmp/$name" "$target" || { echo "build: ${target#"$here"/} is out of date; run plugins/repo-check/build" >&2; status=1; }
+  else
+    cp "$tmp/$name" "$target"
+  fi
+done
+[ "$check" -eq 1 ] || chmod +x "$here/plugin/skills/repo-check/leadtime"
+exit "$status"

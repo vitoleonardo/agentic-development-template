@@ -7,14 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Load exceptions from quality-gates.yaml if available
-EXTRA_EXCEPTIONS=""
-if [ -f "coordination/quality-gates.yaml" ]; then
-  # Simple extraction of naming exceptions (grep-based, no yaml parser needed)
-  EXTRA_EXCEPTIONS=$(grep -A 100 'naming-exceptions:' coordination/quality-gates.yaml 2>/dev/null | \
-    grep '^\s*-' | sed 's/.*- //' | tr '\n' '|' || true)
-fi
-
 # Standard allowed files (not kebab-case)
 is_allowed_file() {
   case "$1" in

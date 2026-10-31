@@ -7,12 +7,12 @@
   "plugins": [
     {
       "name": "agentic-workflow-kit",
-      "source": "./templates/agentic-workflow-kit/kit/.claude",
+      "source": "./plugins/agentic-workflow-kit/kit/.claude",
       "description": "Spec-driven workflow, guard hooks, check hooks and subagents for Claude Code"
     },
     {
       "name": "repo-check",
-      "source": "./templates/repo-check/plugin",
+      "source": "./plugins/repo-check/plugin",
       "description": "Find where your delivery is jammed right now: a 10-question interview or a strictly read-only scan of the repository. Sends nothing."
     }
   ]

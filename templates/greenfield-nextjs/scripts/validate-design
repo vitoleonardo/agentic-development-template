@@ -20,6 +20,9 @@
  *   2 - Missing required fields
  */
 
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 const fs = require('fs');
 const path = require('path');
 

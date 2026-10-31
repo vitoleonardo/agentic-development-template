@@ -6,23 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Check for package.json script
-has_npm_script() {
-  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
-}
-
 echo "Running typecheck..."
-
-# Try npm script first
-if has_npm_script "typecheck"; then
-  npm run typecheck "$@"
-  exit $?
-fi
-
-if has_npm_script "type-check"; then
-  npm run type-check "$@"
-  exit $?
-fi
 
 # Try direct tsc
 if [ -f "tsconfig.json" ]; then

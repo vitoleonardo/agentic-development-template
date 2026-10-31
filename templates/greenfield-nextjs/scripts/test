@@ -6,11 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Check for package.json script
-has_npm_script() {
-  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
-}
-
 # Detect test framework
 detect_test_framework() {
   # Vitest
@@ -31,12 +26,6 @@ detect_test_framework() {
 }
 
 echo "Running tests..."
-
-# Try npm script first
-if has_npm_script "test"; then
-  npm test "$@"
-  exit $?
-fi
 
 # Try direct framework detection
 framework=$(detect_test_framework)
