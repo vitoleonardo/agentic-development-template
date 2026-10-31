@@ -126,6 +126,7 @@ contains "$(call 2)" "-p /ship-feature alpha" "second session builds in a fresh 
 contains "$(call 1)" "--permission-prompts none" "nothing waits for a prompt"
 contains "$(call 1)" "Bash(.claude/bin/*)" "the kit's own commands run unattended"
 contains "$(call 1)" "--disallowedTools Bash(*autopilot*)" "a session cannot start autopilot itself"
+contains "$(call 1)" "--append-system-prompt This is an unattended .claude/bin/autopilot session" "the session knows nobody is watching"
 same "$(call 3 | cut -d '|' -f 1-2)" "beta|alpha" "beta is stacked on alpha"
 same "$(git merge-base alpha beta)" "$(git rev-parse alpha)" "beta branches from alpha's head"
 log=$(cat .work/autopilot/run-*.md)
