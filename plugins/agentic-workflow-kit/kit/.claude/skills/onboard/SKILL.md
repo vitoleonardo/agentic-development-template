@@ -87,4 +87,10 @@ Then prove the configuration:
 
 Check the tools the gates rely on: `command -v gitleaks` (without it the secret gate falls back to a pattern scan that only warns about `name = value` matches) and, for the TypeScript adapter, `node_modules/.bin/jscpd`. Each one that is missing is a setup gap.
 
+Check the settings that runs on the base and long runs rely on:
+
+- `KIT_SETUP` empty while `KIT_SCREENSHOTS` or `KIT_TEST` is set: the base worktree has no dependencies installed, so the base screenshots fail and the red check proves nothing. Setup gap; the fix is the install command.
+- `KIT_BASE_ENV` empty while the project has an env template (`.env.example` or similar) and `KIT_SCREENSHOTS` is set: the base run starts without the variables the app validates at startup. Setup gap; the user creates an env file for base runs (from the template, with local values) and points `KIT_BASE_ENV` at it. Never create or read it yourself.
+- `KIT_BUDGET_TOKENS` empty: not a gap yet. Say that a run has no token limit, and that `/improve-kit` proposes one at the p75 of tokens per run after five runs.
+
 Finish with a summary: packages and their checks (configured, `n/a`, not configured), legacy failures, protected paths and which layers protect them, the setup gaps with the command that closes each (`brew install gitleaks`, or the release binary on Linux), the files written, and what the user still has to do (commit the files, accept the trust prompt, make CI a required check). Keep it short (`.claude/rules/output.md`). Do not commit.
