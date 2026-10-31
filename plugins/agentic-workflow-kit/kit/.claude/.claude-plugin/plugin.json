@@ -1,6 +1,6 @@
 {
   "name": "agentic-workflow-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Spec-driven workflow for Claude Code: spec, plan, test-first build, independent review, verify with an evidence pack, and PR; onboarding for existing repos, model routing per task, and guard, check and usage hooks. Run install.sh --plugin in each project for the rules, permissions and check commands.",
   "author": { "name": "Viktor Krawutschke" },
   "license": "MIT",

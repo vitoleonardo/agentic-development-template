@@ -471,5 +471,8 @@ readme "$(row x draft b1)"
 .claude/bin/status --line >/dev/null
 [ ! -e .work ] && ok || fail "COCKPIT-AC43: the command does not create .work/"
 
+grep -q 'With the first task, set the feature.s status in `specs/README.md` from `planned` to `building` and commit it with that task' \
+  "$here/kit/.claude/skills/ship-feature/SKILL.md" && ok || fail "COCKPIT-AC20: /ship-feature sets building with the first task's commit"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

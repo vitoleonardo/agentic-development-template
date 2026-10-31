@@ -6,4 +6,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 
 | Feature | Spec | Status | Branch | Open questions |
 |---|---|---|---|---|
-| Kit cockpit | `kit-cockpit.md` | planned | kit-mod | 0 |
+| Kit cockpit | `kit-cockpit.md` | building | kit-mod | 0 |
