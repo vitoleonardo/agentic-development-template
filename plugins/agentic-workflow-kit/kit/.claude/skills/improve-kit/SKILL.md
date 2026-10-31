@@ -17,7 +17,7 @@ Run `.claude/bin/runs report`. If it says run records are off, tell the user tha
 
 ## 1. Read
 
-- `reports/runs.md`, just written: tokens, tasks, escalations, review rounds and every stop with its class.
+- `reports/runs.md`, just written: tokens, tasks, escalations, review rounds, interventions (stops the user resolved) and every stop with its class.
 - If `gh` works, run `.claude/bin/leadtime` and read `reports/lead-time.md`: lead time, review rounds and rework from GitHub.
 - `reports/improvements.md`, the log of earlier changes, if it exists.
 - For a recurring review finding, the merged PRs' review comments (`gh pr view <n> --comments`). Read only what a rule below needs.
@@ -37,6 +37,7 @@ Each rule needs its minimum sample; below it, write "not enough data" instead of
 | Median review rounds above 1 | 5 runs | Group what the reviewer found. Turn the most frequent finding into a check (lint rule, hook, CI step) rather than a longer rule. |
 | The same `kit` stop twice | 2 stops | Fix the hook, guard, check command or rule the stops name, with a test in the kit's tests. |
 | `spec` or `plan` stops of one kind twice | 2 stops | Add the missing question to the interview in `/spec-feature`, or the missing rule to `/plan-feature`. |
+| The same correction resolved `user:` in two runs | 2 stops | Turn it into a rule, check or test, so the next run does not need the user for it. Prefer a check over a rule. |
 | Any `env` stop | 1 stop | Add the step to "Things only a human can do" in `CLAUDE.md`. |
 | Main-session share above 50 %, or tokens per task rising over the last five runs | 5 runs | Find the cause in the runs (no `/clear` after the plan, oversized tasks, long exploration in the main session) and propose the matching change. |
 | Any `budget` stop, or no `KIT_BUDGET_TOKENS` set | 5 runs | Propose `KIT_BUDGET_TOKENS` at the p75 of tokens per run, rounded up. |

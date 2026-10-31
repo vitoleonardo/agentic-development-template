@@ -20,3 +20,4 @@ The values before come from the pilot run on a NestJS and React monorepo (M2 to 
 - 29.10.2026 | autopilot watchdog, usage-limit waits, sessions.tsv with summed turns | sessions whose recorded turns are wrong | M6: 3 recorded, 152 in its five result lines
 - 31.10.2026 | gate push asks at every level when the branch changes auth or migration files (KIT_PUSH_ASK_PATTERNS) | pushes of auth or migration changes nobody approved | not recorded before
 - 31.10.2026 | reviewer runs at effort: high | high findings first found at verify instead of review; reviewer tokens per round | not recorded before
+- 31.10.2026 | run records count interventions (stops resolved user:); /improve-kit turns a correction seen in two runs into a rule, check or test | interventions per run | not recorded before

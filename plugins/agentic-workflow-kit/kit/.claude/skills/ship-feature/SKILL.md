@@ -71,6 +71,8 @@ The loops in steps 3, 5 and 6 are the only automatic recovery: one retry a tier 
 
 `- <step> | <class> | <trigger> | <what was tried> | <resolution>`
 
+Start the resolution with `user:` when the run waited for the user to decide or do something (`user: dropped AC4`). `/improve-kit` counts those as interventions.
+
 Pick the class by the cause, not the symptom, and fix it where it belongs:
 
 - `spec`: the spec is wrong, unclear or untestable. Stop and ask. Once the user has decided, amend it through `${CLAUDE_SKILL_DIR}/../spec-feature/SKILL.md` (new criterion IDs or a `removed` mark, a Decisions entry, `spec-lint`, approval again), update the affected tasks, and continue.
