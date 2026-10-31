@@ -19,3 +19,4 @@ The values before come from the pilot run on a NestJS and React monorepo (M2 to 
 - 29.10.2026 | later review and verify rounds scoped to what changed (evidence scope, gates --only) | cost per milestone | M3 26.01, M4 33.19, M5 52.88, M6 25.49, M7 38.89+ USD
 - 29.10.2026 | autopilot watchdog, usage-limit waits, sessions.tsv with summed turns | sessions whose recorded turns are wrong | M6: 3 recorded, 152 in its five result lines
 - 31.10.2026 | gate push asks at every level when the branch changes auth or migration files (KIT_PUSH_ASK_PATTERNS) | pushes of auth or migration changes nobody approved | not recorded before
+- 31.10.2026 | reviewer runs at effort: high | high findings first found at verify instead of review; reviewer tokens per round | not recorded before

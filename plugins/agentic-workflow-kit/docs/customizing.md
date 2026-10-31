@@ -121,6 +121,8 @@ KIT_MODEL_DEEP="opus"        KIT_ROUTE_TESTS="standard"
 
 `/ship-feature` passes the model on every dispatch (`.claude/bin/route <role|tier>`), because the Agent tool's `model` parameter wins over an agent's frontmatter. That parameter takes aliases only, so the values must be `sonnet`, `opus`, `haiku` or `fable`. The plan gives each task a Tier; a task that fails its checks once is retried one tier higher, and deep stays deep. The reviewer never runs below the highest tier an implementer used. Spec, plan and PR description run in the main session, on whatever model the session uses.
 
+The Agent tool sets the model per dispatch but not the effort, so effort lives in the agent's frontmatter. The `reviewer` runs at `effort: high`: it is the gate that catches what the implementer missed, and a shallow review costs a verify round later. The implementer and the test-writer use the session's effort. `CLAUDE_CODE_EFFORT_LEVEL` overrides every one of them.
+
 If `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set, Claude Code runs every subagent on one model and ignores the routing; `/ship-feature` warns about it.
 
 ## Token usage and budget
