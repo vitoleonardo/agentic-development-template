@@ -1,4 +1,4 @@
-# Tests for templates/agentic-workflow-kit: the hook, spec-lint and installer tests, and the
+# Tests for plugins/agentic-workflow-kit: the hook, spec-lint and installer tests, and the
 # TypeScript adapter's quality gates run on the demo app with the kit installed.
 name: agentic-workflow-kit
 
@@ -18,7 +18,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: templates/agentic-workflow-kit
+    working-directory: plugins/agentic-workflow-kit
 
 jobs:
   kit:

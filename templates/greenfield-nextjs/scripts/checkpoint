@@ -70,7 +70,6 @@ run_gate() {
       cat "$output_file"
     fi
   else
-    exit_code=$?
     # Check if it was a "not configured" skip
     if grep -q "^SKIP:" "$output_file" 2>/dev/null; then
       echo "${YELLOW}SKIP${NC}"

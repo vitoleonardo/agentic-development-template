@@ -6,11 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Check for package.json lint script
-has_npm_script() {
-  [ -f "package.json" ] && grep -q "\"$1\":" package.json 2>/dev/null
-}
-
 # Detect linter configuration
 detect_linter() {
   # ESLint
@@ -25,12 +20,6 @@ detect_linter() {
 }
 
 echo "Running lint..."
-
-# Try npm script first
-if has_npm_script "lint"; then
-  npm run lint "$@"
-  exit $?
-fi
 
 # Try direct linter detection
 linter=$(detect_linter)

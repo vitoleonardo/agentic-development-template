@@ -1,7 +1,7 @@
 {
-  "name": "agentic-development-template",
+  "name": "greenfield-nextjs",
   "version": "0.0.1",
-  "description": "TypeScript-first AI-agent workflow template",
+  "description": "Contract-first Next.js template for building an app with AI agents in parallel tracks",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "validate:naming": "./scripts/validate-naming",
     "validate:docs": "./scripts/validate-docs",
     "validate:contracts": "./scripts/validate-contracts",
+    "validate:design": "./scripts/validate-design",
     "storybook": "./scripts/storybook",
     "storybook:build": "./scripts/storybook build",
     "visual": "./scripts/visual",
@@ -29,10 +30,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "_dependencies-note": "Install these when enabling the visual layer:",
-    "_storybook": "npx storybook@latest init",
-    "_playwright": "npm install -D @playwright/test && npx playwright install",
-    "_react-optional": "npm install react react-dom && npm install -D @types/react @types/react-dom"
+    "yaml": "^2.9.1"
   },
   "dependencies": {}
 }

@@ -1,0 +1,41 @@
+name: greenfield-nextjs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: templates/greenfield-nextjs
+
+jobs:
+  validators:
+    name: Template validators
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Shellcheck
+        run: shellcheck -s sh -S warning scripts/checkpoint scripts/format scripts/lint scripts/storybook scripts/test scripts/typecheck scripts/validate-contracts scripts/validate-docs scripts/validate-naming scripts/visual
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Naming
+        run: npm run validate:naming
+      - name: Docs
+        run: npm run validate:docs
+      - name: Contracts
+        run: npm run validate:contracts
+      - name: Design
+        run: npm run validate:design
