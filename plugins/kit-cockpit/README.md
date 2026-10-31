@@ -20,14 +20,34 @@ An older kit: run `./install.sh <project> --update` from the kit's repository.
 ## What it shows
 
 - **Status line**, always on: feature, stage (`spec`, `plan`, `build`, `review`, `verify`, `pr`, `done`), ticked tasks, checks red in this turn, budget used. It refreshes when the session starts, after each Edit, Write and subagent call, and when a turn ends.
-- **`/cockpit` pane**, in seven sections:
+- **`/cockpit` pane**: a header with the stage rail and meters, then one panel per section, colored by your theme.
+
+  ```text
+  ╭─────────────────────────────────────────────────────────────────────╮
+  │  BUILD   expense-split                                    tasks 3/7 │
+  │                                                                     │
+  │ ● ──────── ● ──────── ◉ ──────── ○ ──────── ○ ──────── ○ ──────── ○ │
+  │ spec      plan      build      review     verify       pr      done │
+  │                                                                     │
+  │ tasks    █████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 3/7      │
+  │ criteria ████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░ 2✓ 1✗ 3○ │
+  ╰─────────────────────────────────────────────────────────────────────╯
+  ╭─────────────────────────────────────────────────────────────────────╮
+  │ Criteria                                                      1 red │
+  │ ✓ SPLIT-AC1 green  SPLIT-AC1: splits three expenses                 │
+  │ ✗ SPLIT-AC6 red    SPLIT-AC6: parses "Alice paid 30.50 for Alice, … │
+  │ ○ 3 open without a test: SPLIT-AC5, SPLIT-AC3, SPLIT-AC4            │
+  ╰─────────────────────────────────────────────────────────────────────╯
+  ```
+
+  The sections:
   - Criteria: green, red or open from the Verify log, with their tests.
   - Tasks, Stops, Rounds and Decisions to review, from the state file.
   - Evidence: the gates of the pack, and whether it was made on the current commit.
   - Autopilot: the run going on in another terminal, its current feature and phase, and each finished feature's result.
-- **Polling:** while the pane is open and an autopilot run is active, the pane reads the status every 5 seconds. Otherwise it runs nothing between events.
+- **Folder watch:** while the pane is open, it lists `.work/autopilot` every 5 seconds, which runs no command, and runs the status command only when a file there was added or changed. A run started in another terminal shows within 10 seconds; an idle session runs nothing between events.
 
-The pane needs room beside the chat: a terminal 110 columns wide or more.
+The pane opens wherever you run `/cockpit`: docked beside the chat in a fullscreen terminal 110 columns wide or more, else above the prompt.
 
 ## What it never does
 
@@ -39,5 +59,5 @@ When the status command fails or times out, the status line shows `cockpit: erro
 ## Development
 
 - Spec: [specs/kit-cockpit.md](../../specs/kit-cockpit.md). The data comes from `.claude/bin/status --json`, documented in the kit's [customizing guide](../agentic-workflow-kit/docs/customizing.md#see-where-a-feature-stands).
-- `hooks/register.tsx` wires the events. `hooks/refresh.ts` runs the status command and keeps the snapshot. `hooks/pane.tsx` draws it.
+- `hooks/register.tsx` wires the events. `hooks/refresh.ts` runs the status command and keeps the snapshot. `hooks/pane.tsx` draws it, with the bar and rail math in `hooks/meters.ts`.
 - Tests: `claude plugin test plugins/kit-cockpit` and `claude plugin validate plugins/kit-cockpit`. Both run in CI (`.github/workflows/kit-cockpit.yml`) without a login. For a type check, load the plugin once with `claude --plugin-dir plugins/kit-cockpit`, which writes the API types into `.claude-plugin/types/` (ignored by git), then run `npm exec --package=typescript@5.9.3 -- tsc -p plugins/kit-cockpit`. CI has no such types, so it does not type-check.

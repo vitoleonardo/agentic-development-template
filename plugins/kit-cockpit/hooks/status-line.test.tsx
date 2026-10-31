@@ -70,6 +70,23 @@ test('COCKPIT-AC23: the end of a main turn shows the state after the turn', asyn
   expect(kit.shownStatus()).toBe('invite-users · review · tasks 7/7')
 })
 
+test('COCKPIT-AC23: a slower earlier refresh does not overwrite a newer one', async ($, on) => {
+  const kit = fakeKit(on)
+  await $.session.start(START)
+  kit.answerInOrder(
+    exitedWith(kitStatus({ line: 'invite-users · build · tasks 3/7' }), 3000),
+    exitedWith(kitStatus({ line: 'invite-users · build · tasks 4/7' })),
+  )
+
+  const slower = $.turn.complete(mainTurnEnd('turn-1'))
+  await $.turn.complete(mainTurnEnd('turn-2'))
+  await kit.clock.advance(3000)
+  await slower
+
+  expect(kit.runs).toHaveLength(3)
+  expect(kit.shownStatus()).toBe('invite-users · build · tasks 4/7')
+})
+
 test('COCKPIT-AC23: the end of a subagent turn does not run the status command', async ($, on) => {
   const kit = fakeKit(on)
   await $.session.start(START)
@@ -105,6 +122,25 @@ test('COCKPIT-AC46: output that is not JSON shows cockpit: error', async ($, on)
 
   expect(kit.shownStatus()).toBe('cockpit: error')
 })
+
+const UNEXPECTED_SHAPES = [
+  { name: 'without line, criteria and autopilot', json: { stage: 'build', tasks: null } },
+  { name: 'with a line that is no string', json: { ...kitStatus(), line: 3 } },
+  { name: 'with criteria that are no list', json: { ...kitStatus(), criteria: {} } },
+  { name: 'with an autopilot without features', json: { ...kitStatus(), autopilot: { active: true } } },
+  { name: 'that is a list', json: [] },
+] as const
+
+for (const shape of UNEXPECTED_SHAPES) {
+  test(`COCKPIT-AC58: JSON ${shape.name} shows cockpit: error`, async ($, on) => {
+    const kit = fakeKit(on)
+    kit.answer({ exited: 0, stdout: JSON.stringify(shape.json) })
+
+    await $.session.start(START)
+
+    expect(kit.shownStatus()).toBe('cockpit: error')
+  })
+}
 
 test('COCKPIT-AC49: a status command that outlasts 5 s shows cockpit: error', async ($, on) => {
   const kit = fakeKit(on)

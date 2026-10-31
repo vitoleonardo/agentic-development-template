@@ -5,7 +5,10 @@ import type { KitCockpitSnapshot, KitCockpitStatus } from '../types'
 
 const STATUS_TIMEOUT_MS = 5000
 const ERROR_STATUS_LINE = 'cockpit: error'
-const POLL_MS = 5000
+const WATCH_MS = 5000
+const LIVE_RUN_RECHECK_MS = 60_000
+const UNEXPECTED_SHAPE = 'status printed an unexpected shape'
+const NO_FOLDER = 'no folder'
 
 const snapshot = atom(
   { plugin: 'kit-cockpit', key: 'snapshot' } as const,
@@ -17,34 +20,68 @@ export function shownSnapshot($: EngineInterface): Promise<KitCockpitSnapshot> {
   return read($, snapshot)
 }
 
-let poll: Timer | undefined
-let isPaneOpen = false
+let watch: Timer | undefined
+let folderSeen: string | undefined
+let refreshesStarted = 0
+let newestApplied = 0
+let refreshesRunning = 0
+let lastRefreshStartedAt = 0
 
-export function markPaneOpen(isOpen: boolean): void {
-  isPaneOpen = isOpen
-  if (!isOpen) stopPolling()
+export async function markPaneOpen($: EngineInterface, isOpen: boolean): Promise<void> {
+  if (!isOpen) return stopWatching()
+  if (watch !== undefined) return
+  watch = $.clock.every(WATCH_MS, () => watchOnce($))
+  folderSeen = await autopilotFolderState($)
 }
 
 export async function refreshCockpit($: EngineInterface): Promise<void> {
-  const latest = await readSnapshot($)
-  $.ui.status(statusLineOf(latest))
-  await update($, snapshot, () => latest)
-  followRun($, latest)
+  refreshesStarted += 1
+  const ticket = refreshesStarted
+  refreshesRunning += 1
+  lastRefreshStartedAt = await $.clock.now()
+  try {
+    const latest = await readSnapshot($)
+    if (ticket < newestApplied) return
+    newestApplied = ticket
+    $.ui.status(statusLineOf(latest))
+    await update($, snapshot, () => latest)
+  } finally {
+    refreshesRunning -= 1
+  }
 }
 
-function followRun($: EngineInterface, latest: KitCockpitSnapshot): void {
-  if (!isPaneOpen || !isRunActive(latest)) return stopPolling()
-  if (poll !== undefined) return
-  poll = $.clock.every(POLL_MS, () => pollOnce($))
+function watchOnce($: EngineInterface): void {
+  refreshOnFolderChange($).catch(failure =>
+    $.ui.log(`kit-cockpit: watching the autopilot folder failed: ${String(failure)}`),
+  )
 }
 
-function pollOnce($: EngineInterface): void {
-  refreshCockpit($).catch(failure => $.ui.log(`kit-cockpit: polling failed: ${String(failure)}`))
+async function refreshOnFolderChange($: EngineInterface): Promise<void> {
+  if (refreshesRunning > 0) return
+  const state = await autopilotFolderState($)
+  if (state === folderSeen && !(await liveRunDueForRecheck($))) return
+  folderSeen = state
+  await refreshCockpit($)
 }
 
-function stopPolling(): void {
-  poll?.cancel()
-  poll = undefined
+async function liveRunDueForRecheck($: EngineInterface): Promise<boolean> {
+  const shown = await read($, snapshot)
+  if (shown.kind !== 'ok' || shown.status.autopilot?.active !== true) return false
+  return (await $.clock.now()) - lastRefreshStartedAt >= LIVE_RUN_RECHECK_MS
+}
+
+async function autopilotFolderState($: EngineInterface): Promise<string> {
+  const folder = `${await $.session.root()}/.work/autopilot`
+  if (!(await $.fs.exists(folder))) return NO_FOLDER
+  const entries = await $.fs.list(folder)
+  const newest = Math.max(0, ...entries.map(entry => entry.mtimeMs))
+  return `${entries.length} ${newest}`
+}
+
+function stopWatching(): void {
+  watch?.cancel()
+  watch = undefined
+  folderSeen = undefined
 }
 
 async function readSnapshot($: EngineInterface): Promise<KitCockpitSnapshot> {
@@ -71,10 +108,6 @@ function statusLineOf(latest: KitCockpitSnapshot): string | undefined {
   return undefined
 }
 
-function isRunActive(latest: KitCockpitSnapshot): boolean {
-  return latest.kind === 'ok' && latest.status.autopilot?.active === true
-}
-
 function exitReason(exitCode: number, stderr: string): string {
   const firstLine = stderr
     .split('\n')
@@ -84,9 +117,24 @@ function exitReason(exitCode: number, stderr: string): string {
 }
 
 function parseStatus(stdout: string): KitCockpitSnapshot {
+  let parsed: unknown
   try {
-    return { kind: 'ok', status: JSON.parse(stdout) as KitCockpitStatus }
+    parsed = JSON.parse(stdout)
   } catch {
     return { kind: 'error', reason: 'status printed no JSON' }
   }
+  if (!isStatus(parsed)) return { kind: 'error', reason: UNEXPECTED_SHAPE }
+  return { kind: 'ok', status: parsed }
+}
+
+function isStatus(value: unknown): value is KitCockpitStatus {
+  if (!isRecord(value) || typeof value.line !== 'string') return false
+  const lists = ['criteria', 'stops', 'rounds', 'decisions', 'warnings'] as const
+  if (!lists.every(key => Array.isArray(value[key]))) return false
+  const { autopilot } = value
+  return autopilot === null || (isRecord(autopilot) && typeof autopilot.active === 'boolean' && Array.isArray(autopilot.features))
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
