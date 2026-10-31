@@ -1,0 +1,8 @@
+{
+  "name": "kit-cockpit",
+  "version": "0.1.0",
+  "description": "Shows where the branch's Agentic Workflow Kit feature stands: a status line, and a /cockpit pane with criteria, tasks, stops, rounds, decisions, evidence and the autopilot run. Read-only.",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": { "name": "Viktor Krawutschke" }
+}
