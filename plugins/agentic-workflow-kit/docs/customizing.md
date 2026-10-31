@@ -107,6 +107,12 @@ With gitleaks, the gate scans the branch's commits (`gitleaks git`, protected pa
 
 Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. Without gitleaks a row silences the warning for that value in that file; with gitleaks it becomes a path-and-value allowlist in the generated config. A row whose value is a key format is ignored on both paths. Each row needs the user's approval and the reason in its commit message.
 
+## Red check
+
+A test that passes without the change proves nothing. `/verify-feature`'s red gate takes the test files whose added lines name a criterion (`<FEATURE>-AC<n>`), copies them onto a worktree of the merge base, runs `KIT_SETUP` there (with the variables of `KIT_BASE_ENV`, as for the base screenshots), and runs `KIT_TEST` with those files appended. Every test that passes there and whose title is on an added line is named in the gate's detail; a test that fails, or cannot even load because the code it imports is new, is proven. Unchanged tests in the same files are never named.
+
+For now the gate only warns, so existing projects do not break; `/improve-kit` decides when it becomes a failure. A criterion that cannot fail on the base (a guard that already held, a refactor with the same behaviour) goes under `## Red exceptions` in `.work/<branch>.md` as `- <test title> | <reason>`. Without `KIT_SETUP` the base has no dependencies installed and every test fails there, so the gate proves nothing: set `KIT_SETUP` to the install command.
+
 ## Route models by task
 
 Dispatched agents run on a tier, and `.claude/kit.conf` maps tiers to models:
