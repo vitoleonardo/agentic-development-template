@@ -13,6 +13,8 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 cd "$root" || exit 2
 # shellcheck source=conf.sh
 . "$root/.claude/bin/conf.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
 budget_from_environment=${KIT_BUDGET_TOKENS:-}
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
@@ -32,16 +34,7 @@ mkdir -p "$log_dir"
 run_id=$(date +%Y%m%d-%H%M%S)
 run_log=$log_dir/run-$run_id.md
 
-spec_file_of_row='function spec_file(f) { gsub(/[ `]/, "", f); sub(/^\[/, "", f); sub(/\].*$/, "", f); sub(/^(\.\/)?(specs\/)?/, "", f); return f }'
-
-row_field() {
-  [ -f specs/README.md ] || return 0
-  awk -F '|' -v spec="$1.md" -v col="$2" "$spec_file_of_row"'
-    { s = spec_file($3) }
-    s == spec { v = $col; gsub(/^ +| +$/, "", v); print v; exit }
-  ' specs/README.md
-}
-status_of() { row_field "$1" 4; }
+status_of() { feature_row_field "$1" 4; }
 pr_of() { gh pr view "$1" --json url --jq .url 2>/dev/null; }
 phase_done() {
   case $1 in
@@ -49,19 +42,7 @@ phase_done() {
     build) [ -n "$(pr_of "$branch")" ] ;;
   esac
 }
-branch_of() {
-  _branch=$(row_field "$1" 5)
-  case $_branch in '' | -* | –* | _*) printf '%s' "$1" ;; *) printf '%s' "$_branch" ;; esac
-}
-
-section_rows() {
-  [ -f "$1" ] || { echo 0; return; }
-  awk -v name="$2" '
-    /^## / { inside = ($0 == "## " name); next }
-    inside && /^- / && !/^- </ { n++ }
-    END { print n + 0 }
-  ' "$1"
-}
+section_rows() { section_lines "$1" "$2" | wc -l | tr -d ' '; }
 last_stop_class() {
   awk '
     /^## / { inside = ($0 == "## Stops"); next }
@@ -261,7 +242,7 @@ Log it under Decisions to review as 'answered-by-autopilot | <the question> | <t
 
 if [ $# -eq 0 ] && [ -f specs/README.md ]; then
   # shellcheck disable=SC2046
-  set -- $(awk -F '|' "$spec_file_of_row"'
+  set -- $(awk -F '|' "$FEATURE_SPEC_FILE"'
     { s = spec_file($3); t = $4; gsub(/^ +| +$/, "", t) }
     s ~ /\.md$/ && (t == "approved" || t == "planned" || t == "building" || t == "in-review") { sub(/\.md$/, "", s); print s }
   ' specs/README.md)
@@ -295,7 +276,7 @@ log "| Feature | Branch | Result | Details | Sessions |"
 log "|---|---|---|---|---|"
 
 for slug in "$@"; do
-  branch=$(branch_of "$slug")
+  branch=$(feature_branch "$slug")
   sessions="" session="" answers=0
   if [ "$(status_of "$slug")" = "done" ] || phase_done build; then
     log "| $slug | $branch | skipped, already has a PR or is done | $(pr_of "$branch" || printf '–') | – |"
