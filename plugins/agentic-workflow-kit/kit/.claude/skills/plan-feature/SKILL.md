@@ -29,6 +29,7 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 - Contract: <only when a frontend and a backend talk: route, method, request, response, errors, required role>
 - Permissions: <who may see and change what; how user A is kept out of user B's data>
 - States and errors: <loading, empty, failure; what the user sees in each>
+- Side effects: <each write and external call: what must hold before it (authorization, the final outcome), where it runs (request, job, event loop, thread), and what happens on failure, timeout or client disconnect>
 - Decisions: <choice, the alternatives considered, and why>
 - Reused: <existing modules and patterns this builds on, with path:line>
 - Approved dependencies: <none, or the new packages that were approved (by the user, or logged when `.claude/bin/gate deps` is auto), comma-separated; verify fails on any other>
@@ -68,6 +69,7 @@ Rules for the plan:
 
 - The design covers every criterion; it introduces nothing the spec does not ask for.
 - Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
+- Every write and external call the feature adds is listed under Side effects. A write that must wait for a permission check or the final outcome says so, and a blocking call says where it runs instead of the request or event loop.
 - Every file in the Files column sits in its kind's home in `.claude/rules/structure.md`. Run `.claude/bin/structure <every new file the plan names>`; a failure means a different path, or a new home under Decisions whose task adds it to the Map.
 - `Reused` names what you searched for, also when nothing fit (`searched src/lib for money formatting: none`).
 - Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
