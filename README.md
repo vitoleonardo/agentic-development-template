@@ -63,7 +63,7 @@ Every product has its own CI workflow that runs on each pull request and on `mai
 - **repo-check:** shellcheck, the read-only hook, the scanner, and a drift test that fails when the single-file prompt or the bundled `leadtime` differs from its source. All under `dash` as well.
 - **greenfield-nextjs:** shellcheck over the scripts, and the naming, docs, contract and design validators on the untouched template.
 
-What the tests and real end-to-end runs caught while building each product is in its build log: [kit](./plugins/agentic-workflow-kit/docs/build-log.md), [repo-check](./plugins/repo-check/docs/build-log.md). The specifications behind them are next to the logs.
+What the tests and real end-to-end runs caught while building each product is in its build log: [kit](./plugins/agentic-workflow-kit/docs/build-log.md), [repo-check](./plugins/repo-check/docs/build-log.md). The specifications behind them are next to the logs. Every change to the kit after a real run is in its [improvements log](./plugins/agentic-workflow-kit/reports/improvements.md), with the metric it should move and the value before, and `/improve-kit` checks each one after three more runs. What the tools cannot do is under the kit's [limits](./plugins/agentic-workflow-kit/README.md#limits).
 
 ## Security
 
@@ -72,6 +72,8 @@ The kit's guard hook and permissions reduce risk; they are not a sandbox. See [S
 ## Support and consulting
 
 These tools come from consulting work on agentic software delivery: workshops, pilots, ongoing support and feature sprints with agents.
+
+Not sure whether that fits? Paste [repo-check.md](./plugins/repo-check/repo-check.md) into Claude Code. Ten questions, about ten minutes, nothing is sent; it shows where your delivery is jammed and ends with an email draft you can send or ignore.
 
 - Email: [hi@vito.koeln](mailto:hi@vito.koeln)
 - Book a free 20-minute call: [calendar.app.google/N14WVsxK4fdqBhZv6](https://calendar.app.google/N14WVsxK4fdqBhZv6)
