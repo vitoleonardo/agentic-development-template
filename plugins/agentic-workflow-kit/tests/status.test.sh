@@ -72,7 +72,6 @@ dotted() { date -d "@$1" '+%d.%m.%Y %H:%M' 2>/dev/null || date -r "$1" '+%d.%m.%
 
 command -v python3 >/dev/null || { echo "python3 is needed for the JSON checks"; exit 1; }
 
-# --- line: stages ---------------------------------------------------------------
 
 reset b1
 readme "$(row x draft b1)"
@@ -131,7 +130,6 @@ mkstate b1 x 1 3
 sed -e 's/- \[x\] 1 task 1/- [X] 1 task 1/' .work/b1.md >.work/b1.new && mv .work/b1.new .work/b1.md
 same "$(status_line)" "x · build · tasks 1/3" "COCKPIT-AC3: an upper-case X counts as ticked"
 
-# --- line: budget and red -------------------------------------------------------
 
 reset b1
 readme "$(row x building b1)"
@@ -170,7 +168,6 @@ rm -f .work/b1.md
 printf 'typecheck fail 1s\ntest fail 3s\n' >.work/session-s1.checks
 same "$(status_line --session s1)" "x · spec · 2 red" "COCKPIT-AC12: 2 red checks follow the stage part without a tasks part"
 
-# --- line: edge cases -----------------------------------------------------------
 
 reset b2
 out=$(status_line)
@@ -201,6 +198,31 @@ same "$(status_line)" "x · plan" "COCKPIT-AC35: the template task line does not
 
 readme "$(row x draft -)"
 same "$(git checkout -q -B x; status_line)" "x · spec" "COCKPIT-AC29: an empty or dash branch cell matches the feature name as branch"
+readme "$(row x draft '')"
+same "$(status_line)" "x · spec" "COCKPIT-AC29: an empty branch cell matches the feature name"
+readme "$(row x draft –)"
+same "$(status_line)" "x · spec" "COCKPIT-AC29: an en dash branch cell matches the feature name"
+readme "$(row x draft _tbd)"
+same "$(status_line)" "x · spec" "COCKPIT-AC29: a branch cell starting with _ matches the feature name"
+
+reset b1
+readme "$(row x building b1)"
+mkstate b1 x 1 3
+tr -d '\r' <.work/b1.md | sed 's/$/\r/' >"$work/crlf.md"
+cp "$work/crlf.md" .work/b1.md
+same "$(status_line)" "x · build · tasks 1/3" "COCKPIT-AC3: a state file with CRLF line ends reads the same"
+
+reset b1
+readme "$(row x building b1)"
+mkstate b1 x 0 1
+chmod 000 specs/README.md
+err=$(.claude/bin/status --json 2>&1 >/dev/null)
+same "$?:$err" "3:cannot read specs/README.md" "COCKPIT-AC47: an unreadable feature list exits 3 and names it"
+chmod 644 specs/README.md
+chmod 000 .work/b1.md
+err=$(.claude/bin/status --line 2>&1 >/dev/null)
+same "$?:$err" "3:cannot read .work/b1.md" "COCKPIT-AC47: an unreadable state file exits 3 and names it"
+chmod 644 .work/b1.md
 
 reset b1
 out=$(.claude/bin/status --bogus 2>&1)
@@ -208,7 +230,6 @@ same "$?" "2" "usage (no criterion): an unknown option exits 2"
 .claude/bin/status --session >/dev/null 2>&1
 same "$?" "2" "usage (no criterion): --session without an id exits 2"
 
-# --- json: shape, criteria, sections ---------------------------------------------
 
 reset b1
 readme "$(row x building b1)"
@@ -229,14 +250,15 @@ VERIFY='| X-AC1 | X-AC1: first try | yes | no | |
 | X-AC1 | X-AC1: second try | – | green | |
 | X-AC2 | X-AC2: only red | yes | | |
 | X-AC4 | – | – | no | |
-| X-AC5, X-AC6 | X-AC5: pair | yes | – | |'
+| X-AC5, X-AC6 | X-AC5: pair | yes | – | |
+| X-AC3 | X-AC3: a \| b	c | – | – | |'
 STOPS='- build | test | failed twice | tried a fix | asked'
 mkstate b1 x 2 3
 out=$(.claude/bin/status --json)
 same "$?" "0" "COCKPIT-AC13: --json exits 0"
 valid_json "$out" && ok || fail "COCKPIT-AC13: --json prints valid JSON: $out"
 same "$(jx 'list(d.keys())')" '["line", "branch", "feature", "spec", "stage", "tasks", "criteria", "stops", "rounds", "decisions", "red", "budget", "evidence", "autopilot", "warnings"]' "COCKPIT-AC13: exactly the contract's keys"
-same "$(jx '[[c["id"], c["state"], c["tests"]] for c in d["criteria"]]')" '[["X-AC1", "green", ["X-AC1: first try", "X-AC1: second try"]], ["X-AC2", "red", ["X-AC2: only red"]], ["X-AC3", "open", []], ["X-AC4", "open", []], ["X-AC5", "red", ["X-AC5: pair"]], ["X-AC6", "red", ["X-AC5: pair"]]]' "COCKPIT-AC13: criteria in spec order; cells -, no and empty are not filled; a row naming two IDs counts for both; removed is skipped"
+same "$(jx '[[c["id"], c["state"], c["tests"]] for c in d["criteria"]]')" '[["X-AC1", "green", ["X-AC1: first try", "X-AC1: second try"]], ["X-AC2", "red", ["X-AC2: only red"]], ["X-AC3", "open", ["X-AC3: a | b c"]], ["X-AC4", "open", []], ["X-AC5", "red", ["X-AC5: pair"]], ["X-AC6", "red", ["X-AC5: pair"]]]' "COCKPIT-AC13: criteria in spec order; cells -, no and empty are not filled; a row naming two IDs counts for both; removed is skipped; an escaped pipe and a tab stay in one test"
 same "$(jx 'd["line"]')" '"x · build · tasks 2/3"' "COCKPIT-AC13: line is inside the object"
 same "$(jx '[d["branch"], d["feature"], d["spec"], d["stage"]]')" '["b1", "x", "specs/x.md", "build"]' "COCKPIT-AC13: branch, feature, spec and stage"
 same "$(jx 'd["tasks"]')" '{"done": 2, "total": 3, "items": [{"text": "1 task 1", "done": true}, {"text": "2 task 2", "done": true}, {"text": "3 task 3", "done": false}]}' "COCKPIT-AC13: tasks with items"
@@ -290,7 +312,6 @@ out=$(.claude/bin/status --json)
 same "$?:$(jx '[d["line"], d["branch"]]')" '0:["", null]' "COCKPIT-AC30: detached HEAD in json"
 git checkout -q -B b2
 
-# --- json: evidence ------------------------------------------------------------
 
 reset b1
 readme "$(row x building b1)"
@@ -314,7 +335,6 @@ out=$(EVIDENCE_DIR=$work/other-pack .claude/bin/status --json)
 same "$(jx '[d["evidence"]["current"], d["evidence"]["gates"]]')" "[true, []]" "COCKPIT-AC15: EVIDENCE_DIR overrides the folder"
 rm -rf .work/b1/evidence
 
-# --- json: autopilot -----------------------------------------------------------
 
 autopilot_dir=.work/autopilot
 run=20260101-100000
@@ -381,6 +401,9 @@ same "$(jx 'd["autopilot"]["active"]')" "false" "COCKPIT-AC40: the idle limit co
 out=$(AUTOPILOT_MAX_IDLE_SECONDS=300 .claude/bin/status --json)
 same "$(jx 'd["autopilot"]["active"]')" "true" "COCKPIT-AC40: the environment wins over kit.conf"
 cp "$work/pristine/kit.conf" .claude/kit.conf
+err=$(AUTOPILOT_MAX_IDLE_SECONDS=abc .claude/bin/status --json 2>&1 >/dev/null)
+out=$(AUTOPILOT_MAX_IDLE_SECONDS=abc .claude/bin/status --json 2>/dev/null)
+same "$err:$(jx 'd["autopilot"]["active"]')" ":true" "COCKPIT-AC40: a non-numeric idle limit falls back to 1200 s"
 
 now=$(date +%s)
 rm -f "$autopilot_dir"/*.jsonl
@@ -437,7 +460,6 @@ printf '\nStopped at a: old\n' >"$autopilot_dir/run-20250101-100000.md"
 ap
 same "$(jx 'd["autopilot"]["features"][0]["feature"]')" '"a"' "COCKPIT-AC19: the newest run log by name is used"
 
-# --- read-only -----------------------------------------------------------------
 
 reset b1
 readme "$(row x building b1)"

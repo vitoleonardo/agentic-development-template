@@ -34,10 +34,8 @@ protected() { conf_value . KIT_PROTECTED_PATHS; }
 excludes() { for p in $(protected); do printf ':(exclude)%s\n' "${p%/}"; done; }
 now() { date +%s; }
 
-# json_str <text>: a JSON string literal.
-json_str() {
-  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\t\n' '  ')"
-}
+# shellcheck source=json.sh
+. "$root/.claude/bin/json.sh"
 
 # --- gates ---------------------------------------------------------------------
 
@@ -659,7 +657,7 @@ ci_check() {
   git fetch -q "$remote" "+refs/heads/kit-evidence:refs/remotes/$remote/kit-evidence" 2>/dev/null || { echo "No kit-evidence branch: run /verify-feature and push its pack." >&2; return 1; }
   for key in $keys; do
     if json=$(git show "refs/remotes/$remote/kit-evidence:$key/$head/evidence.json" 2>/dev/null); then
-      named=$(printf '%s' "$json" | sed -n 's/^ *"head": *"\([0-9a-f]*\)".*/\1/p' | head -n 1)
+      named=$(printf '%s' "$json" | pack_head)
       if [ "$named" != "$head" ]; then
         echo "The pack under $key/$head names $named, not $head: stale evidence counts as no evidence." >&2
         return 1
@@ -686,7 +684,7 @@ comment() {
     esac
   done
   [ -f "$cdir/gates.tsv" ] || { echo "evidence comment: no gates.tsv in $cdir" >&2; return 2; }
-  head=$(sed -n 's/^ *"head": *"\([0-9a-f]*\)".*/\1/p' "$cdir/evidence.json" | head -n 1)
+  head=$(pack_head <"$cdir/evidence.json")
   echo "<!-- kit-evidence -->"
   echo "## Evidence for ${head:-unknown}"
   echo
