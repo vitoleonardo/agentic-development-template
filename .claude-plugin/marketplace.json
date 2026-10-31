@@ -11,6 +11,11 @@
       "description": "Spec-driven workflow, guard hooks, check hooks and subagents for Claude Code"
     },
     {
+      "name": "kit-cockpit",
+      "source": "./plugins/kit-cockpit",
+      "description": "Status line and /cockpit pane for the agentic-workflow-kit: stage, tasks, criteria, red checks, budget, evidence and the autopilot run. Read-only."
+    },
+    {
       "name": "repo-check",
       "source": "./plugins/repo-check/plugin",
       "description": "Find where your delivery is jammed right now: a 10-question interview or a strictly read-only scan of the repository. Sends nothing."

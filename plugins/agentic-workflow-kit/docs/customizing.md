@@ -133,7 +133,7 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `.claude/bin/status` reads the current branch's row in `specs/README.md`, its spec and `.work/<branch>.md`, and prints one line: `invite-users · build · tasks 3/7 · 1 red · budget 42%`. The stage is the first rule that matches: `done` (status), `pr` (a saved PR description), `verify` (a verify round, or status `in-review`), `review` (a review round, or every task ticked), `build` (a ticked task, or status `building`), `plan` (a state file, or status `planned`), `spec` (a row). `--session <id>` adds the checks that are red in that session's turn.
 
-`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes.
+`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes. The [kit-cockpit](../../kit-cockpit/README.md) plugin draws it as a status line and a `/cockpit` pane.
 
 ## Measure lead time
 

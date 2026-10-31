@@ -1,0 +1,33 @@
+# Tests for plugins/kit-cockpit: the manifest and hooks module as the engine reads them, and the plugin's tests
+# against the engine's own test kit. Neither needs a login or spends tokens.
+name: kit-cockpit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: kit-cockpit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.316
+      - name: Validate
+        run: claude plugin validate plugins/kit-cockpit
+      - name: Test
+        run: claude plugin test plugins/kit-cockpit
