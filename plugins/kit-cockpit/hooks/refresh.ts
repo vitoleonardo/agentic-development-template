@@ -9,6 +9,7 @@ const WATCH_MS = 5000
 const LIVE_RUN_RECHECK_MS = 60_000
 const UNEXPECTED_SHAPE = 'status printed an unexpected shape'
 const NO_FOLDER = 'no folder'
+const UNREADABLE_FOLDER = 'unreadable folder'
 
 const snapshot = atom(
   { plugin: 'kit-cockpit', key: 'snapshot' } as const,
@@ -38,8 +39,8 @@ export async function refreshCockpit($: EngineInterface): Promise<void> {
   refreshesStarted += 1
   const ticket = refreshesStarted
   refreshesRunning += 1
-  lastRefreshStartedAt = await $.clock.now()
   try {
+    lastRefreshStartedAt = await $.clock.now()
     const latest = await readSnapshot($)
     if (ticket < newestApplied) return
     newestApplied = ticket
@@ -60,6 +61,7 @@ async function refreshOnFolderChange($: EngineInterface): Promise<void> {
   if (refreshesRunning > 0) return
   const state = await autopilotFolderState($)
   if (state === folderSeen && !(await liveRunDueForRecheck($))) return
+  if (watch === undefined) return
   folderSeen = state
   await refreshCockpit($)
 }
@@ -72,10 +74,14 @@ async function liveRunDueForRecheck($: EngineInterface): Promise<boolean> {
 
 async function autopilotFolderState($: EngineInterface): Promise<string> {
   const folder = `${await $.session.root()}/.work/autopilot`
-  if (!(await $.fs.exists(folder))) return NO_FOLDER
-  const entries = await $.fs.list(folder)
-  const newest = Math.max(0, ...entries.map(entry => entry.mtimeMs))
-  return `${entries.length} ${newest}`
+  try {
+    if (!(await $.fs.exists(folder))) return NO_FOLDER
+    const entries = await $.fs.list(folder)
+    const newest = Math.max(0, ...entries.map(entry => entry.mtimeMs))
+    return `${entries.length} ${newest}`
+  } catch {
+    return UNREADABLE_FOLDER
+  }
 }
 
 function stopWatching(): void {
@@ -131,8 +137,18 @@ function isStatus(value: unknown): value is KitCockpitStatus {
   if (!isRecord(value) || typeof value.line !== 'string') return false
   const lists = ['criteria', 'stops', 'rounds', 'decisions', 'warnings'] as const
   if (!lists.every(key => Array.isArray(value[key]))) return false
+  if (!(value.stage === null || typeof value.stage === 'string')) return false
+  const objects = ['tasks', 'budget', 'evidence'] as const
+  if (!objects.every(key => isNullOrRecord(value[key]))) return false
+  if (isRecord(value.tasks) && !Array.isArray(value.tasks.items)) return false
+  if (isRecord(value.evidence) && !Array.isArray(value.evidence.gates)) return false
   const { autopilot } = value
-  return autopilot === null || (isRecord(autopilot) && typeof autopilot.active === 'boolean' && Array.isArray(autopilot.features))
+  if (autopilot === null) return true
+  return isRecord(autopilot) && typeof autopilot.active === 'boolean' && Array.isArray(autopilot.features) && isNullOrRecord(autopilot.current)
+}
+
+function isNullOrRecord(value: unknown): boolean {
+  return value === null || isRecord(value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

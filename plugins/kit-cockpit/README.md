@@ -45,7 +45,7 @@ An older kit: run `./install.sh <project> --update` from the kit's repository.
   - Tasks, Stops, Rounds and Decisions to review, from the state file.
   - Evidence: the gates of the pack, and whether it was made on the current commit.
   - Autopilot: the run going on in another terminal, its current feature and phase, and each finished feature's result.
-- **Folder watch:** while the pane is open, it lists `.work/autopilot` every 5 seconds, which runs no command, and runs the status command only when a file there was added or changed. A run started in another terminal shows within 10 seconds; an idle session runs nothing between events.
+- **Folder watch:** while the pane is open, it lists `.work/autopilot` every 5 seconds, which runs no command, and runs the status command only when a file there was added or changed, and once a minute while a run shows as live, so a killed run turns idle. A run started in another terminal shows within 10 seconds; an idle session runs nothing between events.
 
 The pane opens wherever you run `/cockpit`: docked beside the chat in a fullscreen terminal 110 columns wide or more, else above the prompt.
 

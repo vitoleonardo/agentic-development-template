@@ -276,11 +276,15 @@ test('COCKPIT-AC59: a live run whose log stops changing is read again after 60 s
   await $.command.run(COCKPIT_COMMAND)
   kit.answer(exitedWith(kitStatus({ autopilot: { ...activeRun('a'), active: false } })))
 
-  await kit.clock.advance(60_000)
+  await kit.clock.advance(55_000)
+  const runsBeforeAMinute = kit.runs.length
+  await kit.clock.advance(5000)
 
+  expect(runsBeforeAMinute).toBe(2)
   expect(kit.runs).toHaveLength(3)
   await forEachSurface($, async ui => {
     expect(await ui.find({ type: 'Text', text: '● live' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: '○ idle' })).toBeDefined()
   })
 })
 

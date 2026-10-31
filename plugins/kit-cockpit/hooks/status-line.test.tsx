@@ -129,6 +129,9 @@ const UNEXPECTED_SHAPES = [
   { name: 'with criteria that are no list', json: { ...kitStatus(), criteria: {} } },
   { name: 'with an autopilot without features', json: { ...kitStatus(), autopilot: { active: true } } },
   { name: 'that is a list', json: [] },
+  { name: 'without tasks', json: { ...kitStatus(), tasks: undefined } },
+  { name: 'with evidence without gates', json: { ...kitStatus(), evidence: { current: true, head: null } } },
+  { name: 'with an autopilot without current', json: { ...kitStatus(), autopilot: { active: true, features: [] } } },
 ] as const
 
 for (const shape of UNEXPECTED_SHAPES) {
