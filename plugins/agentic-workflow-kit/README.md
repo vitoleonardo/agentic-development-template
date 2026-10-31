@@ -77,7 +77,7 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
   6. Accept     you check it and set the status to done
 ```
 
-\* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself. With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
+\* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself, unless the branch changes auth or migration files (`KIT_PUSH_ASK_PATTERNS`). With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
 
 To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
 

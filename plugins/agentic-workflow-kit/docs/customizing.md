@@ -173,6 +173,8 @@ With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before t
 
 `KIT_GATE_<NAME>="ask"` or `"auto"` overrides one gate, for example `KIT_APPROVAL="autonomous"` with `KIT_GATE_PUSH="ask"`. `.claude/bin/gate <name>` prints the answer; `.claude/bin/gate level` prints the level.
 
+`push` also asks at `standard` and `autonomous` when the branch changes a file in `KIT_PUSH_ASK_PATTERNS`. The adapters set it to auth and migrations (`auth/* *auth.* *.guard.* migrations/* *.migration.*` for TypeScript), so a person approves pushing those changes while a new route or UI change still goes out alone. `gate push` names the file on stderr. In an autopilot run that push stops the feature for you. Empty the variable, or set `KIT_GATE_PUSH="auto"`, to turn it off.
+
 At an `auto` gate the agent decides and writes one line under `## Decisions to review` in `.work/<branch>.md`. `/pr-description` copies that section into the PR, so the reviewer sees every decision nobody approved.
 
 The skills ask `gate` at each step. The guard applies the same gates to the commands and file edits themselves: it answers the permission check with `ask` or `allow` instead of static `permissions.ask` rules, which a hook cannot lift. It only allows a single command without a prompt. A chained command (`git add -A && git commit`) or one with command substitution goes through the normal permission check.

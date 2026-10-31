@@ -84,3 +84,13 @@ matches_any() {
   set +f
   return 1
 }
+
+changed_file_matching() {
+  _since=$1 _patterns=$2
+  shift 2
+  [ -n "$_patterns" ] || return 1
+  _file=$(git diff --name-only "$_since" -- "$@" 2>/dev/null | while IFS= read -r _f; do
+    matches_any "$_f" "$_patterns" && { printf '%s\n' "$_f"; break; }
+  done)
+  [ -n "$_file" ] && printf '%s\n' "$_file"
+}
