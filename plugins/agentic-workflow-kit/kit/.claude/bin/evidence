@@ -600,13 +600,10 @@ screenshots() {
 scope() {
   since=${1:?usage: evidence scope <commit the last round ran on>}
   git rev-parse -q --verify "$since^{commit}" >/dev/null || { echo "evidence scope: $since is not a commit." >&2; return 2; }
-  contracts=${KIT_CONTRACT_PATTERNS:-$(conf_value . KIT_CONTRACT_PATTERNS)}
-  if [ -n "$contracts" ]; then
-    # shellcheck disable=SC2046
-    git diff --name-only "$since" -- . $(excludes) | while IFS= read -r f; do
-      matches_any "$f" "$contracts" && { printf '%s\n' "$f"; break; }
-    done >"$tmp/contract"
-    if [ -s "$tmp/contract" ]; then echo "full: $(cat "$tmp/contract") is a contract file (KIT_CONTRACT_PATTERNS)"; return 0; fi
+  # shellcheck disable=SC2046
+  if contract=$(changed_file_matching "$since" "${KIT_CONTRACT_PATTERNS:-$(conf_value . KIT_CONTRACT_PATTERNS)}" . $(excludes)); then
+    echo "full: $contract is a contract file (KIT_CONTRACT_PATTERNS)"
+    return 0
   fi
   lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$'
   total=$(diff_all --numstat | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')

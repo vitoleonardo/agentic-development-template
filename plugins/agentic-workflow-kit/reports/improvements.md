@@ -22,3 +22,6 @@ The values before come from the pilot run on a NestJS and React monorepo (M2 to 
 - 31.10.2026 | red gate warns when a new criterion test passes on the base | runs with a weak-test review finding; median review rounds | 7 of 9 runs; 4
 - 31.10.2026 | the plan lists each side effect: what it waits for, where it runs, what happens on failure | `plan` stops from ordering and blocking calls | 4 in 9 runs
 - 31.10.2026 | /onboard names an empty KIT_SETUP, KIT_BASE_ENV and token budget | `env` stops; failed base screenshot runs | 5 in 9 runs; every base run since M5
+- 31.10.2026 | gate push asks at every level when the branch changes auth or migration files (KIT_PUSH_ASK_PATTERNS) | pushes of auth or migration changes nobody approved | not recorded before
+- 31.10.2026 | reviewer runs at effort: high | high findings first found at verify instead of review; reviewer tokens per round | not recorded before
+- 31.10.2026 | run records count interventions (stops resolved user:); /improve-kit turns a correction seen in two runs into a rule, check or test | interventions per run | not recorded before
