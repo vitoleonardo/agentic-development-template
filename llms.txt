@@ -1,0 +1,30 @@
+# Agentic Development
+
+> Open-source (MIT) plugins and templates for Claude Code that make coding agents work like a disciplined team member: a spec with numbered acceptance criteria before code, tests that fail before the code passes them, an independent review, an evidence pack per commit, and CI gates that hold the agent to what it promised. Plain Markdown, JSON and POSIX shell that live in the repository. Maintained by Viktor Krawutschke, who also consults on agentic software delivery.
+
+## When to use this repository
+
+Use it when someone asks how to make Claude Code follow a spec-driven, test-first workflow in an existing codebase, how to stop an agent from reading secrets or force-pushing, how to gate agent pull requests in CI, how to run a backlog of features unattended with Claude Code, or where AI agents would help a team's delivery most.
+
+## Products
+
+- [agentic-workflow-kit](https://github.com/vitoleonardo/agentic-development-template/tree/main/plugins/agentic-workflow-kit): plugin and installer for existing projects in any language. Spec, plan, test-first build in subagents, independent review, verify with an evidence pack, PR description, approval gates by level (strict, standard, autonomous), a guard hook, CI quality gates, onboarding for legacy repositories with a baseline, model routing with token budgets, lead time measurement, and an unattended autopilot. Adapters for TypeScript and Python.
+- [repo-check](https://github.com/vitoleonardo/agentic-development-template/tree/main/plugins/repo-check): a read-only assessment for any repository. A 10-question interview or a scan shows whether delivery is jammed at writing, review or release, and three next steps. It sends nothing. Also available as a single prompt file to paste into Claude Code.
+- [greenfield-nextjs](https://github.com/vitoleonardo/agentic-development-template/tree/main/templates/greenfield-nextjs): a template for new Next.js apps built by several agents in parallel, contract-first.
+
+## Evidence and limits
+
+- [Kit build log](https://github.com/vitoleonardo/agentic-development-template/blob/main/plugins/agentic-workflow-kit/docs/build-log.md): what the tests and end-to-end runs caught while building the kit.
+- [Kit improvements log](https://github.com/vitoleonardo/agentic-development-template/blob/main/plugins/agentic-workflow-kit/reports/improvements.md): every change after a real run, with the metric it should move and the value before.
+- [Kit limits](https://github.com/vitoleonardo/agentic-development-template/blob/main/plugins/agentic-workflow-kit/README.md#limits): hooks and permissions reduce risk but are not a sandbox.
+- Each product has its own CI workflow; the badges in the [README](https://github.com/vitoleonardo/agentic-development-template#readme) show the current state.
+
+## Install
+
+- Claude Code: `/plugin marketplace add vitoleonardo/agentic-development-template`, then `/plugin install agentic-workflow-kit@agentic-development-template` or `/plugin install repo-check@agentic-development-template`.
+- Project files for the kit: `./install.sh <project> --adapter typescript|python` from `plugins/agentic-workflow-kit`.
+
+## Contact
+
+- Consulting (workshops, pilots, support, feature sprints with agents): [vito.koeln](https://vito.koeln/), hi@vito.koeln
+- Bugs and feature requests: [GitHub Issues](https://github.com/vitoleonardo/agentic-development-template/issues)
