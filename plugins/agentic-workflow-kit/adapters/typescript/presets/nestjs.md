@@ -44,7 +44,7 @@ Homes NestJS adds to the Map in `structure.md`.
 
 ## Duplicates
 
-Constructor parameter lists (`private readonly xRepo: XRepo`, `@Inject(X)`) repeat across services, processors and controllers; that is dependency injection, not shared logic. Add this to `scan` in `.claude/kit.conf`:
+Constructor parameter lists (`private readonly xRepo: XRepo`, `@Inject(X)`) repeat across services, processors and controllers; that is dependency injection, not shared logic. `duplicates-new.mjs` already passes a clone that lies inside the constructor parameter lists of both files. For clones that also take in the import block or class header around the constructor, add this to `scan` in `.claude/kit.conf`:
 
 ```sh
 --ignore-pattern 'constructor\s*\((?:[^()]|\([^()]*\))*\)'

@@ -19,9 +19,11 @@ Review finds problems in the code; verify proves the behaviour, with artefacts a
 
 ## 1. Hard gates
 
-Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs typecheck, lint, build, the full test suite and coverage against the baseline, the duplicates check, the structure check, the focus and skip scan, the dependency check against the plan, protected paths, the secret scan and the diff size. A gate with an empty key in `kit.conf` fails; a check the project cannot have says `n/a: <reason>` there.
+Run `.claude/bin/evidence gates`. All must pass; there is no soft mode. It runs typecheck, lint, build, the full test suite and coverage against the baseline, the duplicates check, the structure check, the focus and skip scan, the red check, the dependency check against the plan, protected paths, the secret scan and the diff size. A gate with an empty key in `kit.conf` fails; a check the project cannot have says `n/a: <reason>` there.
 
 If a gate fails, stop and classify the failure as in Rounds below. Do not fix it here.
+
+The red check copies the criterion tests this branch adds onto the base and runs them there; a test that passes without the change proves nothing. For now it only warns. For each test it names, strengthen the test through the `test-writer`, or, when the criterion cannot fail on the base (for example a guard that already held), list it under `## Red exceptions` in `.work/<branch>.md` as `- <test title> | <reason>`. Report the warning in the summary.
 
 ## 2. Data runs
 

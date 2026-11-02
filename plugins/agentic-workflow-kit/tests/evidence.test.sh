@@ -405,6 +405,50 @@ out=$(.claude/bin/evidence e2e-select 2>&1)
 expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
 git checkout -q .claude/kit.conf
 
+# --- red: criterion tests must fail without the change -----------------------------
+
+git checkout -q main
+git checkout -qb red-proof
+# A test runner for the files it is given: a title with "needs-change" passes only when src/total.ts has the change.
+cat >bin/red-tests <<'EOF'
+#!/bin/sh
+mkdir -p .work
+{
+  echo '<testsuites>'
+  for f; do
+    sed -n 's/^it("\([^"]*\)".*/\1/p' "$f" | while IFS= read -r t; do
+      case $t in
+        *needs-change*) grep -q 'total = 1' src/total.ts && echo "<testcase classname=\"$f\" name=\"total &gt; $t\"/>" || echo "<testcase classname=\"$f\" name=\"total &gt; $t\"><failure/></testcase>" ;;
+        *) echo "<testcase classname=\"$f\" name=\"total &gt; $t\"/>" ;;
+      esac
+    done
+  done
+  echo '</testsuites>'
+} >.work/junit.xml
+EOF
+chmod +x bin/red-tests
+printf 'KIT_TEST="%s/bin/red-tests"\nKIT_SETUP="echo setup >>%s/setup.log"\n' "$project" "$project" >>.claude/kit.conf
+printf '# Plan\n\n- Approved dependencies: none\n' >.work/red-proof.md
+printf 'export const total = 1;\n' >src/total.ts
+expect_code 0 "red without a new criterion test" .claude/bin/evidence gates --only red
+expect_out "| red | pass | 0s | no test file adds a criterion test |" "nothing to prove without a new criterion test"
+printf 'it("SHOP-AC2: the total is one needs-change", () => {});\nit("SHOP-AC3: the total exists", () => {});\n' >>src/total.test.ts
+: >setup.log
+expect_code 0 "red warns and never fails, for now" .claude/bin/evidence gates --only red
+expect_out "warning: pass without the change: SHOP-AC3: the total exists;" "a new criterion test that passes on the base is named"
+case $out in *SHOP-AC2*) fail "a test that fails on the base is not named: $out" ;; *) ok ;; esac
+case $out in *SHOP-AC1*) fail "an unchanged test is not named: $out" ;; *) ok ;; esac
+grep -q setup setup.log && ok || fail "KIT_SETUP runs on the base"
+[ -z "$(git worktree list | sed 1d)" ] && ok || fail "the base worktree is removed: $(git worktree list)"
+printf '\n## Red exceptions\n- SHOP-AC3: the total exists | checked by the e2e flow\n\n## Notes\n' >>.work/red-proof.md
+expect_code 0 "red with an exception" .claude/bin/evidence gates --only red
+expect_out "the criterion tests of 1 files fail on the base" "a listed exception is not named"
+printf 'KIT_TEST="true"\n' >>.claude/kit.conf
+expect_code 0 "red when the base run writes no report" .claude/bin/evidence gates --only red
+expect_out "the base run wrote no .work/junit.xml" "a missing report is named"
+git checkout -q -- .claude/kit.conf src/total.ts src/total.test.ts
+rm -f bin/red-tests setup.log
+
 # --- one base for stacked branches ----------------------------------------------
 
 git checkout -q main

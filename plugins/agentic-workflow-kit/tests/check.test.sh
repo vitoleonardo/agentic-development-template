@@ -297,12 +297,13 @@ expect_code 3 "duplicates without a command is not configured" .claude/bin/check
 # as a jscpd 5 JSON report into --output, and logs where it ran.
 cat >bin/jscpd-json <<'EOF'
 #!/bin/sh
+all="$*"
 out="" mode=base
 while [ $# -gt 0 ]; do
   case $1 in --output) out=$2; shift ;; --baseline-from-ref) mode=head; shift ;; esac
   shift
 done
-echo "$mode $PWD" >>"$JSCPD_LOG"
+echo "$mode $PWD $all" >>"$JSCPD_LOG"
 mkdir -p "$out"
 if [ "$mode" = head ]; then cp "$FAKE_HEAD" "$out/jscpd-report.json"; else cp "$FAKE_BASE" "$out/jscpd-report.json"; fi
 EOF
@@ -330,6 +331,28 @@ expect_out "1 new clones" "the new clone is counted"
 expect_out "src/x.ts:1-9 ~ src/w.ts:3-11" "the new clone is named"
 report "$(clone src/x.ts src/y.ts 'const z = 0;\n  let a = 1;   let b = 2;\n  let c = 3;\n  let d = 4;' true)" >head.json
 dupnew 1 "a clone that grew past the base's clone is new"
+
+# A clone inside the constructor parameter lists of both files is dependency injection; one reaching past them is new.
+printf 'export class A {\n  constructor(\n    private readonly users: UsersRepo,\n    @Inject(MAIL) private readonly mail: Mail,\n  ) {}\n  run() { return 1; }\n}\n' >src/a.ts
+cp src/a.ts src/b.ts
+part() { printf '{"name": "%s", "start": %s, "end": %s}' "$1" "$2" "$3"; }
+diclone() { printf '{"firstFile": %s, "secondFile": %s, "fragment": "x", "isNew": true, "tokens": 60}' "$(part src/a.ts "$1" "$2")" "$(part src/b.ts "$1" "$2")"; }
+: >jscpd.log
+report "$(diclone 2 5)" >head.json
+report "" >base.json
+dupnew 0 "a clone inside constructor parameter lists in both files is dependency injection"
+expect_out "dependency injection, inside constructor parameter lists: src/a.ts:2-5 ~ src/b.ts:2-5" "the injection clone is named"
+expect_out "0 new clones (0 more inside clones the base already has, 1 inside constructor parameter lists)" "the injection clone is counted apart"
+[ "$(grep -c '^base' jscpd.log)" -eq 0 ] && ok || fail "no base scan when only injection clones are new: $(cat jscpd.log)"
+report "$(diclone 2 6)" >head.json
+dupnew 1 "a clone that reaches past the constructor is new"
+
+# The edit hook's run: --changed and the edited files go to the branch scan, the base is scanned whole.
+: >jscpd.log
+report "$(clone src/x.ts src/w.ts 'let a = 1;' true)" >head.json
+KIT_BASE=main JSCPD_LOG=$project/jscpd.log FAKE_HEAD=$project/head.json FAKE_BASE=$project/base.json expect_code 1 "the related run fails on a new clone" node "$here/adapters/typescript/.claude/bin/duplicates-new.mjs" "$project/bin/jscpd-json" . --format typescript --changed src/a.ts
+grep -q '^head .* --changed src/a.ts' jscpd.log && ok || fail "the branch scan gets --changed and the edited file: $(cat jscpd.log)"
+grep '^base' jscpd.log | grep -q -e '--changed' -e 'src/a.ts' && fail "the base scan is whole: $(cat jscpd.log)" || ok
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

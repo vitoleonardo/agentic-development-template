@@ -127,7 +127,7 @@ gitleaks_config() {
 
 regex_escape() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
 
-all_gates="typecheck lint build test coverage duplicates structure focus dependencies protected secrets size"
+all_gates="typecheck lint build test coverage duplicates structure focus red dependencies protected secrets size"
 
 # want <gate>: true unless gates --only leaves the gate out.
 want() {
@@ -171,6 +171,7 @@ gates() {
   focus='(^|[^[:alnum:]_])((it|test|describe|context|suite)\.(only|skip|todo)[[:space:]]*\(|(xit|xdescribe|xtest|fit|fdescribe)[[:space:]]*\(|@pytest\.mark\.(skip|skipif|xfail)|@unittest\.skip|pytest\.skip[[:space:]]*\()'
   grep -E "$focus" "$tmp/added" >"$tmp/log-focus"
   if [ -s "$tmp/log-focus" ]; then gate focus fail 0 "focus or skip added: $(cut -f1 "$tmp/log-focus" | sort -u | tr '\n' ' ')"; else gate focus pass 0 "no .only, .skip or skip markers added"; fi
+  red
 
   plan=.work/${branch:-detached}.md
   approved=$(sed -n 's/^- *Approved dependencies: *//p' "$plan" 2>/dev/null | head -n 1 | tr ',' ' ' | tr 'A-Z' 'a-z')
@@ -265,6 +266,85 @@ gates() {
     return 1
   fi
   echo "All hard gates passed. Details in $dir/gates.md."
+}
+
+# --- red: criterion tests must fail without the change ------------------------------
+
+# base_tree <dir>: a worktree of the merge base with the branch's kit.conf, for runs on the base.
+base_tree() {
+  git worktree add -q --detach "$1" "$(merge_base)" || return 1
+  cp .claude/kit.conf "$1/.claude/kit.conf" 2>/dev/null
+  return 0
+}
+
+# in_base <dir> <command>: run a command in a folder of the base worktree with the variables of KIT_BASE_ENV, an env
+# file that is read for this run and never copied. An empty command does nothing.
+in_base() {
+  [ -n "$2" ] || return 0
+  base_env=$(conf_value . KIT_BASE_ENV)
+  case $base_env in '' | /*) ;; *) base_env=$root/$base_env ;; esac
+  # shellcheck source=/dev/null
+  (cd "$1" && { [ -z "$base_env" ] || { set -a && . "$base_env" && set +a; }; } && sh -c "$2") </dev/null
+}
+
+# red: a criterion test proves the change only if it fails without it. The test files whose added lines name a
+# criterion (<FEATURE>-AC<n>) are copied onto the merge base, set up with KIT_SETUP, and run there with KIT_TEST and
+# the files appended. A test that passes there and whose title is on an added line proves nothing. Exceptions:
+# "- <test title> | <reason>" under "## Red exceptions" in .work/<branch>.md. It warns only, for now.
+red() {
+  want red || return 0
+  started=$(now)
+  grep -E '[A-Z][A-Z0-9_]*-AC[0-9]+' "$tmp/added" >"$tmp/red-lines"
+  cut -f1 "$tmp/red-lines" | sort -u | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    pkg=$(package_of "$f")
+    if matches_any "$f" "$(test_patterns "$pkg")"; then printf '%s\t%s\n' "$pkg" "$f"; fi
+  done >"$tmp/red-files"
+  if [ ! -s "$tmp/red-files" ]; then gate red pass 0 "no test file adds a criterion test"; return 0; fi
+  wt=$tmp/red-base
+  if ! base_tree "$wt" >"$tmp/log-red" 2>&1; then gate red pass 0 "warning: no worktree of the base, not checked"; return 0; fi
+  if ! in_base "$wt" "$(conf_value . KIT_SETUP)" >>"$tmp/log-red" 2>&1; then
+    git worktree remove --force "$wt"
+    gate red pass $(($(now) - started)) "warning: KIT_SETUP failed on the base, not checked"
+    return 0
+  fi
+  : >"$tmp/red-passing"
+  notes=""
+  for pkg in $(cut -f1 "$tmp/red-files" | sort -u); do
+    cmd=$(conf_value "$pkg" KIT_TEST)
+    report=$(conf_value "$pkg" KIT_TEST_REPORT)
+    case $cmd in '' | n/a:*) notes="$notes; $pkg: no KIT_TEST"; continue ;; esac
+    [ -n "$report" ] || { notes="$notes; $pkg: no KIT_TEST_REPORT"; continue; }
+    awk -F '\t' -v p="$pkg" '$1 == p { f = $2; if (p != ".") f = substr(f, length(p) + 2); print f }' "$tmp/red-files" >"$tmp/red-pkg"
+    while IFS= read -r f; do
+      mkdir -p "$wt/$pkg/$(dirname -- "$f")"
+      cp "$pkg/$f" "$wt/$pkg/$f"
+    done <"$tmp/red-pkg"
+    rm -f "$wt/$pkg/$report"
+    in_base "$wt/$pkg" "$cmd $(quoted "$tmp/red-pkg")" >>"$tmp/log-red" 2>&1
+    if [ ! -f "$wt/$pkg/$report" ]; then notes="$notes; $pkg: the base run wrote no $report"; continue; fi
+    .claude/bin/baseline junit "$wt/$pkg/$report" | awk -F '\t' '$2 == "pass" { print $1 }' >>"$tmp/red-passing"
+  done
+  git worktree remove --force "$wt"
+  sed -n '/^## Red exceptions[[:space:]]*$/,/^## /s/^- *\([^|]*[^|[:space:]]\)[[:space:]]*|.*/\1/p' ".work/${branch:-detached}.md" >"$tmp/red-exceptions" 2>/dev/null
+  awk -F '\t' -v lines="$tmp/red-lines" -v except="$tmp/red-exceptions" '
+    BEGIN {
+      while ((getline l < lines) > 0) { split(l, f, "\t"); added[++n] = f[2] }
+      while ((getline l < except) > 0) skip[l] = 1
+    }
+    {
+      name = $0; sub(/.*::/, "", name)
+      k = split(name, parts, " > "); title = parts[k]
+      if (title !~ /[A-Z][A-Z0-9_]*-AC[0-9]+/ || (title in skip)) next
+      for (i = 1; i <= n; i++) if (index(added[i], title)) { print title; next }
+    }' "$tmp/red-passing" | sort -u >"$tmp/red-unproven"
+  secs=$(($(now) - started))
+  files=$(wc -l <"$tmp/red-files" | tr -d ' ')
+  if [ -s "$tmp/red-unproven" ]; then
+    gate red pass "$secs" "warning: pass without the change: $(tr '\n' ';' <"$tmp/red-unproven")$notes (strengthen the test, or list it under ## Red exceptions with a reason)"
+  else
+    gate red pass "$secs" "the criterion tests of $files files fail on the base$notes"
+  fi
 }
 
 # --- matrix --------------------------------------------------------------------
@@ -493,18 +573,12 @@ screenshots() {
     echo "screenshots on the base: n/a: base has no $missing"
     printf 'taken; base: n/a: base has no %s\n' "$missing" >"$dir/screenshots.txt"
   else
-    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install)
-    # and with the variables of KIT_BASE_ENV, an env file that is read for this run and never copied.
+    # The same flow on the base: a worktree of the merge base, set up with KIT_SETUP (for example the install).
     wt=$tmp/base
-    git worktree add -q --detach "$wt" "$(merge_base)" || return 1
-    cp .claude/kit.conf "$wt/.claude/kit.conf" 2>/dev/null
-    setup=$(conf_value . KIT_SETUP)
-    base_env=$(conf_value . KIT_BASE_ENV)
-    case $base_env in '' | /*) ;; *) base_env=$root/$base_env ;; esac
+    base_tree "$wt" || return 1
     echo "screenshots on the base ($(git rev-parse --short "$(merge_base)"))"
-    # shellcheck source=/dev/null
-    if (cd "$wt" && { [ -z "$base_env" ] || { set -a && . "$base_env" && set +a; }; } && { [ -z "$setup" ] || sh -c "$setup"; } &&
-      KIT_SCREENSHOT_DIR=$shots KIT_SCREENSHOT_SUFFIX=".main" sh -c "$cmd") </dev/null; then
+    if in_base "$wt" "$(conf_value . KIT_SETUP)" &&
+      (export KIT_SCREENSHOT_DIR="$shots" KIT_SCREENSHOT_SUFFIX=".main" && in_base "$wt" "$cmd"); then
       printf 'taken; base: taken\n' >"$dir/screenshots.txt"
     else
       echo "screenshots: the base run failed; pages that do not exist there have no .main image." >&2

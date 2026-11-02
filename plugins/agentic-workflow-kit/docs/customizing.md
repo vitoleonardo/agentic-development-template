@@ -28,7 +28,7 @@ Write rules as instructions that can be checked ("amounts are integers in cents"
 
 `/onboard` writes the Map from the repository: it copies the homes the code already uses, puts the extra homes of a kind under `## Legacy` (no new files there), and keeps the kit's default where the repository has none. Add a home through a pull request, in the same change as the first file that needs it. The Python adapter ships its own map.
 
-Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out. In the TypeScript adapter, `KIT_DUPLICATES` runs jscpd through `duplicates-new.mjs`: jscpd matches clones by fingerprint, so editing one copy of a legacy clone splits it into pieces jscpd reports as new; a clone inside one the same file pair already has on the base counts as legacy. The NestJS preset documents an `--ignore-pattern` for constructor parameter lists.
+Duplicated code is caught by jscpd 5 through `KIT_DUPLICATES` (see the table under [Add an adapter](#add-an-adapter)). It compares with the base branch (`--baseline-from-ref`), so only clones the branch adds fail, and `--ignore-identifiers` also finds copies with renamed variables. Tests are left out. In the TypeScript adapter, `KIT_DUPLICATES` and `KIT_DUPLICATES_RELATED` (the edit hook) both run jscpd through `duplicates-new.mjs`, so the hook and the gate agree: jscpd matches clones by fingerprint, so editing one copy of a legacy clone splits it into pieces jscpd reports as new; a clone inside one the same file pair already has on the base counts as legacy. A clone that lies inside constructor parameter lists in both files is dependency injection and passes. `*.e2e-spec.*` files are left out with the other tests. The NestJS preset documents an `--ignore-pattern` for clones that reach past the constructor.
 
 ## Add a stack preset
 
@@ -106,6 +106,12 @@ For code the agent must never see, such as licence-restricted `ee/` folders, thr
 With gitleaks, the gate scans the branch's commits (`gitleaks git`, protected paths and `reports/runs/` left out by pathspec) and pipes uncommitted changes through `gitleaks stdin`. Findings are redacted in the evidence pack. The project's `.gitleaks.toml` and `.gitleaksignore` apply.
 
 Approved fake values go into `.claude/secrets-allow.tsv`, one `<path from the root> TAB <exact value>` per line. Without gitleaks a row silences the warning for that value in that file; with gitleaks it becomes a path-and-value allowlist in the generated config. A row whose value is a key format is ignored on both paths. Each row needs the user's approval and the reason in its commit message.
+
+## Red check
+
+A test that passes without the change proves nothing. `/verify-feature`'s red gate takes the test files whose added lines name a criterion (`<FEATURE>-AC<n>`), copies them onto a worktree of the merge base, runs `KIT_SETUP` there (with the variables of `KIT_BASE_ENV`, as for the base screenshots), and runs `KIT_TEST` with those files appended. Every test that passes there and whose title is on an added line is named in the gate's detail; a test that fails, or cannot even load because the code it imports is new, is proven. Unchanged tests in the same files are never named.
+
+For now the gate only warns, so existing projects do not break; `/improve-kit` decides when it becomes a failure. A criterion that cannot fail on the base (a guard that already held, a refactor with the same behaviour) goes under `## Red exceptions` in `.work/<branch>.md` as `- <test title> | <reason>`. Without `KIT_SETUP` the base has no dependencies installed and every test fails there, so the gate proves nothing: set `KIT_SETUP` to the install command.
 
 ## Route models by task
 
