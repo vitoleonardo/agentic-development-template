@@ -20,6 +20,7 @@ Run `.claude/bin/runs report`. If it says run records are off, tell the user tha
 - `reports/runs.md`, just written: tokens, tasks, escalations, review rounds, interventions (stops the user resolved) and every stop with its class.
 - If `gh` works, run `.claude/bin/leadtime` and read `reports/lead-time.md`: lead time, review rounds and rework from GitHub.
 - `reports/improvements.md`, the log of earlier changes, if it exists.
+- `.work/autopilot/sessions.tsv` and the run logs next to it, if autopilot ran: how each session ended (`ended`, the watchdog, a usage limit) and where a run stopped.
 - For a recurring review finding, the merged PRs' review comments (`gh pr view <n> --comments`). Read only what a rule below needs.
 
 ## 2. Check earlier changes first
@@ -38,6 +39,8 @@ Each rule needs its minimum sample; below it, write "not enough data" instead of
 | The same `kit` stop twice | 2 stops | Fix the hook, guard, check command or rule the stops name, with a test in the kit's tests. |
 | `spec` or `plan` stops of one kind twice | 2 stops | Add the missing question to the interview in `/spec-feature`, or the missing rule to `/plan-feature`. |
 | The same correction resolved `user:` in two runs | 2 stops | Turn it into a rule, check or test, so the next run does not need the user for it. Prefer a check over a rule. |
+| `hotfix` stops in two runs | 2 runs | Review let product bugs through to verify. Propose a read-only reviewer from another vendor at the last review round (for example `codex exec` on the diff), off by default, whose findings are merged by severity and never applied without a fix through the implementer. |
+| Autopilot sessions ended by the watchdog, or a feature stopped without a Stops line explaining why, twice | 2 sessions | The session gave up early. Read the transcripts' last turns, then propose steering for long runs: a line in autopilot's unattended note against stopping early, or the elapsed time and remaining budget fed into the session. |
 | Any `env` stop | 1 stop | Add the step to "Things only a human can do" in `CLAUDE.md`. |
 | Main-session share above 50 %, or tokens per task rising over the last five runs | 5 runs | Find the cause in the runs (no `/clear` after the plan, oversized tasks, long exploration in the main session) and propose the matching change. |
 | Any `budget` stop, or no `KIT_BUDGET_TOKENS` set | 5 runs | Propose `KIT_BUDGET_TOKENS` at the p75 of tokens per run, rounded up. |

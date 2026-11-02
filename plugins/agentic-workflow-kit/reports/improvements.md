@@ -21,3 +21,5 @@ The values before come from the pilot run on a NestJS and React monorepo (M2 to 
 - 31.10.2026 | gate push asks at every level when the branch changes auth or migration files (KIT_PUSH_ASK_PATTERNS) | pushes of auth or migration changes nobody approved | not recorded before
 - 31.10.2026 | reviewer runs at effort: high | high findings first found at verify instead of review; reviewer tokens per round | not recorded before
 - 31.10.2026 | run records count interventions (stops resolved user:); /improve-kit turns a correction seen in two runs into a rule, check or test | interventions per run | not recorded before
+- 31.10.2026 | autopilot tells each session it is unattended (--append-system-prompt) | autopilot sessions that start a dev server or open a browser | 1 of 2 sessions in the demo run (31.10.2026)
+- 31.10.2026 | /improve-kit proposes a second-vendor reviewer after hotfix stops in two runs, and long-run steering after two early autopilot stops | proposals made from these rules | none before

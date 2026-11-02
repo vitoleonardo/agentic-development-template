@@ -79,6 +79,7 @@ halt() {
 sessions=""
 session_ids() { printf '%s' "${sessions:-–}"; }
 
+unattended_note="This is an unattended .claude/bin/autopilot session: nobody watches it or answers a prompt. Skip steps meant for a person at the screen, such as starting a dev server or opening a browser."
 unattended_tools="Bash(.claude/bin/*),Bash(./.claude/bin/*),Bash($root/.claude/bin/*),Bash(git checkout *),Bash(git switch *),Bash(git restore *),Bash(git stash *),Bash(git commit *),Bash(git push *),Bash(gh pr create *),Bash(gh pr view *)"
 
 # repeated_call <transcript>: names the tool call one agent made max_identical_calls times in a row, if any.
@@ -163,6 +164,7 @@ run_claude() {
   KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS \
     claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
     --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
+    --append-system-prompt "$unattended_note" \
     >"$_transcript" 2>&1 &
   watch $! "$_transcript"
   limit_reset=$(usage_limit_reset "$_transcript")
