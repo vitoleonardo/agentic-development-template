@@ -4,7 +4,7 @@ Status: approved 30.10.2026, implemented 30.10.2026. What was built and proven: 
 
 ## 1. Why
 
-`repo-check` is a free Claude Code plugin and the first step into the consulting offer: workshop, pilot, Begleitung and feature sprint. In about ten minutes a team learns where its delivery is jammed right now ("Der Stau wandert": from Schreiben to Review to Release once agents write faster). They get three steps they can take alone, and an honest answer about which offer fits, if any. If they want to, they send the answers themselves.
+`repo-check` is a free Claude Code plugin and the first step into the consulting offer: workshop, pilot, Begleitung, feature sprint and Kit Pro. In about ten minutes a team learns where its delivery is jammed right now ("Der Stau wandert": from Schreiben to Review to Release once agents write faster). They get three steps they can take alone, and an honest answer about which offer fits, if any. If they want to, they send the answers themselves.
 
 It is standalone. It works in a repo that has not installed the agentic-workflow-kit and depends on no `.claude/` file in the target repo.
 
@@ -117,6 +117,7 @@ Pick at most one. "None yet" is a valid and common answer.
 | Pilot | The jam is at Review or Release; there is PR history; the budget owner is known |
 | Begleitung | Agents are already in team use; the jam has moved downstream; the goal is lasting change within three months |
 | Feature sprint | Q9 says "one specific feature is done", and capacity is short |
+| Kit Pro | The team sets up the open kit itself and agents are in daily use; there is budget for a tool, not for a package |
 | Noch keins / none yet | Solo with no budget decision; prototype stage; or the three next steps come first |
 
 In scan mode, team size is the number of distinct authors in the last 90 days. It is counted, never named. Budget and goals are unknown, so the offer line says what it could not judge.
