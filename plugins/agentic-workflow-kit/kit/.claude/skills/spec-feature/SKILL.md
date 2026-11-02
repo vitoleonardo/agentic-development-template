@@ -1,6 +1,6 @@
 ---
 name: spec-feature
-description: Write or extend a feature spec with numbered, testable acceptance criteria before any code is planned. Use when the user asks to spec a feature, or to change what an existing feature should do.
+description: Write or extend a feature spec with numbered, testable acceptance criteria before any code is planned. Use when the user asks to spec a feature or change what an existing feature should do.
 argument-hint: <feature idea or existing feature name>
 ---
 
@@ -12,18 +12,18 @@ The spec is the contract: it says WHAT "done" means, never HOW. No technology, f
 
 ## 1. New spec or existing one?
 
-Read `specs/README.md` and the specs it lists. If the request changes or extends an existing feature, extend that spec; one feature has exactly one spec. If it is unclear which one applies, ask.
+Read `specs/README.md` and the specs it lists. A request that changes or extends an existing feature extends that spec; one feature, one spec. If unclear which applies, ask.
 
 ## 2. Interview
 
-Ask only what the code, the existing specs and sensible defaults cannot answer. Ask in one batch of at most five questions, covering:
+Ask only what the code, the existing specs and sensible defaults cannot answer, in one batch of at most five questions, covering:
 
 - Who uses it and what problem it solves.
 - The expected behaviour, as concrete examples.
 - Edge cases: errors, empty data, duplicates, double submits, missing permissions, limits.
 - What is explicitly out of scope.
 
-Never invent an answer. Anything still open goes under Open questions.
+Never invent an answer; anything still open goes under Open questions.
 
 ## 3. Write it
 
@@ -68,7 +68,7 @@ When you extend a spec, continue the numbering. Never renumber or reuse an ID. M
 
 ## 4. Check it
 
-1. Run `.claude/bin/spec-lint specs/<feature-slug>.md` and fix every finding. This is a hard gate: never ask for approval while it fails.
+1. Run `.claude/bin/spec-lint specs/<feature-slug>.md` and fix every finding. Hard gate: never ask for approval while it fails.
 2. Dispatch the `reviewer` subagent to review the spec (not a diff). Fix what it finds, or add it to Open questions.
 
 ## 5. Status and approval

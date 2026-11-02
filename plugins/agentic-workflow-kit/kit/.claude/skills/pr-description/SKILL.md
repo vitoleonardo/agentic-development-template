@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Write a pull request description from the diff, the spec, the verify log and the evidence pack - what, why, how it was tested, and how to review it in five minutes. Does not push or open the PR.
+description: Write a pull request description from the diff, spec, verify log and evidence pack - what, why, how it was tested, how to review it in five minutes. Does not push or open the PR.
 argument-hint: [base branch, default the state file's Base, else main]
 ---
 
@@ -8,7 +8,7 @@ argument-hint: [base branch, default the state file's Base, else main]
 
 Base branch: $ARGUMENTS (if empty: `$KIT_BASE` when it is set, else the `Base:` line of `.work/<branch>.md`, else `main`). Open the PR against it (`gh pr create --base <base>`).
 
-Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, say that the pack is stale and that `/verify-feature` must run again; do not use it.
+Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, do not use it: say the pack is stale and `/verify-feature` must run again.
 
 Write:
 
@@ -39,11 +39,11 @@ Cost: <the line from `.claude/bin/usage line`, only if the branch has a usage re
 
 Rules:
 
-- Follow `.claude/rules/output.md`. At most 150 words outside the table. Omit an empty section.
-- Take the evidence from `evidence.json`, the verify log and the test names. If a criterion has no test, or no recorded red run, say so in its row. Never fill a gap with a claim.
-- Without an evidence pack, the table has the columns Criterion, Test and Result, and the PR says that verify did not run.
-- The screenshots appear in CI's sticky comment; name the files here, do not try to attach them.
+- Follow `.claude/rules/output.md`. At most 150 words outside the table.
+- Evidence comes from `evidence.json`, the verify log and the test names. A criterion without a test or a recorded red run says so in its row. Never fill a gap with a claim.
+- Without an evidence pack, the table has the columns Criterion, Test and Result, and the PR says verify did not run.
+- Name the screenshot files; CI's sticky comment shows them. Do not attach them.
 
-If the state file has a Decisions to review section, copy it into the description under that heading, so the reviewer sees every decision no human approved.
+Copy the state file's Decisions to review section, if any, into the description under that heading, so the reviewer sees every decision no human approved.
 
 Save it to `.work/<branch>-pr.md` and show it. Then run `.claude/bin/gate push`. With `ask`, do not push or create the PR yourself: offer the command `gh pr create --base <base> --title "<title>" --body-file .work/<branch>-pr.md` for the user to approve. With `auto`, push the branch and run that command.
