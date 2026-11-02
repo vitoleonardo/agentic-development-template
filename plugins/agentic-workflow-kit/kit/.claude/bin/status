@@ -95,6 +95,22 @@ epoch_key() {
   date -d "@$1" +%Y%m%d%H%M 2>/dev/null || date -r "$1" +%Y%m%d%H%M
 }
 
+transcript_parts() {
+  _name=${1##*/}
+  _name=${_name%.jsonl}
+  case $_name in "$2-"*) ;; *) return 1 ;; esac
+  _name=${_name#"$2-"}
+  printf '%s' "$_name" | sed -nE 's/^(.*)-(plan|build|answer)(-(restart|wait)-[0-9]+|-[0-9]+)?$/\1	\2	\4\3/p' |
+    awk -F '\t' -v OFS='\t' '$1 != "" {
+      kind = "session"
+      if ($2 == "answer") kind = "answer"
+      else if ($3 ~ /^restart/) kind = "restart"
+      else if ($3 ~ /^wait/) kind = "wait"
+      else if ($3 ~ /^-[0-9]/) kind = "resumed"
+      print $1, $2, kind
+    }'
+}
+
 autopilot_state() {
   run_log=$(ls .work/autopilot/run-*.md 2>/dev/null | sort | tail -n 1)
   if [ -z "$run_log" ]; then
@@ -105,6 +121,15 @@ autopilot_state() {
   run_id=${run_id%.md}
   ap_active=false
   ap_current=null
+  ap_running=false
+  ap_stop=false
+  if [ -f .work/autopilot/lock ] && read -r lock_pid _ <.work/autopilot/lock 2>/dev/null &&
+    [ -n "${lock_pid:-}" ] && kill -0 "$lock_pid" 2>/dev/null &&
+    ps -p "$lock_pid" -o command= 2>/dev/null | grep -q autopilot; then
+    ap_running=true
+    ap_active=true
+    [ ! -f .work/autopilot/stop ] || ap_stop=true
+  fi
   if ! grep -Eq '^(Every feature has a PR|Stopped at )' "$run_log"; then
     now=$(date +%s)
     transcript=$(ls -t .work/autopilot/*.jsonl 2>/dev/null | head -n 1)
@@ -119,20 +144,11 @@ autopilot_state() {
     if [ -n "$reset" ] && [ "$reset" -gt "$(epoch_key $((now - idle_limit)))" ]; then
       ap_active=true
     fi
-    if [ "$ap_active" = true ] && [ -n "$transcript" ]; then
-      name=${transcript##*/}
-      name=${name%.jsonl}
-      case $name in
-        "$run_id-"*)
-          name=${name#"$run_id-"}
-          ending='(-(restart|wait)-[0-9]+|-[0-9]+)?'
-          ap_phase=$(printf '%s' "$name" | sed -nE "s/^.*-(plan|build|answer)$ending\$/\\1/p")
-          ap_feature=$(printf '%s' "$name" | sed -nE "s/^(.*)-(plan|build|answer)$ending\$/\\1/p")
-          if [ -n "$ap_phase" ] && [ -n "$ap_feature" ]; then
-            ap_current="{\"feature\":$(json_str "$ap_feature"),\"phase\":$(json_str "$ap_phase")}"
-          fi
-          ;;
-      esac
+    if [ "$ap_active" = true ] && [ -n "$transcript" ] && parts=$(transcript_parts "$transcript" "$run_id") && [ -n "$parts" ]; then
+      ap_feature=${parts%%"$tab"*}
+      ap_phase=${parts#*"$tab"}
+      ap_phase=${ap_phase%%"$tab"*}
+      ap_current="{\"feature\":$(json_str "$ap_feature"),\"phase\":$(json_str "$ap_phase")}"
     fi
   fi
   ap_features='['
@@ -152,7 +168,43 @@ autopilot_state() {
   done <<EOF
 $ap_rows
 EOF
-  printf '{"active":%s,"current":%s,"features":%s]}' "$ap_active" "$ap_current" "$ap_features"
+  ap_sessions='['
+  ap_sep=''
+  while IFS= read -r ap_file; do
+    parts=$(transcript_parts "$ap_file" "$run_id") && [ -n "$parts" ] || continue
+    IFS="$tab" read -r ap_name ap_phase ap_kind <<EOF
+$parts
+EOF
+    ap_sessions="$ap_sessions$ap_sep{\"file\":$(json_str "$ap_file"),\"feature\":$(json_str "$ap_name"),\"phase\":$(json_str "$ap_phase"),\"kind\":$(json_str "$ap_kind")}"
+    ap_sep=,
+  done <<EOF
+$(ls -tr .work/autopilot/"$run_id"-*.jsonl 2>/dev/null)
+EOF
+  ap_messages='['
+  ap_sep=''
+  ap_list=$(
+    for ap_file in .work/autopilot/steer/delivered/"$run_id"-*.md .work/autopilot/steer/"$run_id"-*.md; do
+      [ -f "$ap_file" ] || continue
+      ap_text=$(tr '\n\t' '  ' <"$ap_file" 2>/dev/null | sed 's/[[:space:]]*$//')
+      ap_delivered=false
+      [ "${ap_file#*/delivered/}" = "$ap_file" ] || ap_delivered=true
+      printf '%s\t%s\t%s\n' "${ap_file##*/}" "$ap_delivered" "$ap_text"
+    done | awk -F '\t' '!seen[$1]++'
+  )
+  while IFS="$tab" read -r ap_name ap_delivered ap_text; do
+    [ -n "$ap_name" ] || continue
+    ap_messages="$ap_messages$ap_sep{\"text\":$(json_str "$ap_text"),\"delivered\":$ap_delivered}"
+    ap_sep=,
+  done <<EOF
+$(printf '%s\n' "$ap_list" | sort)
+EOF
+  ap_resume=null
+  if grep -q '^Stopped at ' "$run_log"; then
+    ap_last=$(awk -F '|' '/^\|/ { r = $4; gsub(/^[ \t]+/, "", r); if (r ~ /^stopped/) s = $6 } END { n = split(s, w, " "); if (n > 0 && w[n] != "–") print w[n] }' "$run_log")
+    [ -z "$ap_last" ] || ap_resume=$(json_str "$ap_last")
+  fi
+  printf '{"active":%s,"running":%s,"stop_requested":%s,"current":%s,"features":%s],"sessions":%s],"messages":%s],"resume":%s}' \
+    "$ap_active" "$ap_running" "$ap_stop" "$ap_current" "$ap_features" "$ap_sessions" "$ap_messages" "$ap_resume"
 }
 
 if [ -z "$feature" ]; then

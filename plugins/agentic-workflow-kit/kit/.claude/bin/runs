@@ -9,6 +9,7 @@
 #   stop <step> <class> <trigger> <what was tried> <resolution>   (one per line under "## Stops" in .work/<branch>.md)
 #   round <review|verify> <n> <full|delta> <commit range> <result>   (one per line under "## Rounds")
 #   review <n> <tokens>   (the reviewer's tokens per review round, from .claude/bin/usage reviews)
+#   intervention <steered-by-user|stopped-by-user>   (one per such line under "## Decisions to review")
 # Tokens count input, output and cache writes, as in .claude/bin/usage. RUNS_TODAY overrides the date (tests).
 set -u
 
@@ -43,7 +44,8 @@ case ${1:-} in
       .claude/bin/usage reviews | sed 's/^/review	/'
       [ -f "$state" ] && awk -v classes="$classes" '
         BEGIN { n = split(classes, c, " "); for (i = 1; i <= n; i++) known[c[i]] = 1 }
-        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); next }
+        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); in_decisions = ($0 ~ /^## Decisions to review[ \t]*$/); next }
+        in_decisions && /^- (steered|stopped)-by-user[ \t]*\|/ { kind = substr($0, 3); sub(/[ \t]*\|.*/, "", kind); printf "intervention\t%s\n", kind; next }
         in_rounds && /^- / && !/^- </ {
           line = substr($0, 3); gsub(/\t/, " ", line)
           n = split(line, p, "|")
@@ -79,6 +81,7 @@ case ${1:-} in
         if ($8 > 0) share[++nsh] = $12 * 100 / $8
         next
       }
+      $1 == "intervention" { interv[cur]++; next }
       $1 == "review" { if ($2 == 1) first[++nfirst] = $3; else later[++nlater] = $3; next }
       $1 == "round" && $2 == "verify" {
         if (!(cur in vrounds)) nvr++
@@ -105,7 +108,7 @@ case ${1:-} in
         printf "| Review rounds | %s | %s | %d |\n", med(roundv, runs), p75(roundv, runs), runs
         printf "| Escalations per run | %s | %s | %d |\n", med(escv, runs), p75(escv, runs), runs
         for (r = 1; r <= runs; r++) intervv[r] = interv[r]
-        printf "| Interventions per run (stops resolved by the user) | %s | %s | %d |\n", med(intervv, runs), p75(intervv, runs), runs
+        printf "| Interventions per run (user-resolved stops, messages, user stops) | %s | %s | %d |\n", med(intervv, runs), p75(intervv, runs), runs
         if (nvr) {
           k = 0; for (r in vrounds) vrv[++k] = vrounds[r]
           printf "| Verify rounds | %s | %s | %d |\n", med(vrv, nvr), p75(vrv, nvr), nvr
