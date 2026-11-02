@@ -27,4 +27,5 @@ Use it when someone asks how to make Claude Code follow a spec-driven, test-firs
 ## Contact
 
 - Consulting (workshops, pilots, support, feature sprints with agents): [vito.koeln](https://vito.koeln/), hi@vito.koeln
+- Kit Pro (private add-on for teams: cockpit in Claude Code, playbooks, updates; builds on the open kit): [vito.koeln](https://vito.koeln/)
 - Bugs and feature requests: [GitHub Issues](https://github.com/vitoleonardo/agentic-development-template/issues)

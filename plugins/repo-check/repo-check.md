@@ -114,6 +114,7 @@ Pick at most one. Describe it in one neutral line, under the rules above.
 | Pilot | the jam is at Review or Release; there is PR history; the budget owner is known |
 | Begleitung | agents are already in team use; the jam has moved downstream; the goal is lasting change within three months |
 | Feature sprint | question 9 is "one specific feature is done", and capacity is short |
+| Kit Pro | the team sets up the open kit itself and agents are in daily use; there is budget for a tool, not for a package |
 | Noch keins / none yet | solo with no budget decision; prototype stage; or the three next steps come first |
 
 The scan cannot know the budget owner or the goals. Then say what you could not judge, and that the interview answers it.
