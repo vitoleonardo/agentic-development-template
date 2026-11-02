@@ -1,6 +1,6 @@
 ---
 name: improve-kit
-description: Optional retrospective over recorded feature runs - read the run records, token usage and lead time, check whether earlier kit changes worked, and propose evidence-backed changes to routing, rules, hooks, checks and skills. Proposes only; changes nothing before approval and never touches application code. Needs KIT_IMPROVE in .claude/kit.conf.
+description: Optional retrospective over recorded feature runs - run records, token usage, lead time, earlier kit changes - proposing evidence-backed changes to routing, rules, hooks, checks and skills. Changes nothing before approval, never application code. Needs KIT_IMPROVE in .claude/kit.conf.
 argument-hint: [focus, for example "tokens" or "stops"]
 disable-model-invocation: true
 ---
@@ -9,11 +9,11 @@ disable-model-invocation: true
 
 Focus: $ARGUMENTS (everything if empty)
 
-This is a retrospective, not a pipeline step. Run it every five merged features or once a month. You propose; the user decides. Never edit application code, and never change `.claude/` or `kit.conf` before the user approves the proposal.
+Run it every five merged features or once a month, not as a pipeline step. You propose; the user decides. Never edit application code; change `.claude/` or `kit.conf` only after the user approves.
 
 ## 0. Is it on?
 
-Run `.claude/bin/runs report`. If it says run records are off, tell the user that `/improve-kit` needs `KIT_IMPROVE="1"` in `.claude/kit.conf`, that `/verify-feature` then writes `reports/runs/<branch>.tsv` with each PR, and that the first useful report needs about five runs. Stop.
+Run `.claude/bin/runs report`. If run records are off, tell the user it needs `KIT_IMPROVE="1"` in `.claude/kit.conf`, that `/verify-feature` then writes `reports/runs/<branch>.tsv` with each PR, and that a useful report needs about five runs. Stop.
 
 ## 1. Read
 
@@ -21,15 +21,15 @@ Run `.claude/bin/runs report`. If it says run records are off, tell the user tha
 - If `gh` works, run `.claude/bin/leadtime` and read `reports/lead-time.md`: lead time, review rounds and rework from GitHub.
 - `reports/improvements.md`, the log of earlier changes, if it exists.
 - `.work/autopilot/sessions.tsv` and the run logs next to it, if autopilot ran: how each session ended (`ended`, the watchdog, a usage limit) and where a run stopped.
-- For a recurring review finding, the merged PRs' review comments (`gh pr view <n> --comments`). Read only what a rule below needs.
+- For a recurring review finding, the merged PRs' review comments (`gh pr view <n> --comments`), only as far as a rule below needs.
 
 ## 2. Check earlier changes first
 
-For each entry in `reports/improvements.md` that has at least three runs after it, compare the metric it names with the value before. Mark it `kept` when the metric moved the expected way, and propose reverting it when it did not. With fewer runs, say "too early".
+For each entry in `reports/improvements.md` with at least three runs after it, compare its metric with the value before: `kept` when it moved the expected way, else propose reverting it. With fewer runs, say "too early".
 
 ## 3. Apply the rules
 
-Each rule needs its minimum sample; below it, write "not enough data" instead of a proposal. Never propose more than five changes at once; pick the ones with the largest effect.
+Below a rule's minimum sample, write "not enough data" instead of a proposal. Propose at most five changes, the ones with the largest effect.
 
 | Signal (from the report) | Minimum | Proposal |
 |---|---|---|
@@ -39,8 +39,8 @@ Each rule needs its minimum sample; below it, write "not enough data" instead of
 | The same `kit` stop twice | 2 stops | Fix the hook, guard, check command or rule the stops name, with a test in the kit's tests. |
 | `spec` or `plan` stops of one kind twice | 2 stops | Add the missing question to the interview in `/spec-feature`, or the missing rule to `/plan-feature`. |
 | The same correction resolved `user:` in two runs | 2 stops | Turn it into a rule, check or test, so the next run does not need the user for it. Prefer a check over a rule. |
-| `hotfix` stops in two runs | 2 runs | Review let product bugs through to verify. Propose a read-only reviewer from another vendor at the last review round (for example `codex exec` on the diff), off by default, whose findings are merged by severity and never applied without a fix through the implementer. |
-| Autopilot sessions ended by the watchdog, or a feature stopped without a Stops line explaining why, twice | 2 sessions | The session gave up early. Read the transcripts' last turns, then propose steering for long runs: a line in autopilot's unattended note against stopping early, or the elapsed time and remaining budget fed into the session. |
+| `hotfix` stops in two runs | 2 runs | Review let product bugs through to verify. Propose a read-only reviewer from another vendor at the last review round (for example `codex exec` on the diff), off by default; its findings are merged by severity and fixed only through the implementer. |
+| Autopilot sessions ended by the watchdog, or a feature stopped without a Stops line saying why, twice | 2 sessions | The session gave up early. Read the transcripts' last turns, then propose steering: a line in autopilot's unattended note against stopping early, or feeding elapsed time and remaining budget into the session. |
 | Any `env` stop | 1 stop | Add the step to "Things only a human can do" in `CLAUDE.md`. |
 | Main-session share above 50 %, or tokens per task rising over the last five runs | 5 runs | Find the cause in the runs (no `/clear` after the plan, oversized tasks, long exploration in the main session) and propose the matching change. |
 | Any `budget` stop, or no `KIT_BUDGET_TOKENS` set | 5 runs | Propose `KIT_BUDGET_TOKENS` at the p75 of tokens per run, rounded up. |
@@ -66,7 +66,7 @@ Write `.work/improve/<YYYY-MM-DD>.md`:
 - <rule>: <what is missing>
 ```
 
-Summarise the proposals for the user and stop. Wait for the user to pick which ones to apply.
+Summarise the proposals and stop until the user picks which to apply.
 
 ## 5. Apply the approved ones
 

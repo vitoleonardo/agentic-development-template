@@ -1,6 +1,6 @@
 ---
 name: plan-feature
-description: Turn an approved spec into a short implementation plan (tasks, files, tests, risks, which criterion each task covers), approved before any code is written. Use when the user asks to plan a feature.
+description: Turn an approved spec into a short implementation plan (tasks, files, tests, risks, criteria per task), approved before any code is written. Use when the user asks to plan a feature.
 argument-hint: <feature name or spec path>
 ---
 
@@ -8,16 +8,16 @@ argument-hint: <feature name or spec path>
 
 Feature: $ARGUMENTS
 
-Do not edit source files in this step. The only files you write are the state file and the status row.
+Write only the state file and the status row; no source files.
 
 ## 1. Read
 
-- The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. For a small fix without a spec, write two or three acceptance criteria into the plan instead and have them approved with it.
-- The code the feature touches. For a large codebase, explore the affected areas with parallel `Explore` subagents, passing `model` from `.claude/bin/route explore`, so you read their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
+- The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. A small fix without a spec gets two or three acceptance criteria in the plan, approved with it.
+- The code the feature touches. In a large codebase, use parallel `Explore` subagents (`model` from `.claude/bin/route explore`) and keep their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
 
 ## 2. Write the plan
 
-Write it to `.work/<branch>.md`, using the current branch or, if you are on `main`, the branch name you propose (`<issue>-<slug>`). Do not create the branch yet.
+Write it to `.work/<branch>.md`: the current branch, or on `main` the branch name you propose (`<issue>-<slug>`). Do not create the branch yet.
 
 ```markdown
 # Plan: <feature> (spec: specs/<feature>.md)
@@ -67,20 +67,19 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 
 Rules for the plan:
 
-- The design covers every criterion; it introduces nothing the spec does not ask for.
-- Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
-- Every write and external call the feature adds is listed under Side effects. A write that must wait for a permission check or the final outcome says so, and a blocking call says where it runs instead of the request or event loop.
+- The design covers every criterion and adds nothing the spec does not ask for.
+- Every criterion appears in at least one task. List the coverage; a criterion without a task means the plan is not done.
+- Every write and external call the feature adds is under Side effects, including one that must wait for a permission check or the final outcome, and where a blocking call runs instead of the request or event loop.
 - Every file in the Files column sits in its kind's home in `.claude/rules/structure.md`. Run `.claude/bin/structure <every new file the plan names>`; a failure means a different path, or a new home under Decisions whose task adds it to the Map.
 - `Reused` names what you searched for, also when nothing fit (`searched src/lib for money formatting: none`).
-- Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
-- Each task is worth a fresh context. Fold a pure rename or a one-line change into the task whose files it touches.
+- Each task is one concern of at most about five files; split anything bigger. Fold a pure rename or a one-line change into the task whose files it touches.
 - Name the test cases, not just "add tests".
-- Order the tasks so nothing is built before what it depends on. Tasks run one after another, in this order.
-- Tier: the model tier the implementer runs on. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
+- Order the tasks so nothing is built before what it depends on; they run one after another in this order.
+- Tier: the implementer's model tier, default `.claude/bin/route tier implement`. `deep` for auth, data migrations, concurrency, money, a protected contract, or no existing pattern to copy; `fast` for pure renames and copy tasks. Every non-default tier gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
 
 ## 3. Ask for approval
 
-Summarise: the design decisions, the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over 400 lines, propose how to split it into several PRs.
+Summarise the design decisions, tasks, files touched, risks, human-only steps, and an estimate of the changed lines. Over 400 lines, propose a split into several PRs.
 
 Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over 400 lines.
 
