@@ -16,7 +16,7 @@ case $* in
     exit 0
     ;;
 esac
-printf '%s|%s|%s|%s|%s\n' "$(git branch --show-current)" "${KIT_BASE:-}" "${KIT_APPROVAL:-}" "${KIT_IMPROVE:-}" "$*" >>"$FAKE_DIR/calls"
+printf '%s|%s|%s|%s|%s|%s\n' "$(git branch --show-current)" "${KIT_BASE:-}" "${KIT_APPROVAL:-}" "${KIT_IMPROVE:-}" "${KIT_AUTOPILOT_RUN:-}" "$*" >>"$FAKE_DIR/calls"
 n=$(($(cat "$FAKE_DIR/n" 2>/dev/null || echo 0) + 1))
 echo "$n" >"$FAKE_DIR/n"
 set_status() {
@@ -37,7 +37,8 @@ COST=0.5
 EXTRA=""
 SLEEP=0
 eval "$(sed -n "${n}p" "$FAKE_DIR/script")"
-printf '{"type":"system","subtype":"init"}\n'
+printf '{"type":"system","subtype":"init","session_id":"s%s"}\n' "$n"
+
 [ -z "$EXTRA" ] || printf '%s\n' "$EXTRA"
 sleep "$SLEEP"
 printf '{"type":"result","session_id":"s%s","result":"%s","num_turns":%s,"total_cost_usd":%s,"permission_denials":[%s]}\n' "$n" "$RESULT" "$TURNS" "$COST" "$DENIED"
@@ -272,6 +273,179 @@ same "$(cut -f 9 .work/autopilot/sessions.tsv | tail -n 1)" "ended" "an allowed 
 
 setup alpha:approved
 same "$(KIT_IMPROVE=1 .claude/bin/runs report)" "No run records in reports/runs/ yet." "KIT_IMPROVE from the environment turns run records on"
+
+# --- run lock, start, stop, steer --------------------------------------------------
+
+wait_until() {
+  _tries=0
+  until eval "$1"; do
+    _tries=$((_tries + 1))
+    [ "$_tries" -lt "$2" ] || return 1
+    sleep 1
+  done
+}
+lock_file=.work/autopilot/lock
+
+setup alpha:planned
+script "cat $lock_file >\"\$FAKE_DIR/lock-seen\"; set_status alpha in-review; open_pr"
+autopilot
+same "$?" 0 "STEER-AC1: a run with a lock runs through"
+run=$(ls .work/autopilot/run-*.md | sed 's|.*/run-||; s|\.md$||')
+same "$(cut -d ' ' -f 2 "$fake/lock-seen")" "$run" "STEER-AC1: the lock names the run while a session runs"
+[ -n "$(cut -d ' ' -f 1 "$fake/lock-seen")" ] && ok || fail "STEER-AC1: the lock names the process"
+[ ! -e "$lock_file" ] && ok || fail "STEER-AC1: a finished run removes its lock"
+same "$(call 1 | cut -d '|' -f 5)" "$run" "STEER-AC1: the session knows its run"
+
+setup alpha:planned
+script 'RESULT="ESCALATE: stop"' 'RESULT="ESCALATE: stop"'
+autopilot
+same "$?" 1 "STEER-AC1: a stopped run halts"
+[ ! -e "$lock_file" ] && ok || fail "STEER-AC1: a halted run removes its lock"
+
+setup alpha:planned
+script "SLEEP=30" "set_status alpha in-review; open_pr"
+.claude/bin/autopilot >"$work/out" 2>"$work/err" &
+pilot=$!
+wait_until '[ -s "$fake/calls" ]' 10
+kill "$pilot"
+wait "$pilot"
+[ ! -e "$lock_file" ] && ok || fail "STEER-AC1: a terminated run removes its lock"
+
+setup alpha:planned
+mkdir -p .work/autopilot
+sh -c 'sleep 60; :' autopilot-holder &
+holder=$!
+printf '%s 20261102-120000\n' "$holder" >"$lock_file"
+autopilot
+same "$?" 2 "STEER-AC2: a second run is refused"
+same "$(cat "$work/err")" "autopilot: run 20261102-120000 is already running (pid $holder). Stop it with .claude/bin/autopilot stop." "STEER-AC2: the refusal names the running run"
+autopilot start
+same "$?" 2 "STEER-AC2: a second start is refused"
+same "$(cat "$work/err")" "autopilot: run 20261102-120000 is already running (pid $holder). Stop it with .claude/bin/autopilot stop." "STEER-AC2: start names the running run"
+same "$(calls)" "" "STEER-AC2: no session starts beside a running run"
+
+setup alpha:planned
+script "set_status alpha in-review; open_pr"
+mkdir -p .work/autopilot
+printf '%s 20261102-120000\n' "$holder" >"$lock_file"
+autopilot steer "keep the CSV columns as in the spec"
+same "$?" 0 "STEER-AC12: a message to a running run is queued"
+same "$(cat "$work/out")" "autopilot: message queued; the session reads it after its next tool call." "STEER-AC12: the queueing is confirmed"
+same "$(cat .work/autopilot/steer/20261102-120000-*-0001-*.md)" "keep the CSV columns as in the spec" "STEER-AC12: the message holds the text, named after the run"
+autopilot steer "   "
+same "$?" 2 "STEER-AC13: a blank message is refused"
+same "$(ls .work/autopilot/steer/*.md | wc -l | tr -d ' ')" 1 "STEER-AC13: a blank message queues nothing"
+autopilot stop &
+stopper=$!
+wait_until '[ -e .work/autopilot/stop ]' 5 && ok || fail "STEER-AC6: the stop is requested"
+kill "$holder"
+wait "$holder" 2>/dev/null
+wait "$stopper"
+same "$?:$(cat "$work/out")" "0:autopilot: stopped run 20261102-120000." "STEER-AC6: stop returns once the run has stopped"
+sleep 60 &
+reused=$!
+printf '%s 20261102-120000\n' "$reused" >"$lock_file"
+autopilot
+code=$?
+kill "$reused"
+wait "$reused" 2>/dev/null
+same "$code" 0 "STEER-AC3: a lock whose process is no autopilot does not block the run"
+same "$(calls | wc -l | tr -d ' ')" 1 "STEER-AC11: a stop left from an earlier run does not stop the new run"
+
+setup alpha:planned
+autopilot stop
+same "$?:$(cat "$work/err")" "1:autopilot: no run is running." "STEER-AC10: stop without a run"
+autopilot steer "hello"
+same "$?:$(cat "$work/err")" "1:autopilot: no run is running." "STEER-AC10: steer without a run"
+
+setup alpha:planned
+script "sleep 2; set_status alpha in-review; open_pr"
+autopilot start alpha
+same "$?" 0 "STEER-AC4: start returns while the run goes on"
+run=$(ls .work/autopilot/run-*.md | sed 's|.*/run-||; s|\.md$||')
+same "$(cat "$work/out")" "autopilot: started run $run. Run log: .work/autopilot/run-$run.md" "STEER-AC4: start names the run and its log"
+[ -e "$lock_file" ] && ok || fail "STEER-AC4: the run is still running after start returned"
+wait_until '[ ! -e "$lock_file" ]' 20
+contains "$(cat .work/autopilot/run-*.md)" "Every feature has a PR" "STEER-AC4: the detached run finishes on its own"
+
+setup alpha:planned
+(KIT_BUDGET_TOKENS="" autopilot start)
+same "$?" 2 "STEER-AC5: a failed check fails the start with its code"
+contains "$(cat "$work/err")" "KIT_BUDGET_TOKENS" "STEER-AC5: the start prints the check's message"
+[ ! -e "$lock_file" ] && ok || fail "STEER-AC5: a failed start leaves no lock"
+
+setup alpha:planned
+script "SLEEP=30" "set_status alpha in-review; open_pr"
+.claude/bin/autopilot >"$work/out" 2>"$work/err" &
+pilot=$!
+wait_until '[ -s "$fake/calls" ]' 10
+asked=$(date +%s)
+.claude/bin/autopilot stop >"$work/stop-out"
+wait "$pilot"
+code=$?
+took=$(($(date +%s) - asked))
+same "$code" 1 "STEER-AC6: a stopped run exits 1"
+[ "$took" -le 5 ] && ok || fail "STEER-AC6: the session ends within 5 s, took $took s"
+log=$(cat .work/autopilot/run-*.md)
+contains "$log" "| alpha | alpha | stopped: user | stopped by the user | s1 |" "STEER-AC6: the run log has the stopped row"
+contains "$log" "Stopped at alpha: stopped by the user" "STEER-AC6: the run log has the closing line"
+contains "$(cat "$work/err")" "claude --resume s1" "STEER-AC7: the resume command names the session from its first line"
+contains "$(cat "$work/stop-out")" "Resume it with: claude --resume s1" "STEER-AC6: stop prints the resume command"
+contains "$(cat .work/alpha.md)" "- stopped-by-user | build session | " "STEER-AC9: the stop is logged under Decisions to review"
+contains "$(cut -f 9 .work/autopilot/sessions.tsv | tail -n 1)" "user" "STEER-AC6: the session row says the user ended it"
+[ ! -e .work/autopilot/stop ] && ok || fail "STEER-AC6: the stop request is used up"
+
+setup alpha:approved
+script ": >.work/autopilot/stop; set_status alpha planned" "set_status alpha in-review; open_pr"
+autopilot
+same "$?" 1 "STEER-AC8: a stop between sessions stops the run"
+same "$(calls | wc -l | tr -d ' ')" 1 "STEER-AC8: the next session does not start"
+contains "$(cat .work/autopilot/run-*.md)" "Stopped at alpha: stopped by the user" "STEER-AC8: the run log has the closing line"
+contains "$(cat .work/alpha.md)" "- stopped-by-user | " "STEER-AC9: the stop between sessions is logged under Decisions to review"
+
+setup alpha:planned
+script "SLEEP=30" "set_status alpha in-review; open_pr"
+AUTOPILOT_POLL_SECONDS=60 .claude/bin/autopilot >"$work/out" 2>"$work/err" &
+pilot=$!
+wait_until '[ -s "$fake/calls" ]' 10
+asked=$(date +%s)
+.claude/bin/autopilot stop >/dev/null
+wait "$pilot"
+took=$(($(date +%s) - asked))
+[ "$took" -le 5 ] && ok || fail "STEER-AC6: with the default poll the session ends within 5 s, took $took s"
+
+setup alpha:planned
+script 'RESULT="Which columns?"' 'RESULT="ANSWER: the ones in the spec"' "set_status alpha in-review; open_pr"
+autopilot
+contains "$(call 2)" "You answer one question" "STEER-AC17: the second call is the answerer"
+same "$(call 2 | cut -d '|' -f 5)" "" "STEER-AC17: the answerer does not get the run, so it gets no messages"
+same "$(call 3 | cut -d '|' -f 5)" "$(ls .work/autopilot/run-*.md | sed 's|.*/run-||; s|\.md$||')" "STEER-AC17: the resumed session gets the run"
+
+setup alpha:planned
+script 'RESULT="Which columns?"' 'SLEEP=30; RESULT="ANSWER: late"'
+.claude/bin/autopilot >"$work/out" 2>"$work/err" &
+pilot=$!
+wait_until '[ "$(calls | wc -l | tr -d " ")" -ge 2 ]' 10
+asked=$(date +%s)
+.claude/bin/autopilot stop >/dev/null
+wait "$pilot"
+took=$(($(date +%s) - asked))
+[ "$took" -le 6 ] && ok || fail "STEER-AC6: a stop during the answerer ends it within 5 s, took $took s"
+same "$(grep -c 'stopped:' .work/autopilot/run-*.md)" 1 "STEER-AC6: a stop during the answerer writes one stopped row"
+contains "$(cat .work/autopilot/run-*.md)" "| alpha | alpha | stopped: user |" "STEER-AC6: the answerer's stop is the user's"
+
+setup alpha:planned
+future=$(($(date +%s) + 3600))
+script "EXTRA='{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":$future}}'; RESULT='You have hit your limit'"
+.claude/bin/autopilot >"$work/out" 2>"$work/err" &
+pilot=$!
+wait_until 'grep -q "waits for the usage limit" .work/autopilot/run-*.md 2>/dev/null' 10
+asked=$(date +%s)
+.claude/bin/autopilot stop >/dev/null
+wait "$pilot"
+took=$(($(date +%s) - asked))
+[ "$took" -le 5 ] && ok || fail "STEER-AC8: a stop during a usage-limit wait stops within 5 s, took $took s"
+contains "$(cat .work/autopilot/run-*.md)" "Stopped at alpha: stopped by the user" "STEER-AC8: the wait ends in a user stop"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

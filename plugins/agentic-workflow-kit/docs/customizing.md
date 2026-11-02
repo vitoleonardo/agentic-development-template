@@ -239,6 +239,14 @@ Later features wait, because they build on the stopped one. Answer with the prin
 
 **What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript (with `-restart-<n>`, `-wait-<n>` or the answer number for later sessions of the phase). With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
 
+**Watch and steer a run.** One run at a time: `.work/autopilot/lock` holds its process and run ID, and a second `autopilot` refuses to start beside it.
+
+- `.claude/bin/autopilot start [slug ...]` runs the same checks, then detaches the run and returns once it is underway. The run's output goes to `.work/autopilot/autopilot.out`.
+- `.claude/bin/autopilot steer "<text>"` queues a message. The kit's `steer` hook hands it to the session after the main agent's next tool call, and the session logs what it did under Decisions to review as `steered-by-user`. While a subagent works, the message waits for its end. A message queued at a session's end goes to the run's next session.
+- `.claude/bin/autopilot stop` ends the session within 5 seconds and stops the run like any other stop, with `stopped-by-user` under Decisions to review. Resume it with the printed `claude --resume <session id>`, then run `autopilot` again.
+
+Steering messages and user stops count as interventions in `reports/runs.md`, next to stops the user resolved.
+
 If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
 
@@ -258,6 +266,7 @@ The hooks are in `.claude/hooks/` and registered in `.claude/settings.json`:
 |---|---|---|
 | `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it, and gated commands get `ask` or `allow` per `KIT_APPROVAL` |
 | `PostToolUse` (Edit, Write) | `record-edit` | after every edit; only notes the file, because it runs in parallel |
+| `PostToolUse` (every tool) | `steer` | only in autopilot sessions: hands the main agent the messages queued with `autopilot steer` |
 | `PostToolBatch` | `check-edits` | once per batch of tool calls: spec lint, format, typecheck, related tests |
 | `Stop` | `summary`, `usage` | when Claude wants to end the turn |
 | `PreToolUse`, `PostToolUse` (Agent), `SubagentStop` | `usage` | token record per agent, and the budget check before each dispatch |

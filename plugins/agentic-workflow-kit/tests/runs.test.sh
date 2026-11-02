@@ -109,9 +109,23 @@ grep -q '^- old-a, task 3: format hook slow. Tried: –. Resolution: waited.$' "
 grep -q '| Verify rounds | 2 | 3 | 2 |' "$m" && ok || fail "verify rounds per run, only runs that record rounds: $(grep -i verify "$m")"
 grep -q 'Verify rounds: 4 in 2 runs (mean 2.0). Failed by a kit false positive: 1. Failed on the screenshot review: 1.' "$m" && ok || fail "verify rounds by cause: $(grep -i 'verify rounds:' "$m")"
 grep -q '| hotfix | 0 |' "$m" && ok || fail "hotfix is a stop class"
-grep -q '| Interventions per run (stops resolved by the user) | 0 | 1 | 3 |' "$m" && ok || fail "interventions per run: $(grep -i interventions "$m")"
+grep -q '| Interventions per run (user-resolved stops, messages, user stops) | 0 | 1 | 3 |' "$m" && ok || fail "interventions per run: $(grep -i interventions "$m")"
 grep -q '| 2026-09-10 | old-b | 0 | 1 | 0 | 2000 | 1000 | 1 | 1 |' "$m" && ok || fail "a run row counts its interventions: $(grep old-b "$m")"
 grep -q 'Reviewer tokens per review round: round 1 median 550 (2 rounds), later rounds median 300 (1 rounds).' "$m" && ok || fail "reviewer tokens per round: $(grep -i 'reviewer tokens' "$m")"
+
+cat >>.work/12-export.md <<'EOF'
+
+## Decisions to review
+- <gate> | <decision> | <why>
+- plan | split into two PRs | over 400 lines
+- steered-by-user | keep the CSV columns | kept them
+- stopped-by-user | build session | 02.11.2026 14:05
+- steered-by-user | skip the dark mode | left it out
+EOF
+.claude/bin/runs record >/dev/null 2>&1
+same "$(grep -c '^intervention' "$r")" 3 "STEER-AC19: one intervention row per steered-by-user and stopped-by-user decision"
+.claude/bin/runs report >/dev/null
+grep -q '| 2026-10-27 | export | 2 | 1 | 1 | 1000 | 400 | 2 | 3 |' "$m" && ok || fail "STEER-AC19: messages and user stops count as interventions: $(grep '| export |' "$m")"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

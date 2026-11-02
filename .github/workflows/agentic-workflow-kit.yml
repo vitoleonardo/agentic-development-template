@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Shellcheck
-        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/usage kit/.claude/hooks/lib.sh tests/*.sh tests/*/run.sh tests/leadtime/fake-gh adapters/python/.claude/bin/pytest-related
+        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/usage kit/.claude/hooks/steer kit/.claude/hooks/lib.sh tests/*.sh tests/*/run.sh tests/leadtime/fake-gh adapters/python/.claude/bin/pytest-related
       - name: Hooks
         run: sh tests/hooks.test.sh
       - name: Spec lint
@@ -51,8 +51,10 @@ jobs:
         run: sh tests/structure.test.sh
       - name: Status
         run: sh tests/status.test.sh
+      - name: Steering
+        run: sh tests/steer.test.sh
       - name: All suites under dash
-        run: for t in hooks check evidence usage leadtime runs structure autopilot status; do dash "tests/$t.test.sh" || exit 1; done
+        run: for t in hooks check evidence usage leadtime runs structure autopilot status steer; do dash "tests/$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates

@@ -79,7 +79,7 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
 
 \* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself, unless the branch changes auth or migration files (`KIT_PUSH_ASK_PATTERNS`). With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
 
-To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
+To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`, or `.claude/bin/autopilot start` to detach it. `autopilot steer "<text>"` sends the running session a message and `autopilot stop` stops the run. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
 
 Every step leaves a file, so a new session continues where the last one stopped. The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`. Small fixes may skip the spec, but not the test.
 
@@ -93,7 +93,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. It also blocks writing a new source file outside the Map. `record-edit` and `check-edits` run format, typecheck, related tests and the duplicates check after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
 | Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`, `/onboard`, and the optional `/improve-kit` |
 | Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
-| Status | `.claude/bin/status` | The current branch's feature in one line (stage, tasks, red checks, budget) or as JSON with criteria, sections, evidence and the autopilot run. Writes nothing |
+| Status | `.claude/bin/status` | The current branch's feature in one line (stage, tasks, red checks, budget) or as JSON with criteria, sections, evidence and the autopilot run with its sessions and messages. Writes nothing |
 | Lead time | `.claude/bin/leadtime` | Lead time, cycle time, time to first review, review rounds, spec to merge, rework and PR size from GitHub, before and after the kit, without names by default |
 | Model routing | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`; tokens per agent and an optional budget per branch |
 | Run records (optional) | `.claude/bin/runs`, `/improve-kit` | Off until `KIT_IMPROVE` is set. One record per feature in `reports/runs/` (tokens per tier, escalations, review rounds, every stop with its cause); `/improve-kit` turns them into proposed changes to the kit, applied only after approval |
