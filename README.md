@@ -73,6 +73,8 @@ The kit's guard hook and permissions reduce risk; they are not a sandbox. See [S
 
 These tools come from consulting work on agentic software delivery: workshops, pilots, ongoing support and feature sprints with agents.
 
+Everything in this repository stays open source. Teams that work with me also get Kit Pro, a private add-on with a cockpit for Claude Code (status line and pane for the feature and the autopilot run), playbooks for onboarding, rollout and measurement, and updates. It builds on the open kit and removes nothing from it; details on [vito.koeln](https://vito.koeln/).
+
 Not sure whether that fits? Paste [repo-check.md](./plugins/repo-check/repo-check.md) into Claude Code. Ten questions, about ten minutes, nothing is sent; it shows where your delivery is jammed and ends with an email draft you can send or ignore.
 
 - Email: [hi@vito.koeln](mailto:hi@vito.koeln)

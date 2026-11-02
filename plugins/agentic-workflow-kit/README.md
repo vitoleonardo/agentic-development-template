@@ -130,4 +130,4 @@ MIT. See [LICENSE](../../LICENSE).
 
 ---
 
-Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln).
+Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln). Teams that book a package also get Kit Pro: a cockpit in Claude Code, playbooks and updates, on top of this kit.
