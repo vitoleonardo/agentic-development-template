@@ -11,7 +11,7 @@ Plugins and templates that make AI coding agents work like a disciplined team me
 
 | | What it is | For | Version |
 |---|---|---|---|
-| [**agentic-workflow-kit**](./plugins/agentic-workflow-kit/) | Plugin and installer | Existing projects in any language: spec-driven workflow, permissions, guard and check hooks, subagents, CI gates, onboarding for legacy repos, lead time measurement. Adapters for TypeScript and Python | 0.2.0 |
+| [**agentic-workflow-kit**](./plugins/agentic-workflow-kit/) | Plugin and installer | Existing projects in any language: spec-driven workflow, permissions, guard and check hooks, subagents, CI gates, onboarding for legacy repos, lead time measurement. Adapters for TypeScript and Python | 0.3.0 |
 | [**repo-check**](./plugins/repo-check/) | Plugin or single-file prompt | Any repository: finds where delivery is jammed right now (writing, review or release), by a 10-minute interview or a strictly read-only scan. Sends nothing | 0.1.0 |
 | [**greenfield-nextjs**](./templates/greenfield-nextjs/) | Template to copy | New Next.js apps built by several agents in parallel tracks, contract-first | 0.0.1 |
 

@@ -131,6 +131,12 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `KIT_BUDGET_TOKENS` sets a budget per branch, counted as input, output and cache writes (cache reads are cheap and would dwarf everything else). At 80 percent the hook tells Claude to report it; at 100 percent it blocks the next dispatch, and `/ship-feature` stops and asks.
 
+## See where a feature stands
+
+`.claude/bin/status` reads the current branch's row in `specs/README.md`, its spec and `.work/<branch>.md`, and prints one line: `invite-users · build · tasks 3/7 · 1 red · budget 42%`. The stage is the first rule that matches: `done` (status), `pr` (a saved PR description), `verify` (a verify round, or status `in-review`), `review` (a review round, or every task ticked), `build` (a ticked task, or status `building`), `plan` (a state file, or status `planned`), `spec` (a row). `--session <id>` adds the checks that are red in that session's turn.
+
+`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes.
+
 ## Measure lead time
 
 `.claude/bin/leadtime` reads merged pull requests through `gh` (one GraphQL query, its built-in `--jq`) and `git`, and reports the median and p75 per period:
