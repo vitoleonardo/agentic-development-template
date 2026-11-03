@@ -12,6 +12,7 @@
 #   .claude/bin/evidence push [--pr N]         push the pack to the kit-evidence branch under <pr-N|branch>/<head sha>/
 #   .claude/bin/evidence ci-check --head SHA --key KEY...   CI: the pushed pack exists for SHA and names it
 #   .claude/bin/evidence comment --dir DIR --repo OWNER/NAME --key KEY   print the PR comment for a pack
+#   .claude/bin/evidence size                  print the branch's changed lines and its size limit
 # The pack lives in .work/<branch>/evidence/ (EVIDENCE_DIR overrides it). See docs/SPEC-v1.1.md, section 4.
 # --all runs the whole e2e suite; CI does that after every merge to catch what the selection missed.
 set -u
@@ -73,6 +74,15 @@ check_gate() {
 }
 
 # diff_all [git diff options]: the diff since the merge base including untracked files, without protected paths.
+# size_numbers: sets $changed, $max and $approved, the plan's "Approved size: <n> lines", if it has one.
+size_numbers() {
+  max=$(conf_value . KIT_MAX_CHANGED_LINES)
+  max=${max:-400}
+  approved=$(sed -n 's/^Approved size:[[:space:]]*\([0-9][0-9]*\).*/\1/p' ".work/$branch.md" 2>/dev/null | head -n 1)
+  changed=$(diff_all --numstat | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
+    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
+}
+
 diff_all() {
   # shellcheck disable=SC2046
   git diff "$@" "$(merge_base)" -- . $(excludes) 2>/dev/null
@@ -234,11 +244,11 @@ gates() {
     fi
   fi
 
-  max=$(conf_value . KIT_MAX_CHANGED_LINES)
-  max=${max:-400}
-  changed=$(diff_all --numstat | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
-    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
-  if [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines, more than twice the limit of $max; split the change"
+  size_numbers
+  if [ -n "$approved" ]; then
+    if [ "$changed" -gt "$approved" ]; then gate size fail 0 "$changed changed lines, more than the plan's approved size of $approved; split the change"
+    else gate size pass 0 "$changed changed lines (approved size $approved)"; fi
+  elif [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines, more than twice the limit of $max; split the change"
   elif [ "$changed" -gt "$max" ]; then gate size pass 0 "warning: $changed changed lines, above the limit of $max"
   else gate size pass 0 "$changed changed lines (limit $max)"; fi
 
@@ -792,6 +802,7 @@ comment() {
 command=${1:-}
 [ $# -gt 0 ] && shift
 case $command in
+  size) size_numbers; printf '%s %s\n' "$changed" "${approved:-$((max * 2))}" ;;
   gates) gates "$@" ;;
   scope) scope "$@" ;;
   matrix) matrix ;;

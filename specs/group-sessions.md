@@ -201,6 +201,7 @@ Uncommitted changes:
 - **GROUP-AC132**: Given uncommitted tracked changes outside `.claude/` on the branch of a feature with no PR, whose first group that is not done has an open task, when a new build starts, then the run log holds a line that names the stash entry.
 - **GROUP-AC133**: Given uncommitted tracked changes on a branch that is no queued feature's, when `.claude/bin/autopilot` starts, then it exits with code 2 and prints `autopilot: commit or stash your changes first.`
 - **GROUP-AC141**: Given uncommitted tracked changes on a feature's branch with no open task in its first group that is not done, when a new build starts, then it exits with code 2 and no stash entry is added.
+- **GROUP-AC157**: Given a build that stopped because a finished group left uncommitted changes, with those changes still uncommitted, when a new build starts, then it exits with code 2 and no stash entry is added.
 - **GROUP-AC144**: Given uncommitted tracked changes under `.claude/`, when `.claude/bin/autopilot` starts, then it exits with code 2 and no stash entry is added.
 
 Unfinished sessions:

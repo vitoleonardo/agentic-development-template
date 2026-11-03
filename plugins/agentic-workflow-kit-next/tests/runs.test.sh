@@ -47,6 +47,7 @@ cat >.work/12-export.md <<'EOF'
 
 ## Progress
 - [x] 1 export button
+- [x] 2 export format
 
 ## Stops
 - <step> | <class> | <trigger> | <what was tried> | <resolution>

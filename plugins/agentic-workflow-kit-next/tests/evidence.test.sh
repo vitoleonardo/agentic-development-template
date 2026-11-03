@@ -162,6 +162,17 @@ expect_code 0 "above the size limit is a warning" .claude/bin/evidence gates
 expect_out "warning: 32 changed lines" "the size warning is shown"
 seq 1 50 | sed 's/^/export const y/;s/$/ = 1;/' >>src/lib/many.ts
 expect_code 1 "above twice the size limit fails" .claude/bin/evidence gates
+branch_now=$(git branch --show-current)
+mkdir -p ".work/$(dirname "$branch_now")"
+kept_plan=$(cat ".work/$branch_now.md" 2>/dev/null)
+changed_now=$(.claude/bin/evidence size | cut -d ' ' -f 1)
+printf '%s\nApproved size: %s lines\n' "$kept_plan" "$changed_now" >".work/$branch_now.md"
+same_size=$(.claude/bin/evidence size)
+if [ "$same_size" = "$changed_now $changed_now" ]; then echo "ok" >/dev/null; else echo "FAIL: evidence size reads the approved limit: $same_size"; failed=$((failed + 1)); fi
+expect_code 0 "GROUP-AC152: exactly the approved size passes" .claude/bin/evidence gates
+printf '%s\nApproved size: %s lines\n' "$kept_plan" "$((changed_now - 1))" >".work/$branch_now.md"
+expect_code 1 "GROUP-AC153: one line over the approved size fails" .claude/bin/evidence gates
+printf '%s\n' "$kept_plan" >".work/$branch_now.md"
 rm -r src/lib
 
 sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="echo \\"1 new clones\\"; exit 1"/' .claude/kit.conf

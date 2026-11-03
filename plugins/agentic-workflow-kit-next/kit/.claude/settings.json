@@ -14,7 +14,8 @@
       "Bash(.claude/bin/spec-lint *)",
       "Bash(.claude/bin/route *)",
       "Bash(.claude/bin/usage *)",
-      "Bash(.claude/bin/gate *)"
+      "Bash(.claude/bin/gate *)",
+      "Bash(.claude/bin/autopilot *)"
     ],
     "ask": [
       "Bash(gh pr merge *)",

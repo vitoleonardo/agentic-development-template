@@ -16,14 +16,28 @@ case $* in
     exit 0
     ;;
 esac
-printf '%s|%s|%s|%s|%s\n' "$(git branch --show-current)" "${KIT_BASE:-}" "${KIT_APPROVAL:-}" "${KIT_IMPROVE:-}" "$*" >>"$FAKE_DIR/calls"
+printf '%s|%s|%s|%s|%s\n' "$(git branch --show-current)" "${KIT_BASE:-}" "${KIT_APPROVAL:-}" "${KIT_IMPROVE:-}" "$(printf '%s' "$*" | tr '\n' ' ')" >>"$FAKE_DIR/calls"
 n=$(($(cat "$FAKE_DIR/n" 2>/dev/null || echo 0) + 1))
 echo "$n" >"$FAKE_DIR/n"
 set_status() {
+  set_status_only "$1" "$2"
+  git commit -qam "status $1 $2"
+  case $2 in planned) write_ticked ;; esac
+}
+set_status_only() {
   awk -F '|' -v OFS='|' -v s="$1.md" -v t="$2" '{ x = $3; gsub(/[ `]/, "", x) } x == s || index(x, "[" s "]") == 1 { $4 = " " t " " } 1' specs/README.md >"$FAKE_DIR/readme"
   cat "$FAKE_DIR/readme" >specs/README.md
-  git commit -qam "status $1 $2"
 }
+write_ticked() {
+  [ -f ".work/$(git branch --show-current).md" ] || printf '# Plan: x (spec: specs/x.md)\n\n## Progress\n- [x] 1 done\n' >".work/$(git branch --show-current).md"
+}
+tick() { sed -i.bak "s/^- \[ \] $2 /- [x] $2 /" ".work/$1.md"; }
+commit_task() { echo "$1" >>src.txt; git add src.txt; git commit -qm "task $1: work"; }
+round() { printf -- '- group %s review 1 | full | a..b | %s\n' "$1" "$2" >>".work/$(git branch --show-current).md"; }
+finish() { _slug=$1; _group=$2; shift 2; for _t in "$@"; do commit_task "$_t"; tick "$_slug" "$_t"; done; round "$_group" pass; }
+finish_some() { _slug=$1; shift; for _t in "$@"; do commit_task "$_t"; tick "$_slug" "$_t"; done; }
+spend() { mkdir -p ".work/$(git branch --show-current)"; printf 'main:s\tm\t%s\t0\t0\t0\n' "$1" >".work/$(git branch --show-current)/usage.tsv"; }
+add_stop_line() { awk -v line="- step | $1 | failed | tried | open" '{ print } /^## Stops/ { print line }' ".work/$(git branch --show-current).md" >"$FAKE_DIR/state" && cat "$FAKE_DIR/state" >".work/$(git branch --show-current).md"; }
 open_pr() {
   echo "$(git branch --show-current) https://example.invalid/pull/$(git branch --show-current)" >>"$FAKE_DIR/prs"
 }
@@ -85,6 +99,10 @@ setup() {
   git -c user.name=t -c user.email=t@example.invalid commit -qm init
   git config user.name t
   git config user.email t@example.invalid
+  mkdir -p .work
+  for row in "$@"; do
+    case ${row#*:} in planned | building | in-review) printf '# Plan: x (spec: specs/x.md)\n\n## Progress\n- [x] 1 done\n' >".work/${row%%:*}.md" ;; esac
+  done
 }
 script() { printf '%s\n' "$@" >"$fake/script"; }
 calls() { cat "$fake/calls" 2>/dev/null; }
@@ -144,7 +162,7 @@ sleep 1
 script 'RESULT="Which one?"' 'RESULT="ESCALATE: unclear"'
 rm -f "$fake/n"
 autopilot
-same "$(ls .work/autopilot/*-alpha-build.jsonl | wc -l | tr -d ' ')" 2 "a second run keeps the first run's transcripts"
+same "$(ls .work/autopilot/*-alpha-build-*.jsonl | wc -l | tr -d ' ')" 2 "a second run keeps the first run's transcripts"
 
 setup alpha:planned beta:approved
 script 'set_status alpha in-review; RESULT="Gate duplicates failed; install jscpd?"' 'RESULT="ESCALATE: a new dependency needs a human."'
@@ -272,6 +290,678 @@ same "$(cut -f 9 .work/autopilot/sessions.tsv | tail -n 1)" "ended" "an allowed 
 
 setup alpha:approved
 same "$(KIT_IMPROVE=1 .claude/bin/runs report)" "No run records in reports/runs/ yet." "KIT_IMPROVE from the environment turns run records on"
+
+# --- group sessions (specs/group-sessions.md) --------------------------------------
+
+# A check that records its calls and exits with the next code from $fake/code-<name> (typecheck, related,
+# base-typecheck, base-test); the last line repeats, and no file means 0. Committed, so the tree stays clean.
+stub_check() {
+  rm -f "$fake"/code-* "$fake/check-calls"
+  cat >.claude/bin/check <<'EOF'
+#!/bin/sh
+echo "$*" >>"$FAKE_DIR/check-calls"
+case $* in
+  "--against-baseline typecheck") name=base-typecheck ;;
+  "--against-baseline test") name=base-test ;;
+  typecheck) name=typecheck ;;
+  test-related*) name=related ;;
+  *) exit 0 ;;
+esac
+[ ! -f "$FAKE_DIR/sleep-$name" ] || sleep "$(cat "$FAKE_DIR/sleep-$name")"
+file=$FAKE_DIR/code-$name
+[ -f "$file" ] || exit 0
+code=$(head -n 1 "$file")
+[ "$(wc -l <"$file")" -le 1 ] || sed -i.bak 1d "$file"
+echo "check output: $name failed with $code"
+exit "$code"
+EOF
+  git add -A
+  git commit -qm "stub check"
+}
+codes() { _name=$1; shift; printf '%s\n' "$@" >"$fake/code-$_name"; }
+
+# plan <slug> <task:group:tier>...: a plan with a Group column. An empty group gives an empty cell.
+plan() {
+  _file=.work/$1.md
+  shift
+  mkdir -p .work
+  {
+    printf '# Plan: x (spec: specs/x.md)\n\n## Tasks\n| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |\n|---|---|---|---|---|---|---|---|\n'
+    for _row in "$@"; do
+      _n=${_row%%:*}; _rest=${_row#*:}; _g=${_rest%%:*}; _t=${_rest#*:}
+      printf '| %s | t | f | c | c | - | %s | %s |\n' "$_n" "$_t" "$_g"
+    done
+    printf '\n## Progress\n'
+    for _row in "$@"; do printf -- '- [ ] %s t\n' "${_row%%:*}"; done
+    printf '\n## Stops\n\n## Rounds\n'
+  } >"$_file"
+}
+# threes <slug> <task:tier>...: a plan without a Group column.
+threes() {
+  _file=.work/$1.md
+  shift
+  mkdir -p .work
+  {
+    printf '# Plan: x (spec: specs/x.md)\n\n## Tasks\n| # | Task | Files | Criteria | Test cases | Depends on | Tier |\n|---|---|---|---|---|---|---|\n'
+    for _row in "$@"; do printf '| %s | t | f | c | c | - | %s |\n' "${_row%%:*}" "${_row#*:}"; done
+    printf '\n## Progress\n'
+    for _row in "$@"; do printf -- '- [ ] %s t\n' "${_row%%:*}"; done
+    printf '\n## Stops\n\n## Rounds\n'
+  } >"$_file"
+}
+tick_now() { sed -i.bak "s/^- \[ \] $2 /- [x] $2 /" ".work/$1.md"; }
+final_pr='open_pr'
+log_of() { cat .work/autopilot/run-*.md; }
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard 3:A:standard 4:A:standard 5:B:standard
+autopilot
+same "$?" 1 "AC6: four tasks in a group stop the build"
+same "$(calls)" "" "AC6: no session starts"
+contains "$(log_of)" "Stopped at alpha: group A holds 4 tasks; a group takes at most 3 tasks" "AC6: the closing line names the group and the limit"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard 3:A:standard
+autopilot
+same "$(calls)" "" "AC7: no session for a group that is not consecutive"
+contains "$(log_of)" "group A is not consecutive" "AC7: the closing line names the group"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2::standard
+autopilot
+same "$(calls)" "" "AC8: no session with an empty group cell"
+contains "$(log_of)" "task 2 has no group" "AC8: the closing line names the task"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:deep 3:A:standard 4:B:standard
+script 'finish alpha A 1 2 3' 'finish alpha B 4' 'open_pr'
+autopilot
+same "$?" 0 "AC9: a plan with two groups runs through"
+same "$(calls | wc -l | tr -d ' ')" 3 "AC9, AC28: one session per group and one final"
+contains "$(call 1)" "/ship-feature alpha --group A --tasks 1,2,3 --from " "AC9: group A first"
+contains "$(call 2)" "/ship-feature alpha --group B --tasks 4 --from " "AC9: then group B"
+contains "$(call 3)" "/ship-feature alpha --final" "AC28: then the final session"
+contains "$(call 1)" "--model opus" "AC10: a group runs on its highest tier"
+contains "$(call 2)" "--model sonnet" "AC10: the next group has its own tier"
+contains "$(call 3)" "--model sonnet" "AC29: the final session runs on the verify role"
+contains "$(cat "$fake/check-calls")" "test-related src.txt" "AC23: the build ran the related tests for the group diff"
+same "$(ls .work/autopilot/*-alpha-build-*.jsonl | wc -l | tr -d ' ')" 3 "AC64: every session has its own transcript"
+contains "$(tail -n 3 .work/autopilot/run-*.md)" "Every feature has a PR" "AC100: a push gate on auto ends with a PR"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1' '.claude/bin/status --json >"$FAKE_DIR/status"; open_pr'
+autopilot
+same "$?" 0 "AC31: one group needs no group round"
+contains "$(cat "$fake/status")" '"current":{"feature":"alpha","phase":"build"}' "AC65: status reads the session's name"
+
+# --- the build's own checks
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC26: a repaired group lets the build go on"
+contains "$(call 2)" "--resume s1" "AC24: the same session is resumed"
+contains "$(call 2)" "--model opus" "AC24: on a stronger model"
+contains "$(call 2)" "check output: typecheck failed with 1" "AC24: with the failure output"
+contains "$(call 3)" "--group B" "AC26: the next group starts"
+contains "$(call 3)" "--model sonnet" "the next group is back on its own tier"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:fast 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 1)" "--model haiku" "a group on the lowest tier starts there"
+contains "$(call 2)" "--model sonnet" "AC87: its resume runs on the standard tier"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:deep 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 2)" "--model opus" "AC25: a deep group stays on deep"
+contains "$(call 2)" "--effort max" "AC25: at effort max"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 1
+script 'finish alpha A 1' 'RESULT=tried'
+autopilot
+same "$?" 1 "AC27: a second failed check stops the build"
+same "$(calls | wc -l | tr -d ' ')" 2 "AC27: no further session"
+contains "$(log_of)" "Stopped at alpha: the build's checks failed again for group A" "AC27: the closing line says so"
+contains "$(cat .work/alpha.md)" "| tier | the build's checks failed again for group A" "AC88: Stops holds a line"
+rm -f "$fake/calls" "$fake/n"
+codes typecheck 0
+script 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC95: a rerun with passing checks goes on"
+same "$(head -n 1 "$fake/check-calls")" "typecheck" "AC95: the checks ran"
+contains "$(call 1)" "--group B" "AC95: before the next group"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+tick_now alpha 1
+printf -- '- group A review 1 | full | a..b | pass\n' >>.work/alpha.md
+codes typecheck 1 0
+script 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC96: a rerun repairs the failing done group"
+contains "$(call 1)" "--group A --tasks none" "AC96: the first session is group A's"
+contains "$(call 1)" "check output: typecheck failed with 1" "AC96: with the failure output"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 3
+codes related 4
+script 'finish alpha A 1' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC89: checks that are not configured or n/a do not fail"
+same "$(calls | wc -l | tr -d ' ')" 3 "AC89: no resume"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+: >.claude/baseline.tsv
+git add -A
+git commit -qm baseline
+codes typecheck 1
+codes base-typecheck 0
+codes related 1
+codes base-test 0
+script 'finish alpha A 1' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC90, AC91: legacy failures alone do not fail a group"
+contains "$(cat "$fake/check-calls")" "--against-baseline typecheck" "AC90: the typecheck is compared with the baseline"
+contains "$(cat "$fake/check-calls")" "--against-baseline test" "AC91: a failing related test is confirmed against the baseline"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+: >.claude/baseline.tsv
+git add -A
+git commit -qm baseline
+codes related 1
+codes base-test 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 2)" "--resume s1" "AC92: a new failure resumes the session"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'tick alpha 1' 'open_pr'
+autopilot
+case $(cat "$fake/check-calls") in *test-related*) fail "AC93: a group with no files runs no related tests" ;; *) ok ;; esac
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+echo 30 >"$fake/sleep-typecheck"
+script 'finish alpha A 1'
+AUTOPILOT_MAX_SESSION_SECONDS=2 autopilot
+same "$?" 1 "AC94: a check over the time limit stops the build"
+contains "$(log_of)" "Stopped at alpha: a check ran longer than 2 s" "AC94: the closing line says so"
+rm -f "$fake/sleep-typecheck"
+
+# --- the budget
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; spend 100001'
+autopilot
+same "$?" 1 "AC44: over budget after a group stops the build"
+same "$(calls | wc -l | tr -d ' ')" 1 "AC44: no further session"
+contains "$(log_of)" "Stopped at alpha: budget reached" "AC44: the closing line names the budget"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; spend 100000'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC120: exactly the budget stops the build"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; spend 99999' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 3 "AC45: under budget goes on"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1
+script 'finish alpha A 1; spend 100001'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC121: an over-budget build never resumes"
+contains "$(log_of)" "budget reached" "AC121: the closing line names the budget"
+rm -f "$fake/calls" "$fake/n"
+script 'open_pr'
+autopilot
+same "$?" 1 "AC122: a new build over budget stops"
+same "$(calls)" "" "AC122: no session starts"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'spend 100001; RESULT="Which one?"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC149: over budget after any session starts or resumes nothing"
+
+tokens_line='{"type":"assistant","message":{"id":"msg_1","model":"m","usage":{"input_tokens":5000,"output_tokens":0}}}'
+subagent_line='{"type":"assistant","parent_tool_use_id":"toolu_9","message":{"id":"msg_2","model":"m","usage":{"input_tokens":7000,"output_tokens":0}}}'
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+printf '%s\n%s\n' "$tokens_line" "$subagent_line" >"$work/two-lines"
+script "EXTRA=\"\$(cat '$work/two-lines')\"; SLEEP=4" 'finish alpha A 1' 'open_pr'
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+same "$(.claude/bin/usage total)" 5000 "AC123: a killed session's own tokens count"
+
+setup alpha:approved
+(KIT_BUDGET_TOKENS=100k autopilot)
+same "$?" 2 "AC124: a budget that is not a number refuses"
+same "$(calls)" "" "AC124: no session starts"
+(KIT_BUDGET_TOKENS=0 autopilot)
+same "$?" 2 "AC125: a budget of 0 refuses"
+
+# --- resuming
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard 3:A:standard
+tick_now alpha 1
+script 'RESULT=stop; finish_some alpha 2 3' 'open_pr'
+autopilot
+contains "$(call 1)" "--group A --tasks 2,3" "AC48: a partly done group goes on with its open tasks"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+tick_now alpha 1
+script 'round A pass' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 1)" "--group A --tasks none" "AC127: a ticked group without a round is not skipped"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+tick_now alpha 1
+printf -- '- group A review 2 | delta | a..b | 1 high open\n' >>.work/alpha.md
+script 'RESULT="still open"'
+autopilot
+contains "$(call 1)" "--group A" "AC128: open high findings keep the group first"
+case $(calls) in *"--group B"*) fail "AC128: group B must not start" ;; *) ok ;; esac
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+tick_now alpha 1
+script 'open_pr'
+autopilot
+contains "$(call 1)" "--final" "AC49: every group done goes to the final session"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:deep
+script 'SLEEP=4' 'finish alpha A 1' 'open_pr'
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+same "$?" 0 "AC50: a stopped group session gets a fresh one"
+contains "$(call 2)" "--group A" "AC50: for the same group"
+contains "$(call 2)" "--model opus" "AC76: on the group's model"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1; SLEEP=4' 'open_pr'
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+contains "$(call 2)" "--group A" "AC50: ticked tasks do not end a session the watchdog stopped"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'SLEEP=4' 'SLEEP=4'
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC130: a second watchdog stop starts nothing more"
+contains "$(log_of)" "Stopped at alpha: watchdog" "AC130: the closing line says so"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:deep
+script 'RESULT="Which one?"' 'RESULT="ANSWER: this one"' 'finish alpha A 1' 'open_pr'
+autopilot
+contains "$(call 3)" "--resume s1" "AC134: a question goes to the answer session"
+contains "$(call 3)" "--model opus" "AC77: the resume stays on the group's model"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:deep
+past=$(($(date +%s) - 300))
+script "EXTRA='{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":$past}}'; RESULT=limit" 'finish alpha A 1' 'open_pr'
+autopilot
+contains "$(call 2)" "--model opus" "AC78: after the usage limit the group keeps its model"
+
+# --- unfinished sessions
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'add_stop_line env; RESULT="no database"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC51: an env stop is never answered"
+contains "$(log_of)" "Stopped at alpha: no database" "AC51: the closing line says why"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'add_stop_line tier; RESULT="retry failed too"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC86: a failed retry is not answered"
+contains "$(log_of)" "Stopped at alpha: retry failed too" "AC86: the closing line says why"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; echo more >>src.txt'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC52: ticked with uncommitted changes starts nothing more"
+contains "$(log_of)" "Stopped at alpha: group A ended with its tasks ticked and uncommitted changes" "AC52: the closing line says so"
+autopilot
+same "$?" 2 "AC157: a finished group's uncommitted fix refuses"
+same "$(git stash list | wc -l | tr -d ' ')" 0 "AC157: nothing is stashed"
+same "$(cat "$work/err")" "autopilot: commit or stash your changes first." "AC157: and it says why"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b alpha
+tick_now alpha 1
+echo half >>specs/README.md
+autopilot
+same "$?" 2 "AC141: no open task would redo that work, so a new build refuses"
+same "$(git stash list | wc -l | tr -d ' ')" 0 "AC141: nothing is stashed"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'commit_task 1; tick alpha 1'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC53: no group round starts nothing more"
+contains "$(log_of)" "Stopped at alpha: group A ended without a group review round" "AC53: the closing line says so"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'commit_task 1; tick alpha 1; round A "1 high open"; add_stop_line hotfix; RESULT="still open"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC20: open high findings stop the build"
+contains "$(log_of)" "Stopped at alpha:" "AC20: the closing line says so"
+
+setup alpha:planned
+rm -f .work/alpha.md
+script 'open_pr'
+autopilot
+same "$(calls)" "" "AC54: no state file starts no session"
+contains "$(log_of)" "Stopped at alpha: .work/alpha.md has no tasks under Progress" "AC54: the closing line says so"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'git checkout -q -b elsewhere; RESULT=done'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC135: a session on another branch stops the build"
+contains "$(log_of)" "Stopped at alpha: the build session ended on branch elsewhere" "AC135: the closing line says so"
+
+setup alpha:approved
+stub_check
+script 'printf "| x |\n" >/dev/null; mkdir -p .work; write_ticked; set_status_only alpha planned' 'open_pr'
+autopilot
+same "$(git log -1 --format=%s specs/README.md)" "Set alpha to planned" "AC143: the plan's status is committed before the build"
+
+# --- plans without groups
+
+setup alpha:planned
+stub_check
+threes alpha 1:standard 2:standard 3:standard 4:standard 5:deep 6:standard 7:standard
+script 'finish_some alpha 1 2 3' 'finish_some alpha 4 5 6' 'finish_some alpha 7' 'open_pr'
+autopilot
+same "$?" 0 "AC55: a plan without groups runs through"
+contains "$(call 1)" "--group 1 --tasks 1,2,3" "AC55: tasks 1 to 3"
+contains "$(call 2)" "--group 2 --tasks 4,5,6" "AC55: tasks 4 to 6"
+contains "$(call 3)" "--group 3 --tasks 7" "AC55: task 7"
+contains "$(log_of)" "- alpha: the plan has no Group column; grouped by threes." "AC56: the run log says so"
+contains "$(call 2)" "--model opus" "AC57: its highest tier sets the model"
+
+setup alpha:planned
+stub_check
+threes alpha 1:standard 2:standard 3:standard 4:standard 5:standard 6:standard 7:standard
+tick_now alpha 1
+tick_now alpha 2
+script 'finish_some alpha 3' 'finish_some alpha 4 5 6' 'finish_some alpha 7' 'open_pr'
+autopilot
+contains "$(call 1)" "--group 1 --tasks 3 " "AC136: the first session holds task 3 only"
+
+setup alpha:planned
+stub_check
+threes alpha 1:standard 2:standard 3:standard 4:standard 5:standard 6:standard
+tick_now alpha 1
+tick_now alpha 2
+tick_now alpha 3
+script 'finish_some alpha 4 5 6' 'open_pr'
+autopilot
+contains "$(call 1)" "--group 2 --tasks 4,5,6" "AC137: ticked groups need no round"
+
+# --- uncommitted changes
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b alpha
+echo half >>specs/README.md
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 0 "AC131: a rerun with changes on the feature's branch goes on"
+contains "$(git stash list)" "autopilot " "AC131: the changes are in a named stash"
+contains "$(log_of)" "stashed uncommitted changes as 'autopilot " "AC132: the run log names it"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b alpha
+echo '# changed' >>.claude/kit.conf
+autopilot
+same "$?" 2 "AC144: changes under .claude refuse"
+same "$(git stash list | wc -l | tr -d ' ')" 0 "AC144: nothing is stashed"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b other
+echo half >>specs/README.md
+autopilot
+same "$?" 2 "AC133: changes on another branch refuse"
+same "$(cat "$work/err")" "autopilot: commit or stash your changes first." "AC133: with today's message"
+
+# --- the size limit
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; seq 1 900 >big.txt; git add big.txt; git commit -qm big'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC155: over the size limit after a group starts nothing more"
+contains "$(log_of)" "over its size limit of 800" "AC155: the closing line names the limit"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+printf 'Approved size: 2000 lines\n' >>.work/alpha.md
+script 'finish alpha A 1; seq 1 900 >big.txt; git add big.txt; git commit -qm big' 'open_pr'
+autopilot
+same "$?" 0 "AC152: an approved size lets a larger branch through"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+printf 'Approved size: 2000 lines\n' >>.work/alpha.md
+script 'sed -i.bak "s/^Approved size: 2000/Approved size: 9000/" .work/alpha.md; finish alpha A 1'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC156: a session that changes the limit stops the build"
+contains "$(log_of)" "Approved size" "AC156: the closing line names it"
+
+# --- asking before a push
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+tick_now alpha 1
+script 'add_stop_line push; RESULT="verified; push needs approval"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC117: a push stop goes to no answer session"
+contains "$(log_of)" "Stopped at alpha: verified; push needs approval" "AC41: the closing line says so"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+tick_now alpha 1
+printf -- '- verify 1 | full | a..b | pass\n' >>.work/alpha.md
+git checkout -q -b alpha
+mkdir -p .work/alpha/evidence
+printf '{\n  "head": "%s"\n}\n' "$(git rev-parse HEAD)" >.work/alpha/evidence/evidence.json
+echo 'KIT_GATE_PUSH="ask"' >>.claude/kit.conf
+git add -A
+git commit -qm "push asks"
+printf '{\n  "head": "%s"\n}\n' "$(git rev-parse HEAD)" >.work/alpha/evidence/evidence.json
+autopilot
+same "$(calls)" "" "AC119: a verified feature waiting for its push starts no session"
+contains "$(log_of)" "the push gate asks" "AC119: the closing line names the push"
+
+# --- one build at a time
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'echo $$ >"$FAKE_DIR/session-pid"; SLEEP=60'
+(AUTOPILOT_MAX_IDLE_SECONDS=120 .claude/bin/autopilot >"$work/out" 2>"$work/err") &
+_tries=0
+until [ -f .work/autopilot/lock/pid ] && [ -f "$fake/calls" ]; do sleep 1; _tries=$((_tries + 1)); [ "$_tries" -lt 20 ] || break; done
+_build=$(cat .work/autopilot/lock/pid)
+autopilot
+same "$?" 2 "AC58: a second build is refused"
+same "$(cat "$work/err")" "autopilot: a build is already running (pid $_build). Stop it with .claude/bin/autopilot --stop." "AC58: with the message"
+autopilot
+same "$?" 2 "AC138: a third build is refused too"
+same "$(.claude/bin/autopilot --ready >/dev/null; echo $?)" 1 "--ready says a build is running"
+_stop_out=$(.claude/bin/autopilot --stop)
+contains "$_stop_out" "stopped the build (pid $_build)" "AC60: --stop reports it"
+if kill -0 "$_build" 2>/dev/null; then fail "AC60: the build's process has ended"; else ok; fi
+if kill -0 "$(cat "$fake/session-pid")" 2>/dev/null; then fail "AC60: the session has ended"; else ok; fi
+contains "$(log_of)" "Stopped at alpha: stopped by .claude/bin/autopilot --stop" "AC139: the closing line says so"
+if [ -d .work/autopilot/lock ]; then fail "AC61: the lock is gone"; else ok; fi
+wait
+rm -f "$fake/calls" "$fake/n"
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 0 "AC61, AC63: a new build runs after a stopped one"
+same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC62: --stop with no build"
+same "$(.claude/bin/autopilot --ready >/dev/null; echo $?)" 0 "--ready says it can start"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+sleep 30 &
+_other=$!
+mkdir -p .work/autopilot/lock
+echo "$_other" >.work/autopilot/lock/pid
+same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC140: another process's pid is no build"
+if kill -0 "$_other" 2>/dev/null; then ok; else fail "AC140: that process got no signal"; fi
+kill "$_other" 2>/dev/null
+wait "$_other" 2>/dev/null
+mkdir -p .work/autopilot/lock
+echo 999999 >.work/autopilot/lock/pid
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 0 "AC59: a stale lock does not block"
+
+# --- started by /ship-feature
+
+ship() { .claude/bin/autopilot --ship "$@" >"$work/out" 2>"$work/err"; }
+ship_wait() {
+  _tries=0
+  while [ -d .work/autopilot/lock ] && [ "$_tries" -lt 40 ]; do sleep 1; _tries=$((_tries + 1)); done
+}
+
+setup alpha:planned
+stub_check
+git checkout -q -b 12-invite
+plan 12-invite 1:A:standard
+printf 'Base: develop\n' >/dev/null
+git branch develop main
+sed -i.bak '1a\
+Base: develop' .work/12-invite.md
+gates='for g in commit deps config push; do echo "$g=$(.claude/bin/gate $g)"; done >"$FAKE_DIR/gates-$n"; echo "improve=${KIT_IMPROVE:-empty} claudecode=${CLAUDECODE:-none} branch=$(git branch --show-current) base=${KIT_BASE:-none} level=$(.claude/bin/gate level)" >"$FAKE_DIR/env-$n"'
+script "$gates; finish 12-invite A 1" "$gates; RESULT=asks; add_stop_line push"
+CLAUDECODE=1 ship alpha
+same "$?" 0 "AC35: --ship starts a build"
+contains "$(cat "$work/out")" "Run log: .work/autopilot/run-" "AC35: it prints the run log's path"
+contains "$(cat "$work/out")" "Do not edit this checkout until the build ends." "AC37: it says to leave the checkout alone"
+ship_wait
+same "$(cat "$fake/gates-1" | tr '\n' ' ')" "commit=auto deps=auto config=auto push=ask " "AC39, AC111, AC112: build gates are auto at strict"
+same "$(cat "$fake/gates-2" | tr '\n' ' ')" "commit=auto deps=auto config=auto push=ask " "AC147, AC40: the final session commits and still asks to push"
+same "$(cat "$fake/env-1")" "improve=empty claudecode=none branch=12-invite base=develop level=strict" "AC103, AC104, AC105, AC106: the session keeps this branch, base and level"
+contains "$(log_of)" "Stopped at alpha: asks" "AC41: an asked-for push stops the build"
+if [ -d .work/autopilot/lock ]; then fail "the lock is gone after the build"; else ok; fi
+
+setup alpha:planned
+stub_check
+git checkout -q -b alpha
+plan alpha 1:A:standard
+{ echo 'KIT_GATE_COMMIT="ask"'; echo 'KIT_GATE_DEPS="ask"'; echo 'KIT_GATE_CONFIG="ask"'; } >>.claude/kit.conf
+git add -A
+git commit -qm "explicit gates"
+script "$gates; finish alpha A 1" 'open_pr'
+ship alpha
+ship_wait
+same "$(cat "$fake/gates-1" | tr '\n' ' ')" "commit=auto deps=ask config=ask push=ask " "AC110, AC148, AC113, AC114: an explicit ask stays, except for commits"
+
+setup alpha:planned
+stub_check
+git checkout -q -b alpha
+plan alpha 1:A:standard
+(KIT_BUDGET_TOKENS="" ship alpha)
+same "$?" 2 "AC102: a failed preflight refuses"
+contains "$(cat "$work/err")" "KIT_BUDGET_TOKENS" "AC102: it prints the reason"
+if [ -d .work/autopilot/lock ]; then fail "AC102: no lock remains"; else ok; fi
+same "$(KIT_BUDGET_TOKENS=100k .claude/bin/autopilot --ready >/dev/null; echo $?)" 2 "AC126: --ready refuses an invalid budget"
+
+setup alpha:approved
+script "$gates"
+.claude/bin/autopilot >"$work/out" 2>"$work/err"
+same "$(sed -n 's/.*level=//p' "$fake/env-1")" "autonomous" "AC43: a build from a shell stays autonomous"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+tick_now alpha 1
+git checkout -q -b alpha
+script 'open_pr'
+same "$(.claude/bin/usage tsv | cut -f 9)" 1 "AC66: the tasks field counts ticked tasks"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

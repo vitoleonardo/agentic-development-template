@@ -6,6 +6,8 @@
 #   .claude/bin/usage line      the one line for the PR description
 #   .claude/bin/usage tsv       one line for .claude/bin/runs: total, fast, standard, deep, main, other tokens,
 #                               review rounds, escalations, tasks (TAB separated)
+#   .claude/bin/usage tokens <transcript>       "<model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>" per model
+#   .claude/bin/usage add-killed <transcript>   count a session the runner killed, from its transcript
 #   .claude/bin/usage reviews   tokens per review round: "<round> TAB <tokens>", from the "review round <n>" dispatches
 #   .claude/bin/usage adopt <branch>   move another branch's record here (spec and plan run before the branch exists)
 # usage.tsv:  <agent id or main:<session id>> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
@@ -25,20 +27,52 @@ dir=${USAGE_DIR:-.work/${branch:-detached}}
 usage=$dir/usage.tsv
 agents=$dir/agents.tsv
 
+# tokens <transcript>: "<model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>" per model.
+transcript_tokens() {
+  [ -f "$1" ] || return 0
+  awk '
+    function num(s, key) { return match(s, "\"" key "\":[0-9]+") ? substr(s, RSTART + length(key) + 3, RLENGTH - length(key) - 3) + 0 : 0 }
+    /"parent_tool_use_id":"/ { next }
+    /"type":"assistant"/ && match($0, /"usage":\{/) {
+      u = substr($0, RSTART, 1500)
+      id = match($0, /"id":"msg_[^"]*"/) ? substr($0, RSTART, RLENGTH) : "line" NR
+      model = match($0, /"model":"[^"]*"/) ? substr($0, RSTART + 9, RLENGTH - 10) : "unknown"
+      if (model == "<synthetic>") next
+      if (!(id in seen)) order[++n] = id
+      seen[id] = 1; m[id] = model
+      in_[id] = num(u, "input_tokens"); out[id] = num(u, "output_tokens")
+      cr[id] = num(u, "cache_read_input_tokens"); cw[id] = num(u, "cache_creation_input_tokens")
+    }
+    END {
+      for (i = 1; i <= n; i++) { id = order[i]; k = m[id]; a[k] += in_[id]; b[k] += out[id]; c[k] += cr[id]; d[k] += cw[id] }
+      for (k in a) printf "%s\t%d\t%d\t%d\t%d\n", k, a[k], b[k], c[k], d[k]
+    }
+  ' "$1"
+}
+
+ticked=$(awk '/^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[xX]\] [0-9]/ && !/</ { n++ } END { print n + 0 }' ".work/${branch:-detached}.md" 2>/dev/null || echo 0)
+
 # The tier a model ID belongs to, from the aliases in kit.conf ("main" for the session itself).
 tiers="fast=${KIT_MODEL_FAST:-haiku} standard=${KIT_MODEL_STANDARD:-sonnet} deep=${KIT_MODEL_DEEP:-opus}"
 
 case ${1:-} in
+  tokens) transcript_tokens "${2:?usage: usage tokens <transcript>}" ;;
+  add-killed)
+    # A killed session may never reach its Stop hook, so its tokens come from the transcript the runner kept.
+    [ -f "${2:-}" ] || exit 0
+    mkdir -p "$dir"
+    transcript_tokens "$2" | sed "s/^/main:killed-$(basename "$2" .jsonl)$(printf '\t')/" >>"$usage"
+    ;;
   total)
     [ -f "$usage" ] || { echo 0; exit 0; }
     awk -F '\t' '{ s += $3 + $4 + $6 } END { print s + 0 }' "$usage"
     ;;
   report | line | tsv)
     if [ ! -f "$usage" ]; then
-      [ "$1" = tsv ] && printf '0\t0\t0\t0\t0\t0\t0\t0\t0\n' || echo "No usage recorded for ${branch:-this branch} yet."
+      [ "$1" = tsv ] && printf '0\t0\t0\t0\t0\t0\t0\t0\t%d\n' "$ticked" || echo "No usage recorded for ${branch:-this branch} yet."
       exit 0
     fi
-    awk -F '\t' -v tiers="$tiers" -v mode="$1" -v agents="$agents" '
+    awk -F '\t' -v tiers="$tiers" -v mode="$1" -v agents="$agents" -v ticked="$ticked" '
       BEGIN {
         n = split(tiers, t, " ")
         for (i = 1; i <= n; i++) { split(t[i], kv, "="); alias[kv[1]] = kv[2]; order[i] = kv[1] }
@@ -61,7 +95,7 @@ case ${1:-} in
       }
       END {
         if (mode == "tsv") {
-          printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", total, by["fast"], by["standard"], by["deep"], by["main"], by["other"], rounds, esc, tasks
+          printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", total, by["fast"], by["standard"], by["deep"], by["main"], by["other"], rounds, esc, (ticked ? ticked : tasks)
           exit
         }
         line = "Tokens (input + output + cache writes): " total + 0
