@@ -34,10 +34,12 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 - Reused: <existing modules and patterns this builds on, with path:line>
 - Approved dependencies: <none, or the new packages that were approved (by the user, or logged when `.claude/bin/gate deps` is auto), comma-separated; verify fails on any other>
 
+Approved size: <only when this plan stays one PR above the default limit: <n> lines>
+
 ## Tasks
-| # | Task | Files | Criteria | Test cases | Depends on | Tier |
-|---|------|-------|----------|------------|------------|------|
-| 1 | <one concern> | <paths> | INVITE-AC1, INVITE-AC5 | <file>: duplicate email, missing role | – | standard |
+| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |
+|---|------|-------|----------|------------|------------|------|-------|
+| 1 | <one concern> | <paths> | INVITE-AC1, INVITE-AC5 | <file>: duplicate email, missing role | – | standard | A |
 
 ## Risks
 - <What could break, and how the plan guards against it.>
@@ -72,17 +74,19 @@ Rules for the plan:
 - Every write and external call the feature adds is listed under Side effects. A write that must wait for a permission check or the final outcome says so, and a blocking call says where it runs instead of the request or event loop.
 - Every file in the Files column sits in its kind's home in `.claude/rules/structure.md`. Run `.claude/bin/structure <every new file the plan names>`; a failure means a different path, or a new home under Decisions whose task adds it to the Map.
 - `Reused` names what you searched for, also when nothing fit (`searched src/lib for money formatting: none`).
-- Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
-- Each task is worth a fresh context. Fold a pure rename or a one-line change into the task whose files it touches.
+- Each task is one concern: at most about five files. Split anything bigger. Fold a pure rename or a one-line change into the task whose files it touches.
 - Name the test cases, not just "add tests".
 - Order the tasks so nothing is built before what it depends on. Tasks run one after another, in this order.
-- Tier: the model tier the implementer runs on. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
+- Tier: the model tier a task needs. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
+- Group: one headless session implements each group with shared context, so tasks that share files or depend directly on each other go together. A group holds at most 3 consecutive tasks, in plan order. Every task has a group; ids are short (`A`, `B`). The group runs on its highest task tier: one deep task puts the whole group on deep. A group above the default tier gets one line under the table with the reason (`Group B deep: task 5 changes the permission check`).
 
 ## 3. Ask for approval
 
-Summarise: the design decisions, the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over 400 lines, propose how to split it into several PRs.
+Summarise: the design decisions, the groups and their tiers, the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over `KIT_MAX_CHANGED_LINES`, propose how to split it into several PRs.
 
-Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over 400 lines.
+The verify gate fails a branch above twice `KIT_MAX_CHANGED_LINES`, and the build stops as soon as a group passes that limit. If the plan stays one PR above it, add `Approved size: <n> lines` with a margin over the estimate. Only this approval can raise the limit; a session never changes it later.
+
+Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over `KIT_MAX_CHANGED_LINES`.
 
 - `ask`: stop and wait. When the user approves, set the feature's status in `specs/README.md` to `planned`.
-- `auto`: choose the split yourself (one PR per independently reviewable part), set the status to `planned`, and log the plan approval and the split under Decisions to review.
+- `auto`: choose the split yourself (one PR per independently reviewable part), set the status to `planned`, and log the plan approval, the split and any approved size under Decisions to review.

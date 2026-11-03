@@ -204,14 +204,15 @@ Some things are never optional, at every level:
 
 ## Run a backlog unattended
 
-`.claude/bin/autopilot` builds several approved specs one after another without you. Each feature gets fresh headless sessions, so the context never holds more than one feature:
+`.claude/bin/autopilot` builds several approved specs one after another without you. Each group of tasks gets a fresh headless session, so the context never holds more than one group. `/ship-feature` uses the same build for one feature (see "A build started by /ship-feature"):
 
 | Level | Holds | Lives for |
 |---|---|---|
 | `autopilot` (shell, no model) | the queue, branch names, results | the whole run |
 | `claude -p "/plan-feature <slug>"` | spec, code exploration, plan | planning one feature |
-| `claude -p "/ship-feature <slug>"` | spec, plan, state file | building one feature |
-| subagents | one task | one task |
+| `claude -p "/ship-feature <slug> --group <id> ..."` | the group's tasks and code, on the group's highest tier | one group: at most 3 tasks |
+| `claude -p "/ship-feature <slug> --final"` | the whole branch, on the verify role's tier | the full review, verify and the PR |
+| subagents | simplify, review, a retry a tier higher, a final-session fix | one step |
 
 Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the usage record. A stopped feature resumes from them.
 
@@ -220,14 +221,22 @@ Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the 
 3. Start `claude` interactively in the project once and accept the trust dialog. Headless sessions ignore the allowlist in `.claude/settings.json` in a folder that was never trusted, so every check is denied. Trust is per folder: a new clone or worktree needs it again. Autopilot checks this first with a one-turn haiku session and refuses to start without it.
 4. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
 
-For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session and the build session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session, one session per group and the final session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+
+After each group the build runs the typecheck and the related tests itself; a failing related test counts only if the whole suite's comparison with the baseline also fails, where a baseline exists. On a failure it resumes that session once, a tier higher, or at effort `max` when it already runs on deep. A second failure stops the build. It also stops when the budget is reached (reaching it is enough) or a group takes the branch over its size limit: the plan's `Approved size: <n> lines` if it has one, else twice `KIT_MAX_CHANGED_LINES`.
+
+A plan without a Group column, written before this version, is grouped by threes in plan order and needs no group review rounds.
+
+A rerun continues at the first group that is not done, and re-checks the last done group if nothing has built on it yet. Uncommitted tracked changes on the feature's own branch go into a stash named `autopilot <run> <branch>`, and the run log says so, when an open task will redo the work. Otherwise, on another branch, for changes under `.claude/`, and after a finished group left uncommitted changes, the build refuses and changes nothing.
+
+Only one build runs per checkout. A second one is refused; `.claude/bin/autopilot --stop` ends the running build and its session, and `.claude/bin/autopilot --ready` exits with 0 when one can start, 1 while one is running, and 2 when the budget is not set.
 
 A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-review` earlier, before the verify gates run, so that status alone does not count. Features with a PR, and rows marked `done`, are skipped, so running it again resumes. A feature that is `in-review` without a PR resumes at verify.
 
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
 
 - an action was denied (`permission_denials`): everything in the list above stays yours. The stop names the denied commands.
-- the stop class is `spec`, `hotfix`, `kit`, `env` or `budget`
+- the stop class is `spec`, `tier`, `hotfix`, `kit`, `env`, `budget` or `push`
 - the answerer escalates
 - the cap is reached
 
@@ -240,6 +249,14 @@ Later features wait, because they build on the stopped one. Answer with the prin
 **What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript (with `-restart-<n>`, `-wait-<n>` or the answer number for later sessions of the phase). With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
 
 If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
+
+### A build started by /ship-feature
+
+After you approve the plan, `/ship-feature` commits the spec and the status and runs `.claude/bin/autopilot --ship <feature>`. That is the same build for one feature, on the current branch and its `Base:`, detached, so it goes on when the terminal closes. Leave the checkout alone until it ends.
+
+It keeps the project's `KIT_APPROVAL` and `KIT_IMPROVE`. The approved plan covers commits, in every session. It covers `deps` and `config` too, unless `kit.conf` sets `KIT_GATE_DEPS` or `KIT_GATE_CONFIG`; a session that needs one of those then stops the build. If `.claude/bin/gate push` says `ask`, the final session stops before the push, and running `/ship-feature` again in a terminal asks you and pushes.
+
+Implementation tokens now show under `main` in `.claude/bin/usage`, not per tier, because the sessions themselves implement.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
 
 ## Block more commands

@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements exactly one task from an approved plan in a fresh context, test first. Dispatched by /ship-feature with the spec, the state file and one task. Does not commit, push or change branches.
+description: Implements exactly one task from an approved plan in a fresh context, test first. Dispatched by /ship-feature for a retry a tier higher, a simplify or a fix in the final session, with the spec, the state file and the task. Does not commit, push or change branches.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 ---

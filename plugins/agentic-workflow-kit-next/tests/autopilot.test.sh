@@ -921,6 +921,10 @@ CLAUDECODE=1 ship alpha
 same "$?" 0 "AC35: --ship starts a build"
 contains "$(cat "$work/out")" "Run log: .work/autopilot/run-" "AC35: it prints the run log's path"
 contains "$(cat "$work/out")" "Do not edit this checkout until the build ends." "AC37: it says to leave the checkout alone"
+if command -v setsid >/dev/null 2>&1; then
+  _running=$(cat .work/autopilot/lock/pid 2>/dev/null)
+  if [ -n "$_running" ] && [ "$(ps -o sid= -p "$_running" | tr -d ' ')" = "$(ps -o sid= -p $$ | tr -d ' ')" ]; then fail "AC36: the build runs in its own session"; else ok; fi
+fi
 ship_wait
 same "$(cat "$fake/gates-1" | tr '\n' ' ')" "commit=auto deps=auto config=auto push=ask " "AC39, AC111, AC112: build gates are auto at strict"
 same "$(cat "$fake/gates-2" | tr '\n' ' ')" "commit=auto deps=auto config=auto push=ask " "AC147, AC40: the final session commits and still asks to push"

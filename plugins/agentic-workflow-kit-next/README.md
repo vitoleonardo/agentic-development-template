@@ -1,4 +1,6 @@
-# Agentic Workflow Kit for Claude Code
+# Agentic Workflow Kit for Claude Code (next)
+
+> **Version 0.4.0, under test.** This is the next version of [agentic-workflow-kit](../agentic-workflow-kit/), which stays the stable one. It builds a feature in one fresh headless session per planned group of tasks. A project installs only one of the two plugins: with both, every hook runs twice. It replaces the stable plugin after two real runs, one small feature and one 13-point sprint.
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
@@ -71,15 +73,17 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
   1. Spec       specs/invite.md: user flow, INVITE-AC1..n, edge cases, out of scope
                 spec-lint + reviewer check it                    -> you approve*
   2. Plan       .work/<branch>.md: design, tasks, test per criterion   -> you approve*
-  3. Build      implementer subagents, one task each: test red, code, test green
-  4. Review     read-only reviewer: verdict per criterion, findings by severity
-  5. PR         description with criteria and evidence           -> you push*
-  6. Accept     you check it and set the status to done
+  3. Build      starts on its own, and goes on if you close the terminal
+                per group of tasks, one headless session on the group's tier:
+                test red, code, test green, a commit per task, simplify, review
+                the build checks each group itself and stops on the budget
+  4. Final      one session: full-diff review, verify, PR description -> you push*
+  5. Accept     you check it and set the status to done
 ```
 
 \* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself, unless the branch changes auth or migration files (`KIT_PUSH_ASK_PATTERNS`). With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
 
-To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
+A build needs a token budget (`KIT_BUDGET_TOKENS`), and leave its checkout alone while it runs. To build a backlog of approved specs unattended, on stacked branches, run `.claude/bin/autopilot`; `.claude/bin/autopilot --stop` ends a build. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
 
 Every step leaves a file, so a new session continues where the last one stopped. The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`. Small fixes may skip the spec, but not the test.
 
@@ -92,7 +96,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Permissions | `.claude/settings.json` | Read-only git and the checks run without asking. Installs, pushes, CI, lockfiles, migrations and infra ask. Secrets, `rm -rf`, force push, network tools are denied |
 | Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. It also blocks writing a new source file outside the Map. `record-edit` and `check-edits` run format, typecheck, related tests and the duplicates check after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
 | Skills | `.claude/skills/` | `/ship-feature`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`, `/onboard`, and the optional `/improve-kit` |
-| Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
+| Subagents | `.claude/agents/` | `implementer` (a retry a tier higher, a simplify, a fix in the final session), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
 | Status | `.claude/bin/status` | The current branch's feature in one line (stage, tasks, red checks, budget) or as JSON with criteria, sections, evidence and the autopilot run. Writes nothing |
 | Lead time | `.claude/bin/leadtime` | Lead time, cycle time, time to first review, review rounds, spec to merge, rework and PR size from GitHub, before and after the kit, without names by default |
 | Model routing | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`; tokens per agent and an optional budget per branch |
