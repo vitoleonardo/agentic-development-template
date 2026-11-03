@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for model routing (.claude/bin/route) and the usage record (hooks/usage, .claude/bin/usage).
-# Run: sh plugins/agentic-workflow-kit/tests/usage.test.sh
+# Run: sh plugins/agentic-workflow-kit-next/tests/usage.test.sh
 # The transcripts are fixtures in the format Claude Code 2.1.311 writes: one JSON object per line, an
 # assistant message repeated while it streams, its usage on every copy.
 set -u

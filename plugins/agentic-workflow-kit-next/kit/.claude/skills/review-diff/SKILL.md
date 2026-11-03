@@ -3,7 +3,7 @@ name: review-diff
 description: Independent review of the current branch's diff against its spec and the project rules, with findings ranked by severity and a verdict per acceptance criterion. Runs in the read-only reviewer agent.
 argument-hint: [base branch, default the state file's Base, else main]
 context: fork
-agent: agentic-workflow-kit:reviewer
+agent: agentic-workflow-kit-next:reviewer
 background: false
 ---
 

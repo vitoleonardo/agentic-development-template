@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/spec-lint. Run: sh plugins/agentic-workflow-kit/tests/spec-lint.test.sh
+# Tests for .claude/bin/spec-lint. Run: sh plugins/agentic-workflow-kit-next/tests/spec-lint.test.sh
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)

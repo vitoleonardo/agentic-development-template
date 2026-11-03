@@ -352,7 +352,7 @@ This is tight, and B is the largest part. If it slips, cut in this order: base-b
 
 ## 10. Claude Code prompts
 
-Run these one at a time in `plugins/agentic-workflow-kit/`, each on its own branch, with plan mode. Paths are relative to that folder.
+Run these one at a time in `plugins/agentic-workflow-kit-next/`, each on its own branch, with plan mode. Paths are relative to that folder.
 
 ### Prompt A
 

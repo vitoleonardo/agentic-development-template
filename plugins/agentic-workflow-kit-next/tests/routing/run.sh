@@ -1,7 +1,7 @@
 #!/bin/sh
 # Headless model-routing run on a copy of the demo app (ROUTE-AC1), and whether a forked skill fires
 # SubagentStop. Needs Claude Code and Node, and spends tokens, so it is not part of CI.
-# Run: sh plugins/agentic-workflow-kit/tests/routing/run.sh [model]
+# Run: sh plugins/agentic-workflow-kit-next/tests/routing/run.sh [model]
 # shellcheck disable=SC2034 # variables are read inside the conditions that check() evaluates
 set -u
 

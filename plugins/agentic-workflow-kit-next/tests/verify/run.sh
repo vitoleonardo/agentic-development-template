@@ -1,7 +1,7 @@
 #!/bin/sh
 # Headless /ship-feature with /verify-feature on a copy of the demo app (VERIFY-AC1, AC2, AC6).
 # Needs Claude Code, Node, the Playwright Chromium build, and spends tokens, so it is not part of CI.
-# Run: sh plugins/agentic-workflow-kit/tests/verify/run.sh [model]
+# Run: sh plugins/agentic-workflow-kit-next/tests/verify/run.sh [model]
 # The remote is a bare repository in the temp folder, so nothing leaves the machine. bypassPermissions stands
 # in for the user approving each command; the scripted answers say what to approve.
 # shellcheck disable=SC2034 # $code is read inside the conditions that check() evaluates

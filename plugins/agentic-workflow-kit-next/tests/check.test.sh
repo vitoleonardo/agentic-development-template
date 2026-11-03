@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/check and .claude/bin/baseline. Run: sh plugins/agentic-workflow-kit/tests/check.test.sh
+# Tests for .claude/bin/check and .claude/bin/baseline. Run: sh plugins/agentic-workflow-kit-next/tests/check.test.sh
 # A two-package fixture (root + packages/py) with fake tools, so no real test runner or network is needed.
 set -u
 

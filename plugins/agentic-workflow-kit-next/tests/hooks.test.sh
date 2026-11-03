@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for the kit's hook scripts. Run: sh plugins/agentic-workflow-kit/tests/hooks.test.sh
+# Tests for the kit's hook scripts. Run: sh plugins/agentic-workflow-kit-next/tests/hooks.test.sh
 # Installs kit/ plus the TypeScript adapter into a scratch directory and feeds
 # the hooks the JSON that Claude Code would send.
 set -u

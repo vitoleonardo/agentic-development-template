@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for the status command (.claude/bin/status): the short line, the JSON object and the autopilot part.
-# Run: sh plugins/agentic-workflow-kit/tests/status.test.sh
+# Run: sh plugins/agentic-workflow-kit-next/tests/status.test.sh
 # The JSON checks need python3 (json module); mtimes are set with touch -t.
 set -u
 
