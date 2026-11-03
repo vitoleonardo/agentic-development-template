@@ -1,0 +1,340 @@
+#!/bin/sh
+# Where the current branch's feature stands, read from specs/README.md and .work/. Writes nothing.
+# Usage:
+#   .claude/bin/status [--line] [--session <id>]   <feature> · <stage>[ · tasks d/t][ · n red][ · budget p%]
+#   .claude/bin/status --json [--session <id>]     the same line and the cockpit's sections as one JSON object
+# Without a feature on the branch, --line prints nothing and --json prints an empty object.
+# Exit 2: bad usage. Exit 3: a file it needs exists but cannot be read ("cannot read <path>" on stderr).
+set -u
+
+usage() {
+  sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+mode=line
+session=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    --line) mode=line ;;
+    --json) mode=json ;;
+    --session)
+      [ $# -ge 2 ] || usage
+      session=$2
+      shift
+      ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+cd "$root" || exit 2
+budget_from_environment=${KIT_BUDGET_TOKENS:-}
+idle_from_environment=${AUTOPILOT_MAX_IDLE_SECONDS:-}
+if [ -f .claude/kit.conf ]; then
+  # shellcheck source=/dev/null
+  . ./.claude/kit.conf
+fi
+KIT_BUDGET_TOKENS=${budget_from_environment:-${KIT_BUDGET_TOKENS:-}}
+idle_limit=${idle_from_environment:-${AUTOPILOT_MAX_IDLE_SECONDS:-1200}}
+case $idle_limit in '' | *[!0-9]*) idle_limit=1200 ;; esac
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
+# shellcheck source=json.sh
+. "$root/.claude/bin/json.sh"
+
+tab=$(printf '\t')
+warnings=''
+warn() {
+  warnings="$warnings$1
+"
+}
+
+readable() {
+  [ ! -e "$1" ] || [ -r "$1" ] || { echo "cannot read $1" >&2; exit 3; }
+}
+
+json_or_null() {
+  if [ -n "$1" ]; then json_str "$1"; else printf null; fi
+}
+json_lines() {
+  _sep=''
+  printf '['
+  while IFS= read -r _line; do
+    [ -n "$_line" ] || continue
+    printf '%s%s' "$_sep" "$(json_str "$_line")"
+    _sep=,
+  done
+  printf ']'
+}
+
+branch=$(git branch --show-current 2>/dev/null)
+state=''
+[ -n "$branch" ] && [ -f ".work/$branch.md" ] && state=.work/$branch.md
+readable specs/README.md
+[ -z "$state" ] || readable "$state"
+
+feature=''
+row_status=''
+rows=''
+if [ -n "$branch" ]; then
+  rows=$(feature_for_branch "$branch")
+fi
+if [ -n "$rows" ]; then
+  first=$(printf '%s\n' "$rows" | head -n 1)
+  feature=${first%%"$tab"*}
+  row_status=${first#*"$tab"}
+  row_count=$(printf '%s\n' "$rows" | grep -c .)
+  [ "$row_count" -le 1 ] || warn "$row_count feature rows match branch $branch"
+elif [ -n "$state" ]; then
+  feature=$(tr -d '\r' <"$state" | sed -n '1s/^# Plan:.*(spec: specs\/\([^)]*\)\.md).*$/\1/p')
+fi
+
+epoch_key() {
+  date -d "@$1" +%Y%m%d%H%M 2>/dev/null || date -r "$1" +%Y%m%d%H%M
+}
+
+autopilot_state() {
+  run_log=$(ls .work/autopilot/run-*.md 2>/dev/null | sort | tail -n 1)
+  if [ -z "$run_log" ]; then
+    printf null
+    return
+  fi
+  run_id=${run_log##*/run-}
+  run_id=${run_id%.md}
+  ap_active=false
+  ap_current=null
+  if ! grep -Eq '^(Every feature has a PR|Stopped at )' "$run_log"; then
+    now=$(date +%s)
+    transcript=$(ls -t .work/autopilot/*.jsonl 2>/dev/null | head -n 1)
+    if [ -n "$transcript" ]; then
+      modified=$(date -r "$transcript" +%s 2>/dev/null)
+      if [ -n "$modified" ] && [ $((now - modified)) -lt "$idle_limit" ]; then
+        ap_active=true
+      fi
+    fi
+    last_line=$(grep . "$run_log" | tail -n 1)
+    reset=$(printf '%s' "$last_line" | sed -nE 's/.*waits for the usage limit to reset at ([0-9]{2})\.([0-9]{2})\.([0-9]{4}) ([0-9]{2}):([0-9]{2}).*/\3\2\1\4\5/p')
+    if [ -n "$reset" ] && [ "$reset" -gt "$(epoch_key $((now - idle_limit)))" ]; then
+      ap_active=true
+    fi
+    if [ "$ap_active" = true ] && [ -n "$transcript" ]; then
+      name=${transcript##*/}
+      name=${name%.jsonl}
+      case $name in
+        "$run_id-"*)
+          name=${name#"$run_id-"}
+          ending='(-(restart|wait)-[0-9]+|-[0-9]+)?'
+          ap_phase=$(printf '%s' "$name" | sed -nE "s/^.*-(plan|build|answer)$ending\$/\\1/p")
+          ap_feature=$(printf '%s' "$name" | sed -nE "s/^(.*)-(plan|build|answer)$ending\$/\\1/p")
+          if [ -n "$ap_phase" ] && [ -n "$ap_feature" ]; then
+            ap_current="{\"feature\":$(json_str "$ap_feature"),\"phase\":$(json_str "$ap_phase")}"
+          fi
+          ;;
+      esac
+    fi
+  fi
+  ap_features='['
+  ap_sep=''
+  ap_rows=$(awk -F '|' '
+    function trim(v) { gsub(/^[ \t]+|[ \t]+$/, "", v); return v }
+    /^\|/ {
+      f = trim($2)
+      if (f == "" || f == "Feature" || f ~ /^[-: ]+$/) next
+      printf "%s\t%s\t%s\n", f, trim($3), trim($4)
+    }
+  ' "$run_log")
+  while IFS="$tab" read -r ap_name ap_branch ap_result; do
+    [ -n "$ap_name" ] || continue
+    ap_features="$ap_features$ap_sep{\"feature\":$(json_str "$ap_name"),\"branch\":$(json_str "$ap_branch"),\"result\":$(json_str "$ap_result")}"
+    ap_sep=,
+  done <<EOF
+$ap_rows
+EOF
+  printf '{"active":%s,"current":%s,"features":%s]}' "$ap_active" "$ap_current" "$ap_features"
+}
+
+if [ -z "$feature" ]; then
+  if [ "$mode" = json ]; then
+    printf '{"line":"","branch":%s,"feature":null,"spec":null,"stage":null,"tasks":null,"criteria":[],"stops":[],"rounds":[],"decisions":[],"red":null,"budget":null,"evidence":null,"autopilot":%s,"warnings":[]}\n' "$(json_or_null "$branch")" "$(autopilot_state)"
+  fi
+  exit 0
+fi
+
+spec=specs/$feature.md
+readable "$spec"
+
+tasks_done=0
+tasks_total=0
+task_items=''
+if [ -n "$state" ]; then
+  task_items=$(awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[ xX]\]/ && !/</' "$state")
+  if [ -n "$task_items" ]; then
+    tasks_total=$(printf '%s\n' "$task_items" | grep -c .)
+    tasks_done=$(printf '%s\n' "$task_items" | grep -c '^- \[[xX]\]')
+  fi
+fi
+
+round_lines=$(section_lines "$state" Rounds)
+has_round() { printf '%s\n' "$round_lines" | grep -Eq "^- $1 [0-9]+ *\\|"; }
+
+if [ "$row_status" = "done" ]; then
+  stage="done"
+elif [ -f ".work/$branch-pr.md" ]; then
+  stage="pr"
+elif has_round verify || [ "$row_status" = in-review ]; then
+  stage="verify"
+elif has_round review || { [ "$tasks_total" -gt 0 ] && [ "$tasks_done" -eq "$tasks_total" ]; }; then
+  stage="review"
+elif [ "$tasks_done" -gt 0 ] || [ "$row_status" = building ]; then
+  stage="build"
+elif [ -n "$state" ] || [ "$row_status" = planned ]; then
+  stage="plan"
+else
+  stage="spec"
+fi
+
+red=''
+if [ -n "$session" ]; then
+  sid=$(printf '%s' "$session" | tr -cd 'A-Za-z0-9_-')
+  red=0
+  checks=.work/session-${sid:-unknown}.checks
+  if [ -f "$checks" ]; then
+    red=$(awk '{ last[$1] = $2 } END { n = 0; for (c in last) if (last[c] == "fail") n++; print n }' "$checks")
+  fi
+fi
+
+budget_percent=''
+budget_used=0
+budget_limit=$(printf '%s' "$KIT_BUDGET_TOKENS" | sed 's/^0*//')
+case $budget_limit in
+  '' | *[!0-9]*) budget_limit='' ;;
+  *)
+    budget_used=$("$root/.claude/bin/usage" total 2>/dev/null)
+    case $budget_used in '' | *[!0-9]*) budget_used=0 ;; esac
+    budget_percent=$((budget_used * 100 / budget_limit))
+    ;;
+esac
+
+line="$feature · $stage"
+[ "$tasks_total" -eq 0 ] || line="$line · tasks $tasks_done/$tasks_total"
+[ "${red:-0}" -eq 0 ] || line="$line · $red red"
+[ -z "$budget_percent" ] || line="$line · budget $budget_percent%"
+
+if [ "$mode" = line ]; then
+  printf '%s\n' "$line"
+  exit 0
+fi
+
+tasks_json=null
+if [ "$tasks_total" -gt 0 ]; then
+  tasks_json="{\"done\":$tasks_done,\"total\":$tasks_total,\"items\":["
+  sep=''
+  while IFS= read -r item; do
+    mark=${item#- \[}
+    mark=${mark%%\]*}
+    text=${item#*\]}
+    text=${text# }
+    case $mark in [xX]) is_done=true ;; *) is_done=false ;; esac
+    tasks_json="$tasks_json$sep{\"text\":$(json_str "$text"),\"done\":$is_done}"
+    sep=,
+  done <<EOF
+$task_items
+EOF
+  tasks_json="$tasks_json]}"
+fi
+
+criteria_json='[]'
+if [ -f "$spec" ]; then
+  ids=$(awk '
+    { sub(/\r$/, "") }
+    /^- \*\*[A-Z][A-Za-z0-9_-]*-AC[0-9]+\*\*/ {
+      id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id)
+      rest = $0; sub(/^- \*\*[^*]+\*\*/, "", rest)
+      if (rest !~ /^[[:space:]]*\(removed/) print id
+    }
+  ' "$spec")
+  if [ -n "$ids" ]; then
+    criteria_json='['
+    sep=''
+    log_source=${state:-/dev/null}
+    rows_out=$(printf '%s\n' "$ids" | awk '
+      function trim(v) { gsub(/\034/, "|", v); gsub(/\t/, " ", v); gsub(/^ +| +$/, "", v); return v }
+      function filled(v) { v = trim(v); return v != "" && v != "-" && v != "–" && tolower(v) != "no" }
+      NR == FNR { ids[++n] = $0; next }
+      { sub(/\r$/, "") }
+      /^## / { inside = ($0 == "## Verify log"); next }
+      inside && /^\|/ {
+        row = $0
+        gsub(/\\\|/, "\034", row)
+        split(row, cell, "|")
+        first = trim(cell[2])
+        if (first == "Criterion" || first ~ /^[-: ]*$/) next
+        k = split(cell[2], tk, /[^A-Za-z0-9_-]+/)
+        for (i = 1; i <= k; i++) {
+          t = tk[i]
+          if (t == "" || stamp[t] == NR) continue
+          stamp[t] = NR
+          if (filled(cell[5])) green[t] = 1
+          if (filled(cell[4])) red[t] = 1
+          if (filled(cell[3])) tests[t] = tests[t] "\t" trim(cell[3])
+        }
+      }
+      END {
+        for (i = 1; i <= n; i++) {
+          id = ids[i]
+          printf "%s\t%s%s\n", id, (green[id] ? "green" : (red[id] ? "red" : "open")), tests[id]
+        }
+      }
+    ' - "$log_source")
+    while IFS= read -r crit; do
+      crit_id=${crit%%"$tab"*}
+      crit_rest=${crit#*"$tab"}
+      crit_state=${crit_rest%%"$tab"*}
+      crit_tests=''
+      case $crit_rest in *"$tab"*) crit_tests=${crit_rest#*"$tab"} ;; esac
+      tests_json=$(printf '%s\n' "$crit_tests" | tr '\t' '\n' | json_lines)
+      criteria_json="$criteria_json$sep{\"id\":$(json_str "$crit_id"),\"state\":$(json_str "$crit_state"),\"tests\":$tests_json}"
+      sep=,
+    done <<EOF
+$rows_out
+EOF
+    criteria_json="$criteria_json]"
+  fi
+else
+  warn "spec not found: $spec"
+fi
+
+stops_json=$(section_lines "$state" Stops | sed 's/^- //' | json_lines)
+rounds_json=$(printf '%s\n' "$round_lines" | sed 's/^- //' | json_lines)
+decisions_json=$(section_lines "$state" 'Decisions to review' | sed 's/^- //' | json_lines)
+
+budget_json=null
+[ -z "$budget_percent" ] || budget_json="{\"used\":$budget_used,\"limit\":$budget_limit,\"percent\":$budget_percent}"
+
+evidence_json=null
+evidence_dir=${EVIDENCE_DIR:-.work/$branch/evidence}
+if [ -f "$evidence_dir/evidence.json" ]; then
+  evidence_head=$(pack_head <"$evidence_dir/evidence.json")
+  evidence_current=false
+  [ -n "$evidence_head" ] && [ "$evidence_head" = "$(git rev-parse HEAD 2>/dev/null)" ] && evidence_current=true
+  gates_json='['
+  sep=''
+  if [ -f "$evidence_dir/gates.tsv" ]; then
+    while IFS="$tab" read -r gate_name gate_result _rest; do
+      [ -n "$gate_name" ] || continue
+      gates_json="$gates_json$sep{\"name\":$(json_str "$gate_name"),\"result\":$(json_str "$gate_result")}"
+      sep=,
+    done <"$evidence_dir/gates.tsv"
+  fi
+  evidence_json="{\"current\":$evidence_current,\"head\":$(json_or_null "$evidence_head"),\"gates\":$gates_json]}"
+fi
+
+red_json=null
+[ -z "$red" ] || red_json=$red
+
+printf '{"line":%s,"branch":%s,"feature":%s,"spec":%s,"stage":%s,"tasks":%s,"criteria":%s,"stops":%s,"rounds":%s,"decisions":%s,"red":%s,"budget":%s,"evidence":%s,"autopilot":%s,"warnings":%s}\n' \
+  "$(json_str "$line")" "$(json_str "$branch")" "$(json_str "$feature")" "$(json_str "$spec")" "$(json_str "$stage")" \
+  "$tasks_json" "$criteria_json" "$stops_json" "$rounds_json" "$decisions_json" "$red_json" "$budget_json" \
+  "$evidence_json" "$(autopilot_state)" "$(printf '%s' "$warnings" | json_lines)"
