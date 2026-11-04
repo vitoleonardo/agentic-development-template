@@ -88,7 +88,7 @@ if [ -n "$rows" ]; then
   row_count=$(printf '%s\n' "$rows" | grep -c .)
   [ "$row_count" -le 1 ] || warn "$row_count feature rows match branch $branch"
 elif [ -n "$state" ]; then
-  feature=$(tr -d '\r' <"$state" | sed -n '1s/^# Plan:.*(spec: specs\/\([^)]*\)\.md).*$/\1/p')
+  feature=$(plan_feature "$state")
 fi
 
 epoch_key() {
@@ -162,8 +162,9 @@ if [ -z "$feature" ]; then
   exit 0
 fi
 
-spec=specs/$feature.md
-readable "$spec"
+# The spec: the row's feature, else what the plan's title names; a fix plan ("# Plan: <slug> (fix)") has none.
+if [ -n "$rows" ]; then spec=specs/$feature.md; else spec=$(plan_spec "$state"); fi
+[ -z "$spec" ] || readable "$spec"
 
 tasks_done=0
 tasks_total=0
@@ -245,8 +246,13 @@ EOF
   tasks_json="$tasks_json]}"
 fi
 
+# The criteria: the plan's own "## Criteria" (a fix), else the spec's that are not removed.
 criteria_json='[]'
-if [ -f "$spec" ]; then
+ids=''
+[ -z "$state" ] || ids=$(plan_criteria "$state")
+if [ -n "$ids" ]; then
+  :
+elif [ -f "$spec" ]; then
   ids=$(awk '
     { sub(/\r$/, "") }
     /^- \*\*[A-Z][A-Za-z0-9_-]*-AC[0-9]+\*\*/ {
@@ -255,55 +261,55 @@ if [ -f "$spec" ]; then
       if (rest !~ /^[[:space:]]*\(removed/) print id
     }
   ' "$spec")
-  if [ -n "$ids" ]; then
-    criteria_json='['
-    sep=''
-    log_source=${state:-/dev/null}
-    rows_out=$(printf '%s\n' "$ids" | awk '
-      function trim(v) { gsub(/\034/, "|", v); gsub(/\t/, " ", v); gsub(/^ +| +$/, "", v); return v }
-      function filled(v) { v = trim(v); return v != "" && v != "-" && v != "–" && tolower(v) != "no" }
-      NR == FNR { ids[++n] = $0; next }
-      { sub(/\r$/, "") }
-      /^## / { inside = ($0 == "## Verify log"); next }
-      inside && /^\|/ {
-        row = $0
-        gsub(/\\\|/, "\034", row)
-        split(row, cell, "|")
-        first = trim(cell[2])
-        if (first == "Criterion" || first ~ /^[-: ]*$/) next
-        k = split(cell[2], tk, /[^A-Za-z0-9_-]+/)
-        for (i = 1; i <= k; i++) {
-          t = tk[i]
-          if (t == "" || stamp[t] == NR) continue
-          stamp[t] = NR
-          if (filled(cell[5])) green[t] = 1
-          if (filled(cell[4])) red[t] = 1
-          if (filled(cell[3])) tests[t] = tests[t] "\t" trim(cell[3])
-        }
+elif [ -n "$spec" ]; then
+  warn "spec not found: $spec"
+fi
+if [ -n "$ids" ]; then
+  criteria_json='['
+  sep=''
+  log_source=${state:-/dev/null}
+  rows_out=$(printf '%s\n' "$ids" | awk '
+    function trim(v) { gsub(/\034/, "|", v); gsub(/\t/, " ", v); gsub(/^ +| +$/, "", v); return v }
+    function filled(v) { v = trim(v); return v != "" && v != "-" && v != "–" && tolower(v) != "no" }
+    NR == FNR { ids[++n] = $0; next }
+    { sub(/\r$/, "") }
+    /^## / { inside = ($0 == "## Verify log"); next }
+    inside && /^\|/ {
+      row = $0
+      gsub(/\\\|/, "\034", row)
+      split(row, cell, "|")
+      first = trim(cell[2])
+      if (first == "Criterion" || first ~ /^[-: ]*$/) next
+      k = split(cell[2], tk, /[^A-Za-z0-9_-]+/)
+      for (i = 1; i <= k; i++) {
+        t = tk[i]
+        if (t == "" || stamp[t] == NR) continue
+        stamp[t] = NR
+        if (filled(cell[5])) green[t] = 1
+        if (filled(cell[4])) red[t] = 1
+        if (filled(cell[3])) tests[t] = tests[t] "\t" trim(cell[3])
       }
-      END {
-        for (i = 1; i <= n; i++) {
-          id = ids[i]
-          printf "%s\t%s%s\n", id, (green[id] ? "green" : (red[id] ? "red" : "open")), tests[id]
-        }
+    }
+    END {
+      for (i = 1; i <= n; i++) {
+        id = ids[i]
+        printf "%s\t%s%s\n", id, (green[id] ? "green" : (red[id] ? "red" : "open")), tests[id]
       }
-    ' - "$log_source")
-    while IFS= read -r crit; do
-      crit_id=${crit%%"$tab"*}
-      crit_rest=${crit#*"$tab"}
-      crit_state=${crit_rest%%"$tab"*}
-      crit_tests=''
-      case $crit_rest in *"$tab"*) crit_tests=${crit_rest#*"$tab"} ;; esac
-      tests_json=$(printf '%s\n' "$crit_tests" | tr '\t' '\n' | json_lines)
-      criteria_json="$criteria_json$sep{\"id\":$(json_str "$crit_id"),\"state\":$(json_str "$crit_state"),\"tests\":$tests_json}"
-      sep=,
-    done <<EOF
+    }
+  ' - "$log_source")
+  while IFS= read -r crit; do
+    crit_id=${crit%%"$tab"*}
+    crit_rest=${crit#*"$tab"}
+    crit_state=${crit_rest%%"$tab"*}
+    crit_tests=''
+    case $crit_rest in *"$tab"*) crit_tests=${crit_rest#*"$tab"} ;; esac
+    tests_json=$(printf '%s\n' "$crit_tests" | tr '\t' '\n' | json_lines)
+    criteria_json="$criteria_json$sep{\"id\":$(json_str "$crit_id"),\"state\":$(json_str "$crit_state"),\"tests\":$tests_json}"
+    sep=,
+  done <<EOF
 $rows_out
 EOF
     criteria_json="$criteria_json]"
-  fi
-else
-  warn "spec not found: $spec"
 fi
 
 stops_json=$(section_lines "$state" Stops | sed 's/^- //' | json_lines)
@@ -335,6 +341,6 @@ red_json=null
 [ -z "$red" ] || red_json=$red
 
 printf '{"line":%s,"branch":%s,"feature":%s,"spec":%s,"stage":%s,"tasks":%s,"criteria":%s,"stops":%s,"rounds":%s,"decisions":%s,"red":%s,"budget":%s,"evidence":%s,"autopilot":%s,"warnings":%s}\n' \
-  "$(json_str "$line")" "$(json_str "$branch")" "$(json_str "$feature")" "$(json_str "$spec")" "$(json_str "$stage")" \
+  "$(json_str "$line")" "$(json_str "$branch")" "$(json_str "$feature")" "$(json_or_null "$spec")" "$(json_str "$stage")" \
   "$tasks_json" "$criteria_json" "$stops_json" "$rounds_json" "$decisions_json" "$red_json" "$budget_json" \
   "$evidence_json" "$(autopilot_state)" "$(printf '%s' "$warnings" | json_lines)"

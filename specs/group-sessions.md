@@ -33,7 +33,7 @@ Where a build stops, the run log's closing line says why. Running the build agai
 
 Separate plugin:
 
-- **GROUP-AC1**: Given this feature is complete, when its branch is compared with the commit it started from, then no file under `plugins/agentic-workflow-kit/` differs.
+- **GROUP-AC1**: Given this feature is complete, when its branch is compared with `main`, then no file under `plugins/agentic-workflow-kit/` differs.
 - **GROUP-AC2**: Given this feature is complete, when the repository's marketplace file is read, then it lists both `agentic-workflow-kit` and `agentic-workflow-kit-next`.
 - **GROUP-AC3**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.0`.
 - **GROUP-AC68**: Given only `agentic-workflow-kit-next` is installed, when `/review-diff` runs, then it runs in that plugin's reviewer agent.
@@ -52,6 +52,15 @@ Planning:
 - **GROUP-AC6**: Given a plan whose group holds 4 tasks, when a build starts, then no group session starts and the run log's closing line names that group and `at most 3 tasks`.
 - **GROUP-AC7**: Given a plan whose tasks 1 and 3 are in group A and task 2 in group B, when a build starts, then no group session starts and the run log's closing line names group A and `not consecutive`.
 - **GROUP-AC8**: Given a plan with a Group column and a task with an empty Group cell, when a build starts, then no group session starts and the run log's closing line names that task.
+- **GROUP-AC158**: Given a feature plan without a `## Bug` section and a Tasks table without a Group column, when `plan-lint` runs, then a finding on the table's header line names the Group column.
+- **GROUP-AC159**: Given a plan whose group A holds 4 tasks, when `plan-lint` runs, then a finding names group A and `at most 3 tasks`.
+- **GROUP-AC160**: Given a plan whose tasks 1 and 3 are in group A and task 2 in group B, when `plan-lint` runs, then a finding names group A and `not consecutive`.
+- **GROUP-AC161**: Given a plan with a Group column and a task with an empty Group cell, when `plan-lint` runs, then a finding names that task.
+- **GROUP-AC162**: Given a group whose highest task tier is above the default tier and no `Group <id> <tier>: <reason>` line under the table, when `plan-lint` runs, then a finding on the group's first row names the missing line.
+- **GROUP-AC163**: Given that group with its `Group <id> <tier>: <reason>` line, when `plan-lint` runs, then there is no finding for the group.
+- **GROUP-AC164**: Given a plan with an `Approved size:` line that does not read `Approved size: <n> lines`, when `plan-lint` runs, then a finding on that line shows the form `Approved size: <n> lines`.
+- **GROUP-AC165**: Given a plan with `Approved size: 3000 lines`, when `plan-lint` runs, then there is no finding for that line.
+- **GROUP-AC166**: Given a fix plan, or a plan with a `## Bug` section, without a Group column, when `plan-lint` runs, then there is no finding for the Group column.
 
 Group sessions:
 
@@ -269,3 +278,4 @@ Sessions and records:
 - 03.11.2026: A group that ticks its tasks but leaves changes uncommitted, or records no group round, stops the build rather than going to the answer session, because its result is not a question.
 - 03.11.2026: Plans without a Group column are grouped by threes and do not need group rounds, so a feature in progress when a project updates never blocks or repeats finished work.
 - 03.11.2026: This ships as a second plugin next to the current one, not behind a flag or on a branch. Fixes land twice until the release; the release needs two real runs (one small feature and one 13-point sprint), compared with the current version.
+- 04.11.2026: Kit 0.3.1 (plan-lint, `/fix-bug`, PR #40) lands in this plugin too, and `plan-lint` checks the group rules the plan must follow (GROUP-AC158 to GROUP-AC166), so a plan breaks them at planning, not at the build's start. GROUP-AC1 compares with `main`, because `main` now holds 0.3.1 of the current plugin. Autopilot keeps its own narrower check, so plans written before this never block.

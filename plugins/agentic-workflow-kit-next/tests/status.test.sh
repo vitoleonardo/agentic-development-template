@@ -496,5 +496,43 @@ readme "$(row x draft b1)"
 grep -q 'With the first task, set the feature.s status in `specs/README.md` from `planned` to `building` and commit it with that task' \
   "$here/kit/.claude/skills/ship-feature/SKILL.md" && ok || fail "COCKPIT-AC20: /ship-feature sets building with the first task's commit"
 
+# --- fix plans (specs/fix-bug.md) -------------------------------------------------------
+
+# mkfix <branch> <title> <criteria lines> [progress lines]: a fix plan with its criteria inside.
+mkfix() {
+  mkdir -p .work
+  {
+    printf '%s\nBase: main\n\n## Bug\n- Source: pasted report\n\n## Criteria\n%s\n' "$2" "$3"
+    [ $# -lt 4 ] || printf '\n## Progress\n%s\n' "$4"
+    printf '\n## Verify log\n| Criterion | Test | Red seen | Green | Notes |\n|-----------|------|----------|-------|-------|\n'
+    [ -z "$VERIFY" ] || printf '%s\n' "$VERIFY"
+    printf '\n## Stops\n- <step> | <class> | <trigger> | <what was tried> | <resolution>\n\n## Rounds\n- <review|verify> <n> | <full|delta> | <commit range> | <pass, or fail: <classes>>\n\n## Decisions to review\n- <gate> | <what was decided> | <why>\n\n## Notes\n- note\n'
+  } >".work/$1.md"
+}
+
+fixcrit='- **LOGINFIX-AC1**: Given a logged-in user, when they open /login, then the home page opens.
+- **LOGINFIX-AC2**: Given a guest, when they open /login, then the login form shows.'
+reset fix-login-redirect
+readme "$(row x draft b1)"
+mkfix fix-login-redirect '# Plan: login-redirect (fix)' "$fixcrit"
+same "$(status_line)" "login-redirect · plan" "FIXBUG-AC22: a fix plan without a row gives the slug and the stage"
+VERIFY='| LOGINFIX-AC1 | page.test.ts | yes | yes | |'
+mkfix fix-login-redirect '# Plan: login-redirect (fix)' "$fixcrit" '- [x] 1 reproduce
+- [ ] 2 fix'
+out=$(.claude/bin/status --json)
+valid_json "$out" && ok || fail "FIXBUG-AC23: valid JSON for a fix plan"
+same "$(jx "[c['id'] + ':' + c['state'] for c in d['criteria']]")" '["LOGINFIX-AC1:green", "LOGINFIX-AC2:open"]' "FIXBUG-AC23: the plan's criteria with their Verify log state"
+same "$(jx "d['spec']")" 'null' "FIXBUG-AC24: a fix plan has no spec"
+same "$(jx "d['warnings']")" '[]' "FIXBUG-AC24: no warning about a missing spec"
+same "$(jx "d['feature'] + ' ' + d['stage']")" '"login-redirect build"' "FIXBUG-AC22: feature and stage of a fix plan in the JSON"
+VERIFY=''
+reset fix-invite-member
+readme "$(row x draft b1)"
+printf '# Invite\n\nID prefix: INVITE\n\n## Acceptance criteria\n- **INVITE-AC1**: Given a, when b, then c.\n- **INVITE-AC2**: Given a, when b, then c.\n- **INVITE-AC3**: Given a, when b, then c.\n' >specs/invite.md
+mkfix fix-invite-member '# Plan: invite-member (spec: specs/invite.md)' '- **INVITE-AC3**: Given an address that is already a member, when the admin invites it, then the page shows "Already a member".'
+out=$(.claude/bin/status --json)
+same "$(jx "[c['id'] for c in d['criteria']]")" '["INVITE-AC3"]' "FIXBUG-AC25: the plan's criteria replace the spec's"
+same "$(jx "d['feature'] + ' ' + d['spec']")" '"invite specs/invite.md"' "FIXBUG-AC25: the feature and spec come from the title"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

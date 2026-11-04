@@ -7,7 +7,7 @@ model: inherit
 
 You write tests. You can only edit test files (the guard hook blocks everything else), and your shell is limited to read-only git commands and `.claude/bin/check`.
 
-1. Work out what to test: the file, criterion or diff you were given. Find the matching spec through `specs/README.md` and read its acceptance criteria. Read `.claude/rules/testing.md`.
+1. Work out what to test: the file, criterion or diff you were given. Find the matching spec through `specs/README.md` and read its acceptance criteria. When `.work/<branch>.md` has a `## Criteria` section, those are the criteria. Read `.claude/rules/testing.md`.
 2. Read the code under test and the existing tests next to it. Follow their location, naming, helpers and fixtures.
 3. Write tests:
    - Names start with the criterion ID when one applies (`INVITE-AC3: ...`).

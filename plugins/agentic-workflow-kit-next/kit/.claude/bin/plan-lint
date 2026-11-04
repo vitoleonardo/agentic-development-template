@@ -1,0 +1,312 @@
+#!/bin/sh
+# Check that a plan is complete before it is approved: the gate /plan-feature and /fix-bug run.
+# Usage: .claude/bin/plan-lint [plan]   (default: .work/<current branch>.md)
+# Rules: the title names a spec that exists, or is "(fix)" with criteria under ## Criteria, which then read
+# like a spec's and use a prefix no spec has; every expected criterion (the plan's ## Criteria when present,
+# else the spec's) is in a task and every task's criterion is expected; the Tasks table has its columns,
+# non-empty Files, named test cases, dependencies on earlier tasks and a tier of fast, standard or deep with a
+# "Task <n> <tier>: <reason>" line when it is not the default (.claude/bin/route tier implement); new files sit
+# in a home of the Map (.claude/bin/structure); Design keeps no placeholder and names Side effects, Reused and
+# Approved dependencies; Progress lists every task once. A feature plan (one without a ## Bug section) has a Group
+# column: every task has a group, a group holds at most 3 consecutive tasks (features.sh plan_shape_problem), and a
+# group above the default tier has a "Group <id> <tier>: <reason>" line. An "Approved size:" line reads "<n> lines".
+# Prints <plan>:<line>: <problem> per finding. Exit codes: 0 pass, 1 findings, 2 no plan.
+set -u
+
+here=$PWD
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+cd "$root" || exit 2
+# shellcheck source=criteria.sh
+. "$root/.claude/bin/criteria.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
+
+if [ $# -gt 0 ]; then
+  plan=$1
+else
+  plan=.work/$(git branch --show-current 2>/dev/null).md
+fi
+file=$plan
+case $file in /*) ;; *) [ -f "$file" ] || file=$here/$plan ;; esac
+if [ ! -f "$file" ]; then
+  echo "plan-lint: no plan at $plan" >&2
+  exit 2
+fi
+
+default_tier=$(.claude/bin/route tier implement 2>/dev/null) || default_tier=
+: "${default_tier:=standard}"
+
+set --
+for spec in specs/*.md; do
+  case $spec in specs/README.md) continue ;; esac
+  [ -f "$spec" ] && set -- "$@" "$spec"
+done
+
+paths=$(mktemp) || exit 2
+trap 'rm -f "$paths"' EXIT
+tab=$(printf '\t')
+
+awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths="$paths" "$CRITERION_CHECK"'
+  function problem(line, message) { printf "%s:%d: %s\n", plan, line, message; bad = 1 }
+  function trim(v) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); return v }
+  function none(v) { v = tolower(trim(v)); return v == "" || v == "-" || v == "–" || v == "none" }
+
+  # path_out: a Files-cell path for the structure check; placeholders (*, <) are not paths.
+  function path_out(line, num, p) {
+    if (p ~ /[*<]/) return
+    sub(/^\.\//, "", p)
+    if (p != "") printf "%d\t%d\t%s\n", line, num, p > paths
+  }
+  function emit_paths(line, num, cell,    s, n, i, tok) {
+    if (index(cell, "`")) {
+      s = cell
+      while (match(s, /`[^`]+`/)) { path_out(line, num, substr(s, RSTART + 1, RLENGTH - 2)); s = substr(s, RSTART + RLENGTH) }
+    } else {
+      n = split(cell, tok, /[,[:space:]]+/)
+      for (i = 1; i <= n; i++) if (tok[i] ~ /\/|\./) path_out(line, num, tok[i])
+    }
+  }
+  function rank(t) { return t == "deep" ? 3 : t == "standard" ? 2 : t == "fast" ? 1 : 0 }
+  function ids_of(cell, out,    s, n) {
+    n = 0; s = cell
+    while (match(s, /[A-Z][A-Z0-9]*-AC[0-9]+/)) { out[++n] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) }
+    return n
+  }
+
+  BEGIN {
+    criterion_check_init()
+    ncols = split("#|Task|Files|Criteria|Test cases|Depends on|Tier", colname, "|")
+    nneed = split("Side effects|Reused|Approved dependencies", design_need, "|")
+  }
+
+  { sub(/\r$/, "") }
+
+  # The specs: which exist, their prefixes and their criteria that are not removed.
+  FILENAME != planfile {
+    if (FNR == 1) spec_seen[FILENAME] = 1
+    if ($0 ~ /^ID prefix:/) { p = $0; sub(/^ID prefix:[[:space:]]*/, "", p); prefix_owner[trim(p)] = FILENAME }
+    if ($0 ~ /^- \*\*[A-Z][A-Za-z0-9_-]*-AC[0-9]+\*\*/) {
+      id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id)
+      rest = $0; sub(/^- \*\*[^*]+\*\*/, "", rest)
+      if (rest !~ /^[[:space:]]*\(removed/) { spec_ids[FILENAME, id] = 1; spec_list[FILENAME] = spec_list[FILENAME] " " id }
+    }
+    next
+  }
+
+  FNR == 1 {
+    if ($0 ~ /^# Plan: .*\(spec: specs\/[^)\/]+\.md\)[[:space:]]*$/) {
+      kind = "feature"
+      spec = $0; sub(/^.*\(spec: /, "", spec); sub(/\)[[:space:]]*$/, "", spec)
+      if (!(spec in spec_seen)) problem(1, "the title names " spec ", which does not exist.")
+    } else if ($0 ~ /^# Plan: .*\(fix\)[[:space:]]*$/) {
+      kind = "fix"
+    } else {
+      problem(1, "the first line must be \"# Plan: <feature> (spec: specs/<feature>.md)\" or \"# Plan: <slug> (fix)\".")
+    }
+    next
+  }
+
+  /^## / { section = trim(substr($0, 4)); seen[section] = 1; heading[section] = FNR; next }
+
+  /^Approved size:/ {
+    if ($0 ~ /^Approved size:[[:space:]]*</) problem(FNR, "the Approved size line still holds its placeholder; write \"Approved size: <n> lines\", or delete the line.")
+    else if ($0 !~ /^Approved size:[[:space:]]*[0-9]+ lines[[:space:]]*$/) problem(FNR, "write the Approved size line as \"Approved size: <n> lines\".")
+    next
+  }
+
+  section == "Criteria" && /^- \*\*/ {
+    id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id)
+    rest = $0; sub(/^- \*\*[^*]+\*\*/, "", rest); sub(/^:[[:space:]]*/, "", rest)
+    if (id in crit_line) problem(FNR, id ": already used on line " crit_line[id] "; IDs are never reused.")
+    else { crit_line[id] = FNR; crit[++ncrit] = id }
+    if (kind == "fix") {
+      if (id !~ /^[A-Z][A-Z0-9]*-AC[0-9]+$/) problem(FNR, id ": IDs look like <PREFIX>-AC<number>, with an uppercase prefix.")
+      else {
+        pfx = id; sub(/-AC[0-9]+$/, "", pfx)
+        if (pfx in prefix_owner) problem(FNR, id ": the prefix " pfx " belongs to " prefix_owner[pfx] "; a fix without a spec uses a prefix no spec has.")
+      }
+      check_criterion(FNR, id, rest)
+    } else if (kind == "feature" && (spec in spec_seen) && !((spec, id) in spec_ids))
+      problem(FNR, spec " has no " id "; a fix of a feature reuses the criterion the spec has.")
+    next
+  }
+
+  section == "Design" && /^- [A-Za-z][A-Za-z ]*:/ {
+    name = $0; sub(/^- /, "", name); sub(/:.*$/, "", name)
+    value = $0; sub(/^- [^:]*:[[:space:]]*/, "", value)
+    design_seen[name] = 1
+    if (value ~ /^</) problem(FNR, "Design line \"" name "\" still holds its placeholder; write the value, or none.")
+    next
+  }
+
+  section == "Tasks" && /^\|/ {
+    n = split($0, cell, "|")
+    if (!header_line) {
+      header_line = FNR
+      header_ok = 1
+      for (i = 2; i < n; i++) col[trim(cell[i])] = i
+      for (i = 1; i <= ncols; i++) if (!(colname[i] in col)) { problem(FNR, "the Tasks table has no \"" colname[i] "\" column."); header_ok = 0 }
+      next
+    }
+    if ($0 ~ /^\|[[:space:]:|-]*$/) next
+    nrows++
+    if (!header_ok) next
+    num = trim(cell[col["#"]])
+    if (num !~ /^[0-9]+$/) { problem(FNR, "the # cell must be the task number, not \"" num "\"."); next }
+    num = num + 0
+    if (num in task_line) { problem(FNR, "task " num " appears twice in the table."); next }
+    task_line[num] = FNR
+    task_order[++ntasks] = num
+    files = trim(cell[col["Files"]])
+    if (files == "") problem(FNR, "task " num ": the Files cell is empty; name every file the task touches.")
+    else if (files ~ /^</) problem(FNR, "task " num ": the Files cell still holds a placeholder (" files ").")
+    else emit_paths(FNR, num, files)
+    c = trim(cell[col["Criteria"]])
+    if (c ~ /^</) problem(FNR, "task " num ": the Criteria cell still holds a placeholder (" c ").")
+    else if (!none(c)) {
+      k = ids_of(c, ids)
+      for (i = 1; i <= k; i++) { row_ids[num] = row_ids[num] " " ids[i]; covered[ids[i]] = 1 }
+    }
+    t = trim(cell[col["Test cases"]])
+    tl = tolower(t)
+    if (t ~ /^</) problem(FNR, "task " num ": the Test cases cell still holds a placeholder (" t ").")
+    else if (none(t) || tl ~ /^(add |write |unit )?tests$/ || tl == "tbd" || tl == "todo")
+      problem(FNR, "task " num ": name the test cases (<file>: <case>, <case>); \"" t "\" names none.")
+    d = trim(cell[col["Depends on"]])
+    if (d ~ /^</) problem(FNR, "task " num ": the Depends on cell still holds a placeholder (" d ").")
+    else if (!none(d)) deps[num] = d
+    tier = trim(cell[col["Tier"]])
+    if (tier ~ /^</) problem(FNR, "task " num ": the Tier cell still holds a placeholder (" tier ").")
+    else if (!none(tier)) {
+      if (tier != "fast" && tier != "standard" && tier != "deep") problem(FNR, "task " num ": Tier \"" tier "\" is not a tier; use fast, standard or deep.")
+      else if (tier != default_tier) need_reason[num] = tier
+    }
+    if ("Group" in col) {
+      grp = trim(cell[col["Group"]])
+      if (grp ~ /^</) problem(FNR, "task " num ": the Group cell still holds a placeholder (" grp ").")
+      else if (grp != "") {
+        if (!(grp in group_line)) { group_line[grp] = FNR; group_order[++ngroups] = grp }
+        t = (rank(tier) ? tier : default_tier)
+        if (rank(t) > rank(group_tier[grp])) group_tier[grp] = t
+      }
+    }
+    next
+  }
+
+  section == "Tasks" && header_line && /^(- )?Group [^[:space:]]+ (fast|standard|deep):/ {
+    s = $0; sub(/^(- )?Group /, "", s)
+    split(s, w, " ")
+    r = w[2]; sub(/:$/, "", r)
+    group_reason[w[1]] = r
+    next
+  }
+
+  section == "Tasks" && header_line && /^(- )?Task [0-9]+ (fast|standard|deep):/ {
+    s = $0; sub(/^(- )?Task /, "", s)
+    split(s, w, " ")
+    r = w[2]; sub(/:$/, "", r)
+    reason[w[1] + 0] = r
+    next
+  }
+
+  section == "Progress" && /^- \[[ xX]\]/ {
+    rest = $0; sub(/^- \[[ xX]\][[:space:]]*/, "", rest)
+    if (rest ~ /^([0-9]+[[:space:]]*)?</) problem(FNR, "Progress still holds the template line \"- [ ] 1 <task>\"; list the tasks of the table.")
+    else if (match(rest, /^[0-9]+/)) {
+      k = substr(rest, 1, RLENGTH) + 0
+      if (k in progress_line) problem(FNR, "task " k " is listed twice in Progress (also on line " progress_line[k] ").")
+      else progress_line[k] = FNR
+    } else problem(FNR, "Progress lines start with the task number (\"- [ ] 2 <task>\").")
+    next
+  }
+
+  END {
+    if (kind == "fix" && !ncrit) problem(("Criteria" in seen) ? heading["Criteria"] : NR, "a fix plan needs its criteria under \"## Criteria\": - **<PREFIX>-AC1**: Given ..., when ..., then ....")
+
+    # Expected criteria: the plan has them, else the spec has them.
+    nexp = 0
+    if (ncrit) { for (i = 1; i <= ncrit; i++) { expected[crit[i]] = 1; exp_list[++nexp] = crit[i] }; source = "## Criteria" }
+    else if (kind == "feature" && (spec in spec_seen)) {
+      n = split(spec_list[spec], e, " ")
+      for (i = 1; i <= n; i++) if (e[i] != "") { expected[e[i]] = 1; exp_list[++nexp] = e[i] }
+      source = spec
+    }
+    if (!("Tasks" in seen)) problem(NR, "missing the \"## Tasks\" section.")
+    else if (!header_line) problem(heading["Tasks"], "the plan has no task; write the Tasks table.")
+    else if (header_ok && !ntasks) problem(header_line, "the plan has no task; the Tasks table needs at least one row.")
+    if (source != "" && header_ok) {
+      for (i = 1; i <= nexp; i++) if (!(exp_list[i] in covered)) problem(heading["Tasks"] ? heading["Tasks"] : NR, exp_list[i] ": no task covers it; every criterion appears in at least one task.")
+      for (j = 1; j <= ntasks; j++) {
+        num = task_order[j]
+        n = split(row_ids[num], e, " ")
+        for (i = 1; i <= n; i++) if (e[i] != "" && !(e[i] in expected))
+          problem(task_line[num], "task " num ": " (ncrit ? e[i] " is not under ## Criteria" : source " has no " e[i]) ".")
+      }
+    }
+    for (j = 1; j <= ntasks; j++) {
+      num = task_order[j]
+      if (num in deps) {
+        nd = split(deps[num], dl, /[,[:space:]]+/)
+        for (i = 1; i <= nd; i++) {
+          if (dl[i] == "") continue
+          if (dl[i] !~ /^[0-9]+$/) problem(task_line[num], "task " num ": Depends on lists \"" dl[i] "\"; write task numbers, or –.")
+          else if (!((dl[i] + 0) in task_line)) problem(task_line[num], "task " num ": depends on task " dl[i] ", which does not exist.")
+          else if (dl[i] + 0 >= num) problem(task_line[num], "task " num ": depends on task " dl[i] "; a task depends only on earlier tasks.")
+        }
+      }
+      if ((num in need_reason) && reason[num] != need_reason[num])
+        problem(task_line[num], "task " num ": tier " need_reason[num] " is not the default (" default_tier "); add the line \"Task " num " " need_reason[num] ": <reason>\" under the table.")
+    }
+    if (kind == "feature" && !("Bug" in seen) && header_ok && !("Group" in col))
+      problem(header_line, "the Tasks table has no \"Group\" column; every task of a feature plan has a group.")
+    for (j = 1; j <= ngroups; j++) {
+      grp = group_order[j]
+      if (rank(group_tier[grp]) > rank(default_tier) && group_reason[grp] != group_tier[grp])
+        problem(group_line[grp], "group " grp " runs on " group_tier[grp] ", above the default (" default_tier "); add the line \"Group " grp " " group_tier[grp] ": <reason>\" under the table.")
+    }
+    if (!("Design" in seen)) problem(NR, "missing the \"## Design\" section.")
+    else for (i = 1; i <= nneed; i++) if (!(design_need[i] in design_seen)) problem(heading["Design"], "Design has no \"- " design_need[i] ":\" line.")
+    if (!("Progress" in seen)) problem(NR, "missing the \"## Progress\" section.")
+    else if (header_ok) {
+      for (j = 1; j <= ntasks; j++) { num = task_order[j]; if (!(num in progress_line)) problem(heading["Progress"], "task " num " is missing from Progress; add \"- [ ] " num " <task>\".") }
+      for (k in progress_line) if (!(k in task_line)) problem(progress_line[k], "Progress lists task " k ", which the table does not have.")
+    }
+    exit bad
+  }
+' "$@" "$file"
+status=$?
+
+# The group rules autopilot also checks before a build: a group per task, at most 3 tasks, consecutive.
+if plan_has_groups "$file"; then
+  shape=$(plan_rows "$file" | plan_shape_problem)
+  if [ -n "$shape" ]; then
+    printf '%s:%s: %s.\n' "$plan" "$(grep -n '^## Tasks' "$file" | head -n 1 | cut -d: -f1)" "$shape"
+    status=1
+  fi
+fi
+
+# New paths go to the structure gate; a misplaced one is a finding on its task row.
+set --
+while IFS="$tab" read -r _line _num path; do
+  [ -n "$path" ] && [ ! -e "$path" ] && set -- "$@" "$path"
+done <"$paths"
+if [ $# -gt 0 ]; then
+  out=$(.claude/bin/structure "$@" 2>&1)
+  case $? in
+    1)
+      while IFS= read -r finding; do
+        [ -n "$finding" ] || continue
+        loc=$(awk -F '\t' -v p="${finding%%: *}" '$3 == p { print $1 "\t" $2; exit }' "$paths")
+        [ -n "$loc" ] || continue
+        printf '%s:%s: task %s: %s\n' "$plan" "${loc%%"$tab"*}" "${loc#*"$tab"}" "$finding"
+        status=1
+      done <<FINDINGS
+$out
+FINDINGS
+      ;;
+    3) echo "plan-lint: structure not configured; new paths not checked" >&2 ;;
+  esac
+fi
+
+[ "$status" -eq 0 ] && echo "plan-lint: $plan passes."
+exit "$status"
