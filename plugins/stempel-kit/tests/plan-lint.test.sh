@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/plan-lint (specs/plan-lint.md). Run: sh plugins/agentic-workflow-kit/tests/plan-lint.test.sh
+# Tests for .claude/bin/plan-lint (specs/plan-lint.md). Run: sh plugins/stempel-kit/tests/plan-lint.test.sh
 # Uses the kit's default Map in .claude/rules/structure.md on a scratch project.
 set -u
 

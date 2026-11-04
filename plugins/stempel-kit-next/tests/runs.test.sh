@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for the run records (.claude/bin/runs) and `usage tsv`.
-# Run: sh plugins/agentic-workflow-kit-next/tests/runs.test.sh
+# Run: sh plugins/stempel-kit-next/tests/runs.test.sh
 #
 # Expected values, calculated by hand from the fixtures below:
 #   usage.tsv: main 100+50+250 = 400, a1 (sonnet) 10+20+70 = 100, a2 (opus) 20+30+250 = 300, r1 (opus) 50+50+100 = 200

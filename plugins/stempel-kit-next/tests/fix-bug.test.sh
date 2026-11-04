@@ -1,7 +1,7 @@
 #!/bin/sh
 # Tests for the /fix-bug skill and the sentences it needs in the agents and sibling skills (specs/fix-bug.md).
 # The flow itself runs only live (tests/fix-bug/run.sh); these cases pin what the files say.
-# Run: sh plugins/agentic-workflow-kit-next/tests/fix-bug.test.sh
+# Run: sh plugins/stempel-kit-next/tests/fix-bug.test.sh
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)

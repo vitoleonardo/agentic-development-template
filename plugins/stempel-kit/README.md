@@ -1,4 +1,4 @@
-# Agentic Workflow Kit for Claude Code
+# Stempel Kit for Claude Code
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
@@ -22,8 +22,8 @@ Claude Code writes code fast, but out of the box nothing makes it write down wha
 Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The core needs nothing else; the TypeScript adapter expects Node 20.9+. The duplicates check needs [jscpd](https://github.com/kucherenko/jscpd) 5 (tested with 5.4.2): `npm i -D jscpd@5.4.2` in TypeScript projects, the binary on PATH (`brew install jscpd`) for Python.
 
 ```sh
-git clone https://github.com/vitoleonardo/agentic-development-template
-cd agentic-development-template/plugins/agentic-workflow-kit
+git clone https://github.com/vitoleonardo/stempel-kit
+cd stempel-kit/plugins/stempel-kit
 ./install.sh ~/code/my-app --adapter typescript --preset nextjs
 ```
 
@@ -46,11 +46,11 @@ Install without an adapter (`./install.sh ~/code/legacy-app`), start `claude` th
 For teams with many repositories, the skills, agents and hooks can come from a plugin, so an update reaches every repo at once:
 
 ```text
-/plugin marketplace add vitoleonardo/agentic-development-template
-/plugin install agentic-workflow-kit@agentic-development-template
+/plugin marketplace add vitoleonardo/stempel-kit
+/plugin install stempel-kit@stempel-kit
 ```
 
-Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/agentic-workflow-kit:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
+Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/stempel-kit:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
 
 ### Updating
 
@@ -131,4 +131,4 @@ MIT. See [LICENSE](../../LICENSE).
 
 ---
 
-Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln). Teams that book a package also get Kit Pro: a cockpit in Claude Code, playbooks and updates, on top of this kit.
+Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln). Teams that book a package also get Stempel Kit Pro: a cockpit in Claude Code, playbooks and updates, on top of this kit.

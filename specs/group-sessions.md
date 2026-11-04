@@ -6,7 +6,7 @@ ID prefix: GROUP
 A developer who builds a feature larger than one small change gets it built in several fresh headless sessions, without losing context between closely related tasks. The plan splits the work into groups; one session implements each group with shared context, and subagents simplify and review its work. The new flow ships as a separate plugin version, so teams on the current kit see no change until it has been tested.
 
 ## User flow
-1. The developer installs the plugin `agentic-workflow-kit-next` in a project instead of `agentic-workflow-kit`, updates the project files with its installer, and sets a token budget.
+1. The developer installs the plugin `stempel-kit-next` in a project instead of `stempel-kit`, updates the project files with its installer, and sets a token budget.
 2. The developer runs `/ship-feature` in a terminal session and approves the spec and the plan. The plan shows the groups, the tier each group runs on, and any size limit it asks to approve.
 3. `/ship-feature` starts the build, which keeps running on its own, and prints the run log's path. The developer leaves this checkout alone until the build ends, and may close the terminal.
 4. One headless session runs per group, in plan order. Each implements its tasks, commits each one, and has subagents simplify and review the group's work. After each session the build runs its own checks.
@@ -33,11 +33,11 @@ Where a build stops, the run log's closing line says why. Running the build agai
 
 Separate plugin:
 
-- **GROUP-AC1**: Given this feature is complete, when its branch is compared with `main`, then no file under `plugins/agentic-workflow-kit/` differs.
-- **GROUP-AC2**: Given this feature is complete, when the repository's marketplace file is read, then it lists both `agentic-workflow-kit` and `agentic-workflow-kit-next`.
-- **GROUP-AC3**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.0` or later.
-- **GROUP-AC68**: Given only `agentic-workflow-kit-next` is installed, when `/review-diff` runs, then it runs in that plugin's reviewer agent.
-- **GROUP-AC69**: Given only `agentic-workflow-kit-next` is installed, when `/write-tests` runs, then it runs in that plugin's test-writer agent.
+- **GROUP-AC1**: Given this feature is complete, when its branch is compared with `main`, then no file under `plugins/stempel-kit/` differs.
+- **GROUP-AC2**: Given this feature is complete, when the repository's marketplace file is read, then it lists both `stempel-kit` and `stempel-kit-next`.
+- **GROUP-AC3**: Given this feature is complete, when the plugin file of `stempel-kit-next` is read, then its version is `0.4.0` or later.
+- **GROUP-AC68**: Given only `stempel-kit-next` is installed, when `/review-diff` runs, then it runs in that plugin's reviewer agent.
+- **GROUP-AC69**: Given only `stempel-kit-next` is installed, when `/write-tests` runs, then it runs in that plugin's test-writer agent.
 - **GROUP-AC70**: Given the new plugin's installer has run without `--plugin`, when the project's skills are read, then none names an agent with a plugin prefix.
 - **GROUP-AC71**: Given this feature is complete, when CI runs, then the test suites run for both plugin directories.
 - **GROUP-AC72**: Given the new plugin's README, when a developer reads its install section, then it says a project installs only one of the two plugins.
@@ -266,7 +266,7 @@ Sessions and records:
 - **GROUP-AC67**: Given a queue of features `a` and `b`, when `a` has a PR, then the first session of `b` starts on a branch stacked on `a`'s.
 
 ## Out of scope
-- Changing the current plugin `agentic-workflow-kit`, or replacing it with this version. That is a separate step after the test runs.
+- Changing the current plugin `stempel-kit`, or replacing it with this version. That is a separate step after the test runs.
 - Classifying work at the start as a small feature or a sprint. Until that exists, every feature uses this flow.
 - Showing the current group in the cockpit or in the status command's output.
 - Running groups in parallel, or a build in its own worktree.

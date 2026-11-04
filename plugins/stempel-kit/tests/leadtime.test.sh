@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for .claude/bin/leadtime against recorded GitHub data (tests/leadtime/prs.json), no network.
-# Run: sh plugins/agentic-workflow-kit/tests/leadtime.test.sh   (needs jq, which stands in for gh's --jq)
+# Run: sh plugins/stempel-kit/tests/leadtime.test.sh   (needs jq, which stands in for gh's --jq)
 #
 # Expected values, calculated by hand from prs.json (September 2026, times in hours):
 #   PR   first commit  ready        first review       merged       lead cycle review rounds size  kit fix

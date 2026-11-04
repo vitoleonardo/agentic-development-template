@@ -1,7 +1,7 @@
 #!/bin/sh
 # Headless /fix-bug on a copy of the demo app (specs/fix-bug.md: the covered and the gap case).
 # Needs Claude Code, Node, the Playwright Chromium build, and spends tokens, so it is not part of CI.
-# Run: sh plugins/agentic-workflow-kit-next/tests/fix-bug/run.sh [model] [covered|gap|all]   (FIXBUG_E2E_PORT, default 3419)
+# Run: sh plugins/stempel-kit-next/tests/fix-bug/run.sh [model] [covered|gap|all]   (FIXBUG_E2E_PORT, default 3419)
 # The remote is a bare repository in the temp folder, so nothing leaves the machine. bypassPermissions stands
 # in for the user approving each command; KIT_APPROVAL=autonomous answers the gates (push included, so the pack
 # reaches the bare remote; a headless session cannot answer an ask gate), and the prompt forbids pushing the branch.

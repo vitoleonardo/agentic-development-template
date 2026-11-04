@@ -1,6 +1,6 @@
 #!/bin/sh
 # Headless /onboard run on a fixture repo (ONBOARD-AC1, AC2, AC3, AC5). Needs Claude Code, network, pnpm and uv,
-# and spends tokens, so it is not part of CI. Run: sh plugins/agentic-workflow-kit/tests/onboard/run.sh [fixture] [model]
+# and spends tokens, so it is not part of CI. Run: sh plugins/stempel-kit/tests/onboard/run.sh [fixture] [model]
 #   fixture  pnpm-monorepo (default), python-pkg, or demo-app (ONBOARD-AC4: same resolved kit.conf as install.sh)
 #   model    default sonnet
 # The answers a user would give are scripted. bypassPermissions stands in for the user approving each command

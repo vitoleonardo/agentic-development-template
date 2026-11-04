@@ -1,6 +1,6 @@
-# Agentic Workflow Kit for Claude Code (next)
+# Stempel Kit for Claude Code (next)
 
-> **Version 0.4.1, under test.** This is the next version of [agentic-workflow-kit](../agentic-workflow-kit/), which stays the stable one. It builds a feature in one fresh headless session per planned group of tasks and opens one pull request per group, linked as a GitHub stack. The e2e and mutation tests run once per stack, as the last check before the merge, and the build merges a stack itself unless its risk rank says a person approves it ([build log](docs/build-log.md)). A project installs only one of the two plugins: with both, every hook runs twice. It replaces the stable plugin after two real runs, one small feature and one 13-point sprint.
+> **Version 0.4.1, under test.** This is the next version of [stempel-kit](../stempel-kit/), which stays the stable one. It builds a feature in one fresh headless session per planned group of tasks and opens one pull request per group, linked as a GitHub stack. The e2e and mutation tests run once per stack, as the last check before the merge, and the build merges a stack itself unless its risk rank says a person approves it ([build log](docs/build-log.md)). A project installs only one of the two plugins: with both, every hook runs twice. It replaces the stable plugin after two real runs, one small feature and one 13-point sprint.
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
@@ -24,8 +24,8 @@ Claude Code writes code fast, but out of the box nothing makes it write down wha
 Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The core needs nothing else; the TypeScript adapter expects Node 20.9+. The duplicates check needs [jscpd](https://github.com/kucherenko/jscpd) 5 (tested with 5.4.2): `npm i -D jscpd@5.4.2` in TypeScript projects, the binary on PATH (`brew install jscpd`) for Python.
 
 ```sh
-git clone https://github.com/vitoleonardo/agentic-development-template
-cd agentic-development-template/plugins/agentic-workflow-kit-next
+git clone https://github.com/vitoleonardo/stempel-kit
+cd stempel-kit/plugins/stempel-kit-next
 ./install.sh ~/code/my-app --adapter typescript --preset nextjs
 ```
 
@@ -48,11 +48,11 @@ Install without an adapter (`./install.sh ~/code/legacy-app`), start `claude` th
 For teams with many repositories, the skills, agents and hooks can come from a plugin, so an update reaches every repo at once:
 
 ```text
-/plugin marketplace add vitoleonardo/agentic-development-template
-/plugin install agentic-workflow-kit-next@agentic-development-template
+/plugin marketplace add vitoleonardo/stempel-kit
+/plugin install stempel-kit-next@stempel-kit
 ```
 
-Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/agentic-workflow-kit-next:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
+Plugins cannot ship permissions, rules or `CLAUDE.md`, so each repository still needs the project files: `./install.sh ~/code/my-app --adapter typescript --plugin`. That installs everything except the skills, agents and hooks, and leaves the hooks out of `settings.json` so they do not run twice. The commands are then `/stempel-kit-next:ship-feature` and so on; the plain `/ship-feature` works too unless another command has that name.
 
 ### Updating
 

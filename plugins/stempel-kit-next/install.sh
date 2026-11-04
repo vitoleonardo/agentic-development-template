@@ -3,7 +3,7 @@
 # Usage: ./install.sh <project-dir> [--adapter <name>] [--preset <name>]... [--plugin] [--force | --update]
 #   --adapter  stack adapter from adapters/ (for example typescript)
 #   --preset   stack preset from the adapter's presets/ (for example nextjs); repeatable
-#   --plugin   the skills, agents and hooks come from the agentic-workflow-kit-next plugin; install only the project files
+#   --plugin   the skills, agents and hooks come from the stempel-kit-next plugin; install only the project files
 #   --force    overwrite files that already exist in the project
 #   --update   replace the kit files the project has not changed; stage the kit's version of changed ones in .work/kit-update/
 # Existing project files are never overwritten without --force; they are listed for a manual merge.
@@ -144,8 +144,8 @@ retire_ask_rules() {
 
 render() {
   case $2 in
-    # Skills name the plugin's agents (agentic-workflow-kit-next:reviewer); in the project they are plain names.
-    .claude/skills/*/SKILL.md) sed 's/^agent: agentic-workflow-kit-next:/agent: /' "$1" ;;
+    # Skills name the plugin's agents (stempel-kit-next:reviewer); in the project they are plain names.
+    .claude/skills/*/SKILL.md) sed 's/^agent: stempel-kit-next:/agent: /' "$1" ;;
     .claude/settings.json) if [ "$plugin" -eq 1 ]; then strip_hooks "$1"; else cat "$1"; fi ;;
     *) cat "$1" ;;
   esac
@@ -252,7 +252,7 @@ Next steps:
   2. If your formatter or linter also checks .claude/, run it once over the adapter helpers, for example: .claude/bin/check format .claude/bin/*.mjs
   3. Make sure every check in .claude/kit.conf works: .claude/bin/check typecheck (and lint, test, coverage, build).
   4. Start Claude Code in the project and accept the trust prompt once; until then the hooks and allow rules stay off.
-     With --plugin: /plugin marketplace add vitoleonardo/agentic-development-template
-                    /plugin install agentic-workflow-kit-next@agentic-development-template
+     With --plugin: /plugin marketplace add vitoleonardo/stempel-kit
+                    /plugin install stempel-kit-next@stempel-kit
   5. Make the CI workflow a required status check in your branch protection rules.
 EOF

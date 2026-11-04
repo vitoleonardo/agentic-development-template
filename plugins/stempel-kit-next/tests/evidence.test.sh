@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/evidence. Run: sh plugins/agentic-workflow-kit-next/tests/evidence.test.sh
+# Tests for .claude/bin/evidence. Run: sh plugins/stempel-kit-next/tests/evidence.test.sh
 # A fixture repo with fake checks and a bare local remote, so no network or real test runner is needed.
 set -u
 

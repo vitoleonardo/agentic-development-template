@@ -1,6 +1,6 @@
-# Tests for plugins/agentic-workflow-kit-next: the hook, spec-lint and installer tests, and the
+# Tests for plugins/stempel-kit-next: the hook, spec-lint and installer tests, and the
 # TypeScript adapter's quality gates run on the demo app with the kit installed.
-name: agentic-workflow-kit-next
+name: stempel-kit-next
 
 # No path filters: the jobs are required status checks, and a filtered required check
 # would leave pull requests that do not touch the kit waiting forever.
@@ -18,7 +18,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: plugins/agentic-workflow-kit-next
+    working-directory: plugins/stempel-kit-next
 
 jobs:
   kit:

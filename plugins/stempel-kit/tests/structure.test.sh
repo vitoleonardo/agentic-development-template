@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/structure. Run: sh plugins/agentic-workflow-kit/tests/structure.test.sh
+# Tests for .claude/bin/structure. Run: sh plugins/stempel-kit/tests/structure.test.sh
 # Uses the kit's default Map in .claude/rules/structure.md on a scratch git repository.
 set -u
 

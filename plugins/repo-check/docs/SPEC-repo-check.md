@@ -4,9 +4,9 @@ Status: approved 30.10.2026, implemented 30.10.2026. What was built and proven: 
 
 ## 1. Why
 
-`repo-check` is a free Claude Code plugin and the first step into the consulting offer: workshop, pilot, Begleitung, feature sprint and Kit Pro. In about ten minutes a team learns where its delivery is jammed right now ("Der Stau wandert": from Schreiben to Review to Release once agents write faster). They get three steps they can take alone, and an honest answer about which offer fits, if any. If they want to, they send the answers themselves.
+`repo-check` is a free Claude Code plugin and the first step into the consulting offer: workshop, pilot, Begleitung, feature sprint and Stempel Kit Pro. In about ten minutes a team learns where its delivery is jammed right now ("Der Stau wandert": from Schreiben to Review to Release once agents write faster). They get three steps they can take alone, and an honest answer about which offer fits, if any. If they want to, they send the answers themselves.
 
-It is standalone. It works in a repo that has not installed the agentic-workflow-kit and depends on no `.claude/` file in the target repo.
+It is standalone. It works in a repo that has not installed the stempel-kit and depends on no `.claude/` file in the target repo.
 
 Deliverables:
 
@@ -31,7 +31,7 @@ Deliverables:
 - Never mention prices, never promise dates, never name other customers, never pressure. No urgency, scarcity or discounts (RC-AC3).
 - Never send anything. The email is a draft the user sends from their own mail program (RC-AC4).
 - Unanswered questions are marked "offen" (de) or "open" (en).
-- Output follows `plugins/agentic-workflow-kit/kit/.claude/rules/output.md`: answer first, short lines, no recap.
+- Output follows `plugins/stempel-kit/kit/.claude/rules/output.md`: answer first, short lines, no recap.
 
 ### 2.2 Interview
 
@@ -117,7 +117,7 @@ Pick at most one. "None yet" is a valid and common answer.
 | Pilot | The jam is at Review or Release; there is PR history; the budget owner is known |
 | Begleitung | Agents are already in team use; the jam has moved downstream; the goal is lasting change within three months |
 | Feature sprint | Q9 says "one specific feature is done", and capacity is short |
-| Kit Pro | The team sets up the open kit itself and agents are in daily use; there is budget for a tool, not for a package |
+| Stempel Kit Pro | The team sets up the open kit itself and agents are in daily use; there is budget for a tool, not for a package |
 | Noch keins / none yet | Solo with no budget decision; prototype stage; or the three next steps come first |
 
 In scan mode, team size is the number of distinct authors in the last 90 days. It is counted, never named. Budget and goals are unknown, so the offer line says what it could not judge.
@@ -170,7 +170,7 @@ People without the plugin paste this single file into Claude Code. It runs the i
 
 ## 7. Lead time reuse
 
-The scanner reuses `plugins/agentic-workflow-kit/kit/.claude/bin/leadtime`: its query, its definitions (SPEC-v1.1, section 6.1), bot exclusion, the one-contributor rule and the threshold of ten PRs with its warning, "Too few PRs for a reliable comparison". The German report uses "Zu wenige PRs für einen verlässlichen Vergleich".
+The scanner reuses `plugins/stempel-kit/kit/.claude/bin/leadtime`: its query, its definitions (SPEC-v1.1, section 6.1), bot exclusion, the one-contributor rule and the threshold of ten PRs with its warning, "Too few PRs for a reliable comparison". The German report uses "Zu wenige PRs für einen verlässlichen Vergleich".
 
 An installed plugin is copied into Claude Code's cache. A symlink to another plugin is dereferenced for git marketplaces but skipped for local-path installs, so `build` writes a byte-identical copy to `plugin/skills/repo-check/leadtime`, and `build --check` fails if it differs (RC-AC24). leadtime gains:
 
@@ -192,13 +192,13 @@ Each number states its source (`leadtime` via gh, or the git command) and its PR
 
 ## 8. Tests
 
-Same style as `plugins/agentic-workflow-kit/tests/*.test.sh`: POSIX sh, `ok`, `fail` and `has` helpers, a pass/fail count, and they run under `dash`. CI gets `.github/workflows/repo-check.yml` (shellcheck and the three suites, also under dash, with no path filters).
+Same style as `plugins/stempel-kit/tests/*.test.sh`: POSIX sh, `ok`, `fail` and `has` helpers, a pass/fail count, and they run under `dash`. CI gets `.github/workflows/repo-check.yml` (shellcheck and the three suites, also under dash, with no path filters).
 
 - `tests/hook.test.sh` feeds the hook the JSON Claude Code sends:
   - it blocks a write outside `.repo-check/` (including `.repo-check/../x`), build and test commands, reading a `.env` canary, and the other cases in 5.2;
   - it allows writes to `.repo-check/report.md` and read-only git commands;
   - it returns `ask` for read-only gh calls and for `scan --gh`.
-- `tests/scan.test.sh` scans two fixtures from `plugins/agentic-workflow-kit/tests/onboard/`, each with a `.env` canary added:
+- `tests/scan.test.sh` scans two fixtures from `plugins/stempel-kit/tests/onboard/`, each with a `.env` canary added:
   - `pnpm-monorepo` with recorded gh JSON (`tests/leadtime/fake-gh` and `prs.json`);
   - `python-pkg`, git-only, with synthetic merges, tags and a revert.
 
@@ -211,7 +211,7 @@ Same style as `plugins/agentic-workflow-kit/tests/*.test.sh`: POSIX sh, `ok`, `f
   - `build --check` passes, and a hand-edited `repo-check.md` or `leadtime` copy makes it fail;
   - the question list and the rules blocks are byte-identical in SKILL.md and `repo-check.md`;
   - no forbidden word (RC-AC3) is in either.
-- `plugins/agentic-workflow-kit/tests/leadtime.test.sh` gets cases for `--stdout` (CSV on stdout, no `reports/`) and `LEADTIME_ROOT`.
+- `plugins/stempel-kit/tests/leadtime.test.sh` gets cases for `--stdout` (CSV on stdout, no `reports/`) and `LEADTIME_ROOT`.
 - `tests/run.sh` is a headless end-to-end run on a copy of `examples/demo-app`. It needs Claude Code and network and spends tokens, so it is not part of CI:
   - a scan, then a probe turn asking for `npm test` (the hook must block it);
   - a German interview with scripted answers.

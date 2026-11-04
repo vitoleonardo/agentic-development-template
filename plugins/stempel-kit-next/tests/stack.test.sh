@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/stack (specs/stacked-groups.md). Run: sh plugins/agentic-workflow-kit-next/tests/stack.test.sh
+# Tests for .claude/bin/stack (specs/stacked-groups.md). Run: sh plugins/stempel-kit-next/tests/stack.test.sh
 # A fixture repo with a bare local remote and a fake gh that records its calls, so no network is needed.
 set -u
 

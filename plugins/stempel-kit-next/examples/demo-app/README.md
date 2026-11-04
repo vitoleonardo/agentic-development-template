@@ -7,7 +7,7 @@ The kit is not committed here, so you install it the way you would in your own p
 ## Try it (about 5 minutes)
 
 ```sh
-# from plugins/agentic-workflow-kit-next
+# from plugins/stempel-kit-next
 cp -R examples/demo-app /tmp/demo
 ./install.sh /tmp/demo --adapter typescript --preset nextjs
 cd /tmp/demo && npm ci

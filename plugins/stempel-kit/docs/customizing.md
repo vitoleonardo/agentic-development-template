@@ -153,7 +153,7 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `.claude/bin/status` reads the current branch's row in `specs/README.md`, its spec and `.work/<branch>.md`, and prints one line: `invite-users · build · tasks 3/7 · 1 red · budget 42%`. The stage is the first rule that matches: `done` (status), `pr` (a saved PR description), `verify` (a verify round, or status `in-review`), `review` (a review round, or every task ticked), `build` (a ticked task, or status `building`), `plan` (a state file, or status `planned`), `spec` (a row). `--session <id>` adds the checks that are red in that session's turn.
 
-`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes. The output is the public interface for such tools: [Kit Pro](https://vito.koeln/)'s cockpit draws it as a status line and a `/cockpit` pane, and the `COCKPIT-` test IDs in `tests/status.test.sh` come from its spec.
+`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes. The output is the public interface for such tools: [Stempel Kit Pro](https://vito.koeln/)'s cockpit draws it as a status line and a `/cockpit` pane, and the `COCKPIT-` test IDs in `tests/status.test.sh` come from its spec.
 
 ## Measure lead time
 
@@ -333,11 +333,11 @@ Never write a token into `.mcp.json`. Use `${VAR}` references; the file is commi
 
 ## Use it as a plugin
 
-`kit/.claude` is also a Claude Code plugin named `agentic-workflow-kit`, listed in the repository's `.claude-plugin/marketplace.json`. The plugin carries the skills, the agents and the hooks; `install.sh --plugin` installs the rest. To change the workflow for every repository at once, fork this repository, change `kit/.claude`, bump `version` in `kit/.claude/.claude-plugin/plugin.json`, and point your team's marketplace at the fork.
+`kit/.claude` is also a Claude Code plugin named `stempel-kit`, listed in the repository's `.claude-plugin/marketplace.json`. The plugin carries the skills, the agents and the hooks; `install.sh --plugin` installs the rest. To change the workflow for every repository at once, fork this repository, change `kit/.claude`, bump `version` in `kit/.claude/.claude-plugin/plugin.json`, and point your team's marketplace at the fork.
 
 Two differences from a project install:
 
-- Plugin skills are called `/agentic-workflow-kit:ship-feature` and so on; the plain `/ship-feature` also works unless another command has that name. Plugin agents are named `agentic-workflow-kit:reviewer`. The skills in `kit/.claude` use the prefixed agent names; `install.sh` rewrites them to plain names for project installs.
+- Plugin skills are called `/stempel-kit:ship-feature` and so on; the plain `/ship-feature` also works unless another command has that name. Plugin agents are named `stempel-kit:reviewer`. The skills in `kit/.claude` use the prefixed agent names; `install.sh` rewrites them to plain names for project installs.
 - Plugin hooks run in every project where the plugin is enabled. The guard applies everywhere; the check hooks do nothing in a project without `.claude/bin/check`.
 
 ## Formatters and the kit's own files
