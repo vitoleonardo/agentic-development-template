@@ -8,7 +8,7 @@ argument-hint: [base branch, default the state file's Base, else main]
 
 Base branch: $ARGUMENTS (if empty: `$KIT_BASE` when it is set, else the `Base:` line of `.work/<branch>.md`, else `main`). Open the PR against it (`gh pr create --base <base>`).
 
-Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, say that the pack is stale and that `/verify-feature` must run again; do not use it.
+Read `git diff <base>...HEAD`, `git log <base>..HEAD`, the feature's spec (find it through the Branch column in `specs/README.md`, or, when no row names the branch, through the title of `.work/<branch>.md`; a fix's criteria are its `## Criteria`), `.work/<branch>.md`, and the evidence pack in `.work/<branch>/evidence/` (`evidence.json`, `gates.md`, `matrix.tsv`, `data-runs.md`, `screenshots-review.md`). If `evidence.json` names another commit than `HEAD`, say that the pack is stale and that `/verify-feature` must run again; do not use it.
 
 Write:
 
@@ -19,7 +19,7 @@ Write:
 - <One to three bullets on what changes for users.>
 
 ## Why
-<One line, and a link to specs/<feature>.md.>
+<One line, and a link to specs/<feature>.md; for a fix, the issue URL or the `## Bug` source instead.>
 
 ## Evidence
 | Criterion | Tests | Edge cases | Seeded | Mocked | Screenshots |

@@ -12,6 +12,7 @@
       "Bash(git branch --show-current)",
       "Bash(.claude/bin/check *)",
       "Bash(.claude/bin/spec-lint *)",
+      "Bash(.claude/bin/plan-lint *)",
       "Bash(.claude/bin/route *)",
       "Bash(.claude/bin/usage *)",
       "Bash(.claude/bin/gate *)"

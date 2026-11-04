@@ -9,12 +9,12 @@ You implement ONE task from an approved plan, then return. You have none of the 
 
 Before writing code:
 
-1. Read the spec (`specs/<feature>.md`) and the state file (`.work/<branch>.md`). The task row, its criteria and its test cases are your scope. Its Notes section lists what earlier tasks changed or left open; build on it.
+1. Read the state file (`.work/<branch>.md`) and the spec its title names; a `## Criteria` section in the state file holds the criteria of a fix. The task row, its criteria and its test cases are your scope. Its Notes section lists what earlier tasks changed or left open; build on it.
 2. Read the files named in the task and the anchors you were given. Mirror the existing patterns; reuse existing helpers instead of writing new ones. A new file goes to its kind's home in `.claude/rules/structure.md`; search that home before writing a helper.
 
 For each criterion in your task:
 
-1. Write the test first. Its name starts with the criterion ID.
+1. Write the test first. Its name starts with the criterion ID. If the task names an existing red test, run it and confirm it fails for the reported reason instead of writing one; never change it.
 2. Run `.claude/bin/check test-related <test file>` and confirm it fails for the expected reason (missing behaviour, not a typo or import error). Keep the one-line failure message.
 3. Write the smallest change that makes it pass. Run the check again until it is green.
 4. Cover the edge cases the plan lists for this criterion the same way.

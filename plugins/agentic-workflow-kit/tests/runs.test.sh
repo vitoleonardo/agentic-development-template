@@ -79,7 +79,7 @@ case $out in *"Run records are off"*) ok ;; *) fail "record says it is off: $out
 sed -i 's/^KIT_IMPROVE=""/KIT_IMPROVE="1"/' .claude/kit.conf
 .claude/bin/runs record >/dev/null 2>"$project/err"
 r=reports/runs/12-export.tsv
-same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400" "the run row"
+same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400	2" "the run row"
 same "$(grep -c '^stop' "$r")" 2 "one stop row per Stops line, without the template line"
 same "$(grep '^stop' "$r" | tail -n 1)" "stop${tab}task 2${tab}kit${tab}guard blocked \`npm run gen\`${tab}ran it by hand${tab}guard pattern too wide, proposed fix" "a stop row keeps its fields"
 same "$(cat "$project/err")" "" "known classes give no warning"
@@ -126,6 +126,16 @@ EOF
 same "$(grep -c '^intervention' "$r")" 3 "STEER-AC19: one intervention row per steered-by-user and stopped-by-user decision"
 .claude/bin/runs report >/dev/null
 grep -q '| 2026-10-27 | export | 2 | 1 | 1 | 1000 | 400 | 2 | 3 |' "$m" && ok || fail "STEER-AC19: messages and user stops count as interventions: $(grep '| export |' "$m")"
+
+# --- a fix plan (specs/fix-bug.md) ------------------------------------------------------
+
+git symbolic-ref HEAD refs/heads/fix-login-redirect
+mkdir -p .work/fix-login-redirect
+cp .work/12-export/usage.tsv .work/12-export/agents.tsv .work/fix-login-redirect/
+printf '# Plan: login-redirect (fix)\nBase: main\n\n## Criteria\n- **LOGINFIX-AC1**: Given a, when b, then c.\n\n## Progress\n- [x] 1 reproduce\n- [x] 2 fix\n' >.work/fix-login-redirect.md
+.claude/bin/runs record >/dev/null 2>"$project/err"
+same "$(grep '^run' reports/runs/fix-login-redirect.tsv | cut -f3,4)" "login-redirect${tab}fix-login-redirect" "FIXBUG-AC26: the record's feature is the fix plan's slug"
+same "$(cat "$project/err")" "" "FIXBUG-AC26: a fix plan records without a warning"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
