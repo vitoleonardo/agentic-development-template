@@ -31,11 +31,20 @@ cd "$root" || exit 2
 budget_from_environment=${KIT_BUDGET_TOKENS:-}
 improve_from_environment=${KIT_IMPROVE:-}
 approval_from_environment=${KIT_APPROVAL:-}
+bot_from_environment=${KIT_BOT_GH_CONFIG:-}
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
   . ./.claude/kit.conf
 fi
 KIT_BUDGET_TOKENS=${budget_from_environment:-${KIT_BUDGET_TOKENS:-}}
+KIT_BOT_GH_CONFIG=${bot_from_environment:-${KIT_BOT_GH_CONFIG:-}}
+# The bot identity (specs/risk-gates.md): gh and git's https pushes use the bot's login, so a person can approve a
+# high-ranked pull request the build opened. git asks gh for the credentials, and only gh.
+if [ -n "${KIT_BOT_GH_CONFIG:-}" ]; then
+  GH_CONFIG_DIR=$KIT_BOT_GH_CONFIG
+  GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=credential.helper GIT_CONFIG_VALUE_0="" GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1="!gh auth git-credential"
+  export GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
+fi
 KIT_IMPROVE=${improve_from_environment:-${KIT_IMPROVE:-}}
 
 max_answers=${AUTOPILOT_MAX_ANSWERS:-2}
@@ -54,7 +63,7 @@ unfinished_fix=$log_dir/unfinished-fix
 run_log=$log_dir/run-$run_id.md
 
 slug="" branch="" state="" base="" session="" sessions="" current="" current_transcript="" current_group=""
-session_model="" session_effort="" answers=0 sequence=0 approved_size="" stash_changes=""
+session_model="" session_effort="" answers=0 sequence=0 approved_size="" approved_risk="" stash_changes=""
 _transcript="" _phase="" _kind=""
 
 # --- one build at a time ----------------------------------------------------------
@@ -173,6 +182,9 @@ case $mode in
     valid_budget || { echo "$budget_message"; exit 2; }
     _note=$(stack_note)
     [ -z "$_note" ] || echo "autopilot: warning: $_note" >&2
+    if [ -z "${KIT_BOT_GH_CONFIG:-}" ] && [ "$(.claude/bin/gate level 2>/dev/null)" = autonomous ]; then
+      echo "autopilot: warning: KIT_BOT_GH_CONFIG is not set, so the build pushes as the developer, and the developer cannot approve a high-ranked pull request it opens (docs/customizing.md, \"Merge by risk\")." >&2
+    fi
     exit 0
     ;;
 esac
@@ -407,6 +419,8 @@ last_done_group() {
 }
 dirty_tree() { [ -n "$(git status --porcelain --untracked-files=no)" ]; }
 approved_size_line() { grep '^Approved size:' "$state" 2>/dev/null | head -n 1; }
+# plan_risk_lines: the plan's Architecture and Estimate lines, which the plan gate ranked (specs/risk-gates.md).
+plan_risk_lines() { grep -E '^- (Architecture|Estimate):' "$state" 2>/dev/null | tr -d '\r'; }
 over_budget() { [ "$(.claude/bin/usage total)" -ge "$KIT_BUDGET_TOKENS" ]; }
 stop_if_over_budget() {
   if over_budget; then
@@ -497,6 +511,9 @@ session_kept_to_plan() {
   [ "$_on_branch" = "$branch" ] || halt env "the $_phase session ended on branch $_on_branch, not $branch"
   if [ "$_kind" != plan ] && [ "$(approved_size_line)" != "$approved_size" ]; then
     halt plan "a session changed the plan's Approved size line"
+  fi
+  if [ "$_kind" != plan ] && [ "$(plan_risk_lines)" != "$approved_risk" ]; then
+    halt plan "a session changed the plan's Architecture or Estimate line, which the plan gate ranked"
   fi
 }
 
@@ -711,6 +728,32 @@ $(tail -n 40 "$check_output")"
   done
   run_limited .claude/bin/stack bodies || halt env "the pull requests did not get the stage's screenshots; see $check_output"
   log "- stack: green; $(grep '^mutation:' "$check_output" | tail -n 1)"
+  git rev-parse HEAD >".work/$branch/stack/green"
+}
+
+# merge_stack: the stack merges when the merge gate allows it (specs/risk-gates.md); a high-ranked layer without a
+# person's approval stops the build with class approval, and running it again after the approval merges.
+merge_stack() {
+  [ -n "$(pr_of "$branch")" ] || return 0
+  # At strict a person merges, as before: the build ends with the pull requests open.
+  [ "$(.claude/bin/gate level 2>/dev/null)" != strict ] || return 0
+  _merge_why=$log_dir/$run_id-merge-gate.txt
+  _merge=$(.claude/bin/gate merge 2>"$_merge_why")
+  if [ "$_merge" != auto ]; then
+    _waiting=$(sed -n 's/^gate merge: high-ranked layers wait for approval by a person://p' "$_merge_why" | tail -n 1)
+    if [ -z "$_waiting" ]; then
+      # The project merges by hand (KIT_GATE_MERGE="ask"): the build ends with the pull requests open.
+      log "- stack: the merge gate asks ($(grep -v '^gate merge:   ' "$_merge_why" | sed 's/^gate merge: //' | tr '\n' ' ')); a person merges."
+      return 0
+    fi
+    _why=$(grep '^gate merge:   high: ' "$_merge_why" | sed 's/^gate merge:   high: //' | tr '\n' ';' | sed 's/;$//; s/;/; /g')
+    add_stop approval "the pull requests of$_waiting rank high" "user: waiting for approval"
+    halt approval "the pull requests of$_waiting wait for approval by a person: ${_why:-high risk}"
+  fi
+  check_output=$log_dir/$run_id-merge.txt
+  : >"$check_output"
+  run_limited .claude/bin/stack merge || halt env "the merge failed: $(tail -n 2 "$check_output" | tr '\n' ' ')"
+  merged=1
 }
 
 # is_verified: the last verify round passed and the evidence pack was made on this commit.
@@ -926,6 +969,7 @@ for slug in "$@"; do
     git commit -qm "Set $slug to $(status_of "$slug")" -- specs/README.md || halt env "cannot commit the status of $slug"
   fi
   approved_size=$(approved_size_line)
+  approved_risk=$(plan_risk_lines)
   build_feature
   minutes=$((($(date +%s) - started + 59) / 60))
   pr=$(pr_of "$branch")
@@ -934,9 +978,17 @@ for slug in "$@"; do
   base=$branch
 done
 
-run_stack
+merged=""
+_green=$(cat ".work/$branch/stack/green" 2>/dev/null)
+# A stack whose stage was green on this commit (a rerun after an approval) does not run its stage again.
+if [ -z "$_green" ] || [ "$_green" != "$(git rev-parse HEAD)" ]; then run_stack; fi
+merge_stack
 
 log ""
-log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."
+if [ -n "$merged" ]; then
+  log "Every feature has a PR, and the stack is merged: $*."
+else
+  log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."
+fi
 .claude/bin/runs report >/dev/null 2>&1
 echo "autopilot: done. Run log: $run_log"

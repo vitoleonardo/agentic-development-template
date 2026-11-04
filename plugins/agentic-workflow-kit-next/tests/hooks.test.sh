@@ -190,11 +190,11 @@ gate_is() {
     echo "FAIL: gate $gate_name with $*: wanted $gate_want, got '$got'"
   fi
 }
-gate_is push ask KIT_APPROVAL=
+gate_is push auto KIT_APPROVAL=
 gate_is push ask KIT_APPROVAL=strict
 gate_is push auto KIT_APPROVAL=standard
 gate_is plan ask KIT_APPROVAL=standard
-gate_is plan auto KIT_APPROVAL=autonomous
+gate_is plan ask KIT_APPROVAL=autonomous
 gate_is push ask KIT_APPROVAL=bogus
 gate_is push ask KIT_APPROVAL=autonomous KIT_GATE_PUSH=ask
 gate_is deps auto KIT_APPROVAL=strict KIT_GATE_DEPS=auto
@@ -205,7 +205,7 @@ gate_is spec ask KIT_APPROVAL=
 gate_is push ask KIT_APPROVAL=strict
 gate_is spec auto KIT_APPROVAL= KIT_GATE_SPEC=auto
 mv "$project/kit.conf.orig" "$project/.claude/kit.conf"
-if "$project/.claude/bin/gate" merge >/dev/null 2>&1; then
+if "$project/.claude/bin/gate" deploy >/dev/null 2>&1; then
   failed=$((failed + 1)); echo "FAIL: an unknown gate should be a usage error"
 else
   passed=$((passed + 1))
@@ -231,22 +231,47 @@ risk_gate_is() {
 risk_gate_is auto KIT_APPROVAL=autonomous
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
 printf 'alter table x;\n' >"$risk_repo/db/migrations/1.sql" && risk_git add -A && risk_git commit -qm migration
-risk_gate_is ask KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
 risk_gate_is ask KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="db/migrations/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="api/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*" KIT_GATE_PUSH=auto
-risk_gate_is ask KIT_APPROVAL=autonomous
-reason=$(cd "$risk_repo" && KIT_APPROVAL=autonomous .claude/bin/gate push 2>&1 >/dev/null)
+risk_gate_is ask KIT_APPROVAL=standard
+reason=$(cd "$risk_repo" && KIT_APPROVAL=standard .claude/bin/gate push 2>&1 >/dev/null)
 case $reason in
   *"the branch changes db/migrations/1.sql (KIT_PUSH_ASK_PATTERNS)"*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: the push gate should name the risky file: $reason" ;;
 esac
 reason=$(cd "$risk_repo" && printf '{"session_id":"t","tool_name":"Bash","tool_input":{"command":"git push origin 7-risk"}}' |
-  CLAUDE_PROJECT_DIR=$risk_repo KIT_APPROVAL=autonomous .claude/hooks/guard 2>/dev/null)
+  CLAUDE_PROJECT_DIR=$risk_repo KIT_APPROVAL=standard .claude/hooks/guard 2>/dev/null)
 case $reason in
   *'"permissionDecision":"ask"'*"the branch changes db/migrations/1.sql (KIT_PUSH_ASK_PATTERNS)"*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: the guard should ask for a risky push and say why: $reason" ;;
 esac
+# The plan and merge gates by risk (specs/risk-gates.md).
+plan_gate() { (cd "$risk_repo" && env "$@" .claude/bin/gate plan 2>&1); }
+mkdir -p "$risk_repo/.work"
+printf '# Plan: x (spec: specs/x.md)\n\n## Design\n- Architecture: none\n- Estimate: 40 lines\n\n## Tasks\n| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |\n|---|---|---|---|---|---|---|---|\n| 1 | t | `src/a.ts` | X-AC1 | c | - | standard | A |\n\n## Progress\n- [x] 1 t\n' >"$risk_repo/.work/7-risk.md"
+case $(plan_gate KIT_APPROVAL=autonomous) in auto) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC19: a low plan passes the plan gate at autonomous: $(plan_gate KIT_APPROVAL=autonomous)" ;; esac
+sed -i.bak 's/^- Architecture: none/- Architecture: a queue between the API and the mailer/' "$risk_repo/.work/7-risk.md"
+out=$(plan_gate KIT_APPROVAL=autonomous)
+case $out in *"a queue between the API and the mailer"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC18: an architecture change asks at the plan gate and says why: $out" ;; esac
+case $(plan_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC2: strict asks at the plan gate" ;; esac
+merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/gate merge 2>&1); }
+case $(merge_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC29: strict asks at the merge gate" ;; esac
+out=$(merge_gate KIT_APPROVAL=autonomous)
+case $out in *"the stack stage is not green"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC28: without a green stage the merge gate asks: $out" ;; esac
+out=$(merge_gate KIT_APPROVAL=autonomous)
+mkdir -p "$risk_repo/.work/7-risk/stack"
+(cd "$risk_repo" && git rev-parse HEAD) >"$risk_repo/.work/7-risk/stack/green"
+out=$(merge_gate KIT_APPROVAL=autonomous)
+case $out in *"wait for approval by a person"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC25: a high layer without an approval asks: $out" ;; esac
+risk_git switch -qc 8-low main
+printf 'export const low = 1;\n' >"$risk_repo/src/low.ts" && risk_git add -A && risk_git commit -qm low
+printf '# Plan: x (spec: specs/x.md)\nBase: main\n\n## Progress\n- [x] 1 t\n' >"$risk_repo/.work/8-low.md"
+mkdir -p "$risk_repo/.work/8-low/stack"
+(cd "$risk_repo" && git rev-parse HEAD) >"$risk_repo/.work/8-low/stack/green"
+out=$(merge_gate KIT_APPROVAL=autonomous)
+case $out in *auto) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC24: a green, low stack merges: $out" ;; esac
 rm -rf "$risk_repo"
 
 # round_is <class> <n> <want> [env...]: whether verify round n, failed with this class, continues (auto) or asks.

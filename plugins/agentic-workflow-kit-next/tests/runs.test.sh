@@ -110,9 +110,19 @@ grep -q '^- old-a, task 3: format hook slow. Tried: –. Resolution: waited.$' "
 grep -q '| Verify rounds | 2 | 3 | 2 |' "$m" && ok || fail "verify rounds per run, only runs that record rounds: $(grep -i verify "$m")"
 grep -q 'Verify rounds: 4 in 2 runs (mean 2.0). Failed by a kit false positive: 1. Failed on the screenshot review: 1.' "$m" && ok || fail "verify rounds by cause: $(grep -i 'verify rounds:' "$m")"
 grep -q '| hotfix | 0 |' "$m" && ok || fail "hotfix is a stop class"
+grep -q '| approval | 0 |' "$m" && ok || fail "approval is a stop class"
 grep -q '| Interventions per run (stops resolved by the user) | 0 | 1 | 3 |' "$m" && ok || fail "interventions per run: $(grep -i interventions "$m")"
 grep -q '| 2026-09-10 | old-b | 0 | 1 | 0 | 2000 | 1000 | 1 | 1 |' "$m" && ok || fail "a run row counts its interventions: $(grep old-b "$m")"
 grep -q 'Reviewer tokens per review round: round 1 median 550 (2 rounds), later rounds median 300 (1 rounds).' "$m" && ok || fail "reviewer tokens per round: $(grep -i 'reviewer tokens' "$m")"
+
+# --- approval stops (specs/risk-gates.md) -----------------------------------------------
+
+for r in 1 2 3; do
+  printf 'run\t2026-10-0%s\tappr-%s\tappr-%s\t1\t0\t0\t100\t0\t100\t0\t0\nstop\tmerge\tapproval\tlayer ranks high\t–\tuser: approved\n' "$r" "$r" "$r" >"reports/runs/appr-$r.tsv"
+done
+.claude/bin/runs report >/dev/null
+grep -q '| approval | 3 |' reports/runs.md && ok || fail "RISK-AC45: approval stops are counted: $(grep -i approval reports/runs.md)"
+rm reports/runs/appr-*.tsv
 
 # --- a fix plan (specs/fix-bug.md) ------------------------------------------------------
 

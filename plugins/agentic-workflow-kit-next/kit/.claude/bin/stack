@@ -10,6 +10,9 @@
 #                               (stack-checks.yml) or in this checkout (KIT_STACK_CHECKS); results in
 #                               .work/<branch>/stack/. Exit 0 green, 1 red, 2 cannot run
 #   .claude/bin/stack bodies    each layer's pull request gets its criteria's screenshots and the mutation score
+#   .claude/bin/stack base      the base of the stack's bottom layer
+#   .claude/bin/stack merge     merge the whole stack through its top pull request (KIT_MERGE_METHOD, default squash):
+#                               gh stack merge, or without it each pull request from the bottom up
 # The feature is the current branch; its plan is .work/<branch>.md. Exit codes: 0 done, 1 refused, 2 not set up.
 set -u
 
@@ -278,11 +281,36 @@ bodies() {
   done <"$tmp/chain"
 }
 
+merge_stack() {
+  _method=$(conf_value . KIT_MERGE_METHOD)
+  case ${_method:-squash} in squash | merge | rebase) ;; *) echo "stack: KIT_MERGE_METHOD='$_method' is not squash, merge or rebase." >&2; return 2 ;; esac
+  _method=${_method:-squash}
+  chain >"$tmp/chain"
+  _top_pr=$(gh pr view "$branch" --json number --jq .number 2>/dev/null)
+  [ -n "$_top_pr" ] || { echo "stack: $branch has no pull request." >&2; return 1; }
+  if has_stack; then
+    gh stack merge "$_top_pr" --yes "--$_method" || { echo "stack: gh stack merge failed." >&2; return 1; }
+    gh stack sync --prune >/dev/null 2>&1 || echo "stack: gh stack sync --prune failed; the merged branches stay." >&2
+  else
+    # A chain: from the bottom up; the next pull request moves onto the base before it merges.
+    _base=$(stack_base)
+    while IFS="$tab" read -r _layer _commit _group; do
+      _state=$(gh pr view "$_layer" --json state --jq .state 2>/dev/null)
+      [ "$_state" != MERGED ] || continue
+      gh pr edit "$_layer" --base "$_base" >/dev/null || { echo "stack: cannot move $_layer onto $_base." >&2; return 1; }
+      gh pr merge "$_layer" "--$_method" --delete-branch >/dev/null || { echo "stack: gh pr merge $_layer failed." >&2; return 1; }
+    done <"$tmp/chain"
+  fi
+  echo "stack: merged the stack up to $branch (#$_top_pr, $_method)"
+}
+
 case ${1:-} in
   layers) layers ;;
   chain) chain ;;
   submit) submit ;;
   checks) shift; checks "$@" ;;
   bodies) bodies ;;
-  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  base) stack_base; echo ;;
+  merge) merge_stack ;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

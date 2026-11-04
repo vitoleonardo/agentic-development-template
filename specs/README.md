@@ -13,3 +13,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | E2e map | `e2e-map.md` | in-review | next-e2e-map | 0 |
 | Stacked groups | `stacked-groups.md` | in-review | next-stacked-groups | 0 |
 | Stack stage | `stack-stage.md` | in-review | next-stack-stage | 0 |
+| Risk gates | `risk-gates.md` | in-review | next-risk-gates | 0 |

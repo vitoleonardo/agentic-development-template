@@ -1,0 +1,189 @@
+#!/bin/sh
+# Risk rank: whether a person approves the plan or the merge (specs/risk-gates.md). Deterministic: the same plan or
+# diff always gets the same rank.
+# Usage:
+#   .claude/bin/risk plan [plan]                 the plan's predicted risk (default .work/<branch>.md)
+#   .claude/bin/risk diff [--from A] [--to B]    a diff's measured risk, plus the run's signals from the state file
+#                                                when the range is the branch's (default: merge base to HEAD)
+#   .claude/bin/risk stack                       every layer of the stack below this branch's top, and the highest
+# Prints "risk <score> <low|medium|high>", then one reason per line ("+<points> <reason>" or "high: <reason>").
+# High: a hard trigger, or a score of KIT_RISK_HUMAN (default 8) or more; medium from half of it.
+# Exit codes: 0 low or medium, 1 high, 2 not set up.
+set -u
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+cd "$root" || exit 2
+KIT_ROOT=$root
+export KIT_ROOT
+# shellcheck source=conf.sh
+. "$root/.claude/bin/conf.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
+
+tab=$(printf '\t')
+tmp=$(mktemp -d) || exit 2
+trap 'rm -rf "$tmp"' EXIT
+branch=$(git branch --show-current 2>/dev/null)
+state=.work/${branch:-detached}.md
+
+human=$(conf_value . KIT_RISK_HUMAN)
+case ${human:-} in '' | *[!0-9]*) human=8 ;; esac
+max=$(conf_value . KIT_MAX_CHANGED_LINES)
+case ${max:-} in '' | *[!0-9]*) max=400 ;; esac
+push_ask=$(conf_value . KIT_PUSH_ASK_PATTERNS)
+architecture=$(conf_value . KIT_ARCHITECTURE_PATTERNS)
+contract=$(conf_value . KIT_CONTRACT_PATTERNS)
+map=$(conf_value . KIT_E2E_MAP)
+exceptions=$(conf_value . KIT_MUTATION_EXCEPTIONS)
+exceptions=${exceptions:-.kit/mutation-exceptions.tsv}
+# The build may never lower its own bar: its checks, the kit, the e2e map and the mutation exceptions.
+own_bar=".github/* .claude/* ${map:-.kit/e2e-map.tsv} $exceptions"
+
+score=0 hard=""
+add() { score=$((score + $1)); printf '+%s %s\n' "$1" "$2" >>"$tmp/reasons"; }
+high() { hard=1; printf 'high: %s\n' "$1" >>"$tmp/reasons"; }
+
+# files_check <file list>: the hard triggers and the contract paths among the files.
+files_check() {
+  _contract=""
+  while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
+    if [ -n "$push_ask" ] && matches_any "$_f" "$push_ask"; then high "$_f is in KIT_PUSH_ASK_PATTERNS"; fi
+    if [ -n "$architecture" ] && matches_any "$_f" "$architecture"; then high "$_f is in KIT_ARCHITECTURE_PATTERNS"; fi
+    if matches_any "$_f" "$own_bar"; then high "$_f is part of the build's own checks"; fi
+    if [ -n "$contract" ] && matches_any "$_f" "$contract"; then _contract="$_contract $_f"; fi
+  done <"$1"
+  [ -z "$_contract" ] || add 3 "a public contract changes:$_contract (KIT_CONTRACT_PATTERNS)"
+}
+
+# lines_check <changed lines>
+lines_check() {
+  if [ "$1" -gt $((max * 2)) ]; then add 4 "$1 changed lines, over twice KIT_MAX_CHANGED_LINES ($max)"
+  elif [ "$1" -gt "$max" ]; then add 2 "$1 changed lines, over KIT_MAX_CHANGED_LINES ($max)"; fi
+}
+
+# areas_check <file list>: how many top folders (two levels) the source files spread over.
+areas_check() {
+  _areas=$(awk -F '/' 'NF > 2 { print $1 "/" $2 } NF == 2 { print $1 } NF == 1 { print "." }' "$1" | sort -u | grep -c .)
+  if [ "$_areas" -ge 5 ]; then add 3 "the change spreads over $_areas areas"
+  elif [ "$_areas" -ge 3 ]; then add 2 "the change spreads over $_areas areas"; fi
+}
+
+# signals_check: the run's own signals in the state file: retries a tier higher, review rounds that ended with high
+# findings, failed verify rounds of the hotfix class, and many decisions nobody approved.
+signals_check() {
+  [ -f "$state" ] || return 0
+  _tier=$(section_lines "$state" Stops | awk -F '|' '{ c = $2; gsub(/ /, "", c) } c == "tier"' | grep -c .)
+  [ "$_tier" -eq 0 ] || add $((_tier > 1 ? 4 : 2)) "$_tier task retries a tier higher failed"
+  _rounds=$(section_lines "$state" Rounds | grep -c 'high open')
+  [ "$_rounds" -eq 0 ] || add 2 "$_rounds review rounds ended with high findings"
+  _hotfix=$(section_lines "$state" Rounds | grep '^- verify ' | grep -c 'fail:.*hotfix')
+  [ "$_hotfix" -eq 0 ] || add "$_hotfix" "$_hotfix failed verify rounds needed a product fix"
+  _decisions=$(section_lines "$state" "Decisions to review" | grep -c .)
+  [ "$_decisions" -lt 3 ] || add 1 "$_decisions decisions nobody approved"
+}
+
+verdict() {
+  if [ -n "$hard" ] || [ "$score" -ge "$human" ]; then class=high
+  elif [ "$score" -ge $(((human + 1) / 2)) ]; then class=medium
+  else class=low; fi
+  printf 'risk %s %s\n' "$score" "$class"
+  [ ! -s "$tmp/reasons" ] || cat "$tmp/reasons"
+  [ "$class" != high ]
+}
+
+rank_plan() {
+  plan=${1:-$state}
+  [ -f "$plan" ] || { echo "risk: no plan at $plan" >&2; return 2; }
+  state=$plan
+  _arch=$(sed -n 's/^- Architecture:[[:space:]]*//p' "$plan" | tr -d '\r' | head -n 1)
+  case $(printf '%s' "$_arch" | tr 'A-Z' 'a-z') in
+    '' | none | –| -) ;;
+    *) high "the plan changes the architecture: $_arch" ;;
+  esac
+  _estimate=$(sed -n 's/^- Estimate:[[:space:]]*\([0-9][0-9]*\) lines.*/\1/p' "$plan" | head -n 1)
+  [ -z "$_estimate" ] || lines_check "$_estimate"
+  # The files the tasks name.
+  awk -F '|' '
+    function trim(v) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); return v }
+    { sub(/\r$/, "") }
+    /^## / { inside = ($0 == "## Tasks"); next }
+    inside && /^\|/ {
+      if (!head) { for (i = 2; i < NF; i++) if (tolower(trim($i)) == "files") cf = i; head = 1; next }
+      if (!cf || $0 ~ /^\|[[:space:]:|-]*$/) next
+      s = $cf
+      if (index(s, "`")) { while (match(s, /`[^`]+`/)) { print substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH) } }
+      else { n = split(s, t, /[,[:space:]]+/); for (i = 1; i <= n; i++) if (t[i] ~ /\/|\./) print t[i] }
+    }' "$plan" | sed 's/[[:space:]].*$//' | sort -u >"$tmp/files"
+  files_check "$tmp/files"
+  _tasks=$(plan_rows "$plan" | grep -c .)
+  _deep=$(plan_rows "$plan" | awk -F '|' '$3 == "deep"' | grep -c .)
+  if [ "$_tasks" -gt 0 ] && [ $((_deep * 2)) -ge "$_tasks" ] && [ "$_deep" -gt 0 ]; then add 3 "$_deep of $_tasks tasks need the deep tier"
+  elif [ "$_deep" -gt 0 ]; then add 1 "$_deep of $_tasks tasks need the deep tier"; fi
+  _groups=$(plan_rows "$plan" | cut -d '|' -f 2 | sort -u | grep -c .)
+  [ "$_groups" -lt 4 ] || add 2 "$_groups groups"
+  ! grep -q '^Approved size:' "$plan" || add 2 "the plan approves a size above the limit"
+  verdict
+}
+
+# rank_diff <from> <to> [signals]: the diff's files and lines, and the run's signals when asked.
+rank_diff() {
+  _excludes=""
+  for _p in $(conf_value . KIT_PROTECTED_PATHS); do _excludes="$_excludes :(exclude)${_p%/}"; done
+  # shellcheck disable=SC2086
+  git diff --name-only "$1" "$2" -- . $_excludes >"$tmp/files" 2>/dev/null || { echo "risk: cannot diff $1..$2" >&2; return 2; }
+  # shellcheck disable=SC2086
+  _lines=$(git diff --numstat "$1" "$2" -- . $_excludes 2>/dev/null | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
+    t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  files_check "$tmp/files"
+  lines_check "$_lines"
+  areas_check "$tmp/files"
+  _manifests=$(grep -E '(^|/)(package\.json|pyproject\.toml|requirements[^/]*\.txt|go\.mod|Cargo\.toml|pom\.xml)$' "$tmp/files" | tr '\n' ' ')
+  [ -z "$_manifests" ] || add 2 "dependencies change: $_manifests"
+  [ "${3:-}" != signals ] || signals_check
+  verdict
+}
+
+case ${1:-} in
+  plan) rank_plan "${2:-}" ;;
+  diff)
+    shift
+    from="" to=HEAD signals=""
+    while [ $# -gt 0 ]; do
+      case $1 in
+        --from) from=$2; shift 2 ;;
+        --to) to=$2; shift 2 ;;
+        --state) state=$2; signals=signals; shift 2 ;;
+        *) echo "risk diff: unknown option $1" >&2; exit 2 ;;
+      esac
+    done
+    if [ -z "$from" ]; then rank_diff "$(merge_base)" "$to" signals; else rank_diff "$from" "$to" $signals; fi
+    ;;
+  stack)
+    [ -f "$state" ] || { echo "risk: no plan at $state" >&2; exit 2; }
+    .claude/bin/stack chain >"$tmp/chain" 2>/dev/null || { echo "risk: no stack for $branch" >&2; exit 2; }
+    below=$(.claude/bin/stack base 2>/dev/null)
+    worst=0 worst_class=low
+    : >"$tmp/layers"
+    while IFS="$tab" read -r layer commit group; do
+      # The run's signals belong to the feature, so they count on its top layer, the feature branch.
+      case $layer in *-g"$group") feature_state="" ;; *) feature_state=.work/$layer.md ;; esac
+      out=$("$0" diff --from "$below" --to "$commit" ${feature_state:+--state "$feature_state"})
+      first=$(printf '%s\n' "$out" | head -n 1)
+      layer_score=$(printf '%s' "$first" | cut -d ' ' -f 2)
+      layer_class=$(printf '%s' "$first" | cut -d ' ' -f 3)
+      printf 'layer %s %s %s\n' "$layer" "$layer_score" "$layer_class" >>"$tmp/layers"
+      printf '%s\n' "$out" | tail -n +2 | sed 's/^/  /' >>"$tmp/layers"
+      [ "$layer_score" -le "$worst" ] || worst=$layer_score
+      case $layer_class in
+        high) worst_class=high ;;
+        medium) [ "$worst_class" = high ] || worst_class=medium ;;
+      esac
+      below=$commit
+    done <"$tmp/chain"
+    printf 'risk %s %s\n' "$worst" "$worst_class"
+    cat "$tmp/layers"
+    [ "$worst_class" != high ]
+    ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

@@ -33,6 +33,8 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 - Decisions: <choice, the alternatives considered, and why>
 - Reused: <existing modules and patterns this builds on, with path:line>
 - Approved dependencies: <none, or the new packages that were approved (by the user, or logged when `.claude/bin/gate deps` is auto), comma-separated; verify fails on any other>
+- Architecture: <none, or what changes in the architecture: a new pattern or layer, a public contract, the database schema, a module boundary (see `.claude/rules/architecture.md`)>
+- Estimate: <n> lines
 
 Approved size: <only when this plan stays one PR above the default limit: <n> lines>
 
@@ -69,6 +71,8 @@ Approved size: <only when this plan stays one PR above the default limit: <n> li
 
 Rules for the plan:
 
+- `Architecture` and `Estimate` are always there: the plan gate ranks them. Write `Architecture: none` when nothing in the architecture changes, and the estimate of the changed lines as a number.
+
 - The design covers every criterion; it introduces nothing the spec does not ask for.
 - Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
 - Every write and external call the feature adds is listed under Side effects. A write that must wait for a permission check or the final outcome says so, and a blocking call says where it runs instead of the request or event loop.
@@ -91,7 +95,9 @@ Summarise: the design decisions, the groups and their tiers, the tasks, the file
 
 The verify gate fails a branch above twice `KIT_MAX_CHANGED_LINES`, and the build stops as soon as a group passes that limit. If the plan stays one PR above it, add `Approved size: <n> lines` with a margin over the estimate. Only this approval can raise the limit; a session never changes it later.
 
-Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over `KIT_MAX_CHANGED_LINES`.
+Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over `KIT_MAX_CHANGED_LINES`. At `autonomous`, `gate plan` ranks the plan with `.claude/bin/risk plan` (`specs/risk-gates.md`): an `Architecture` line other than `none`, a file in a risky path, or very complex work makes it `ask`, and it prints the reasons. Show them with the summary: a person approves the spec and the plan together.
+
+In a headless session (an autopilot build) an `ask` from `gate plan` has nobody to answer it: write the Stops line `- plan | approval | <the rank and its reasons> | – | user: approve the plan`, end the session with the reasons as your last message, and do not set the status. The build stops there; the developer approves the plan in a terminal.
 
 - `ask`: stop and wait. When the user approves, set the feature's status in `specs/README.md` to `planned`.
 - `auto`: choose the split yourself (one PR per independently reviewable part), set the status to `planned`, and log the plan approval, the split and any approved size under Decisions to review.

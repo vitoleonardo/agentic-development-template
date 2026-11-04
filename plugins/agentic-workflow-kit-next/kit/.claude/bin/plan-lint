@@ -10,6 +10,7 @@
 # Approved dependencies; Progress lists every task once. A feature plan (one without a ## Bug section) has a Group
 # column: every task has a group, a group holds at most 3 consecutive tasks (features.sh plan_shape_problem), and a
 # group above the default tier has a "Group <id> <tier>: <reason>" line. An "Approved size:" line reads "<n> lines".
+# A feature plan's Design names its Architecture (none, or what changes) and an "Estimate: <n> lines" (the risk rank).
 # Prints <plan>:<line>: <problem> per finding. Exit codes: 0 pass, 1 findings, 2 no plan.
 set -u
 
@@ -135,6 +136,7 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
     name = $0; sub(/^- /, "", name); sub(/:.*$/, "", name)
     value = $0; sub(/^- [^:]*:[[:space:]]*/, "", value)
     design_seen[name] = 1
+    if (name == "Estimate") { estimate = trim(value); estimate_line = FNR }
     if (value ~ /^</) problem(FNR, "Design line \"" name "\" still holds its placeholder; write the value, or none.")
     next
   }
@@ -256,6 +258,11 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
       }
       if ((num in need_reason) && reason[num] != need_reason[num])
         problem(task_line[num], "task " num ": tier " need_reason[num] " is not the default (" default_tier "); add the line \"Task " num " " need_reason[num] ": <reason>\" under the table.")
+    }
+    if (kind == "feature" && !("Bug" in seen) && ("Design" in seen)) {
+      if (!("Architecture" in design_seen)) problem(heading["Design"], "Design has no \"- Architecture:\" line; write none, or what changes in the architecture.")
+      if (!("Estimate" in design_seen)) problem(heading["Design"], "Design has no \"- Estimate: <n> lines\" line.")
+      else if (estimate !~ /^[0-9]+ lines$/) problem(estimate_line, "write the Estimate line as \"- Estimate: <n> lines\".")
     }
     if (kind == "feature" && !("Bug" in seen) && header_ok && !("Group" in col))
       problem(header_line, "the Tasks table has no \"Group\" column; every task of a feature plan has a group.")

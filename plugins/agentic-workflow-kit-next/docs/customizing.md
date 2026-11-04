@@ -185,21 +185,22 @@ With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before t
 
 ## Choose how often the agent asks
 
-`KIT_APPROVAL` decides which approval gates stop for you. Set it in `.claude/kit.conf`, or for one session in the environment, which wins: `KIT_APPROVAL=autonomous claude`.
+`KIT_APPROVAL` decides which approval gates stop for you. Set it in `.claude/kit.conf`, or for one session in the environment, which wins: `KIT_APPROVAL=strict claude`. The default is `autonomous`: the kit runs on its own and a risk rank decides where a person looks (see "Merge by risk").
 
-| Gate | What it covers | `strict` (default) | `standard` | `autonomous` |
+| Gate | What it covers | `strict` | `standard` | `autonomous` (default) |
 |---|---|---|---|---|
 | `spec` | approving the spec, and again after an amendment | ask | ask | auto |
-| `plan` | approving the plan | ask | ask | auto |
+| `plan` | approving the plan | ask | ask | ask when `.claude/bin/risk plan` is high, else auto |
 | `split` | splitting a change past `KIT_MAX_CHANGED_LINES` into several PRs | ask | auto | auto |
 | `deps` | new dependencies, package installs, lockfiles | ask | auto | auto |
 | `config` | `.github/`, `.gitlab-ci.yml`, Dockerfiles, compose files, `migrations/`, `infra/`, `terraform/` | ask | auto | auto |
 | `commit` | `git commit` on a feature branch | ask | auto | auto |
-| `push` | `git push`, `gh pr create`, `.claude/bin/evidence push` | ask | auto | auto |
+| `push` | `git push`, `gh pr create`, `.claude/bin/stack submit`, `.claude/bin/evidence push` | ask | auto, ask for `KIT_PUSH_ASK_PATTERNS` | auto |
+| `merge` | the build merging a stack | ask | by risk | by risk |
 
 `KIT_GATE_<NAME>="ask"` or `"auto"` overrides one gate, for example `KIT_APPROVAL="autonomous"` with `KIT_GATE_PUSH="ask"`. `.claude/bin/gate <name>` prints the answer; `.claude/bin/gate level` prints the level.
 
-`push` also asks at `standard` and `autonomous` when the branch changes a file in `KIT_PUSH_ASK_PATTERNS`. The adapters set it to auth and migrations (`auth/* *auth.* *.guard.* migrations/* *.migration.*` for TypeScript), so a person approves pushing those changes while a new route or UI change still goes out alone. `gate push` names the file on stderr. In an autopilot run that push stops the feature for you. Empty the variable, or set `KIT_GATE_PUSH="auto"`, to turn it off.
+`push` also asks at `standard` when the branch changes a file in `KIT_PUSH_ASK_PATTERNS`. The adapters set it to auth and migrations (`auth/* *auth.* *.guard.* migrations/* *.migration.*` for TypeScript). At `autonomous` those files no longer stop the push; they make the layer high at the merge, where the person sees the finished, checked stack.
 
 At an `auto` gate the agent decides and writes one line under `## Decisions to review` in `.work/<branch>.md`. `/pr-description` copies that section into the PR, so the reviewer sees every decision nobody approved.
 
@@ -209,10 +210,24 @@ Some things are never optional, at every level:
 
 - The guard still blocks secrets and `.env` files, protected paths, force push, `git reset --hard`, `git clean -f`, deleting branches, destructive SQL and network commands.
 - The `permissions.deny` rules still apply.
-- `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
+- A session's `gh pr merge` and `gh stack merge`, and edits to `.claude/` and `kit.conf`, always ask, and `gh pr review` and `gh api` calls on reviews are denied. So the agent can neither raise its own level nor approve its own pull request; only the build's script merges, after the merge gate.
 - A commit on `main` or `master` always asks.
 - Failure stops still ask: a task that fails twice, review rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
 - Verify failures are classified by cause, and `.claude/bin/gate round <class> <n>` decides whether round n continues. `kit` (a false positive of the kit) never counts as a round. `test` (the test or its setup) and `hotfix` (a product fix that keeps the spec) continue up to `KIT_VERIFY_ROUNDS` (default `test:3 hotfix:2`), and at `autonomous` past it. `spec` always asks. The same failure coming back after two fixes stops at every level.
+
+## Merge by risk
+
+`.claude/bin/risk` ranks a plan before any code is written, and each layer of a stack before it merges (`specs/risk-gates.md`). It is a script, so the same plan or diff always gets the same rank: `risk <score> <low|medium|high>` and one reason per line.
+
+- **High whatever the score**: a file in `KIT_PUSH_ASK_PATTERNS` (auth, migrations) or `KIT_ARCHITECTURE_PATTERNS` (module boundaries, shared core, ADRs), a change to the build's own checks (`.github/`, `.claude/`, the e2e map, the mutation exceptions), and a plan whose `Architecture:` line is not `none`.
+- **Scored**: changed lines (or the plan's `Estimate:`) over `KIT_MAX_CHANGED_LINES` (+2) or twice it (+4), a public contract in `KIT_CONTRACT_PATTERNS` (+3), a change spread over 3 or 5 areas (+2, +3), dependencies (+2), deep-tier tasks, 4 or more groups and an approved size (plan only), and the run's own signals: retries a tier higher that failed, review rounds that ended with high findings, hotfix verify rounds, three or more decisions nobody approved.
+- **High** from `KIT_RISK_HUMAN` (default 8), medium from half of it.
+
+At `autonomous`, `gate plan` asks for a high plan: a person approves the spec and the plan together, before any code. In an autopilot build the plan session stops there with class `approval`. After the stack stage is green, `gate merge` lets the build merge the stack itself (`.claude/bin/stack merge`, `gh stack merge` with `KIT_MERGE_METHOD`, default squash) when no layer ranks high, or every high layer has an approval on its head commit by someone other than its author. Otherwise the build stops with class `approval` and names the pull requests; run it again after the approval, and it merges without running the stage again. `KIT_GATE_MERGE="ask"` keeps merging manual: the build then ends with the pull requests open, as at `strict`.
+
+The server enforces the same rule. The adapter's `risk.yml` runs on `pull_request_target`, so the workflow, the script and `kit.conf` come from the base branch and a pull request cannot change the rules it is judged by; it only reads the pull request's commits. It fails a high-ranked pull request until someone with write access other than its author approves its head commit, and a review reruns it. Make `Risk` a required status check.
+
+GitHub does not let an author approve their own pull request, so the build pushes as its own account: set `KIT_BOT_GH_CONFIG` to a `GH_CONFIG_DIR` logged in as a GitHub App or a machine user (`GH_CONFIG_DIR=~/.config/gh-kit-bot gh auth login`). Autopilot exports it for every session and has git push over https through `gh auth git-credential`. A session still runs as your operating-system user; the deny rules keep it from approving reviews, but full isolation needs a separate user or a container.
 
 ## Run a backlog unattended
 

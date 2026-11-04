@@ -27,7 +27,7 @@ if [ -z "${KIT_IMPROVE:-}" ]; then
   exit 0
 fi
 
-classes="spec plan tier test hotfix kit env budget push"
+classes="spec plan tier test hotfix kit env budget push approval"
 
 case ${1:-} in
   record)

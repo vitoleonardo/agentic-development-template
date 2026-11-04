@@ -41,6 +41,8 @@ case "$1 $2" in
   "pr view")
     line=$(grep "^$3 " "$prs" 2>/dev/null) || exit 1
     case "$*" in *body*) cat "$FAKE_BODIES/$(printf '%s' "$3" | tr '/' '_')" 2>/dev/null; exit 0 ;; esac
+    case "$*" in *"--json number"*) grep -n "^$3 " "$prs" | cut -d: -f1; exit 0 ;; esac
+    case "$*" in *"--json state"*) echo OPEN; exit 0 ;; esac
     printf 'https://github.com/o/r/pull/%s\n' "$(grep -n "^$3 " "$prs" | cut -d: -f1)"
     exit 0 ;;
   "pr create")
@@ -64,6 +66,7 @@ case "$1 $2" in
     cp -R "$FAKE_ARTIFACTS/." "$d/"
     exit 0 ;;
   "api"*) exit 0 ;;
+  "stack merge" | "stack sync" | "pr merge") exit 0 ;;
 esac
 exit 0
 EOF
@@ -333,6 +336,19 @@ lacks "$(cat "$work/bodies/12-invite")" "### Screenshots" "STAGE-AC31: a layer w
 contains "$(cat "$work/bodies/12-invite")" "**Mutation:** score 80 threshold 60 killed 8 survived 2" "STAGE-AC33: every layer shows the mutation score"
 .claude/bin/stack bodies >/dev/null 2>&1
 same "$(grep -c '^<!-- kit-stage -->$' "$work/bodies/12-invite-gA")" 1 "STAGE-AC32: a second update keeps one stage block"
+
+# --- merging the stack (specs/risk-gates.md) ------------------------------------------
+
+git checkout -q 18-next
+same "$(.claude/bin/stack base)" "main" "stack base names the bottom layer's base"
+: >"$GH_LOG"
+FAKE_STACK=1 .claude/bin/stack merge >"$work/out" 2>&1 || fail "stack merge exits 0: $(cat "$work/out")"
+contains "$(cat "$GH_LOG")" "stack merge $(grep -n '^18-next ' "$GH_PRS" | cut -d: -f1) --yes --squash" "RISK-AC33: gh stack merge through the top pull request, squash by default"
+contains "$(cat "$GH_LOG")" "stack sync --prune" "the merged branches are pruned"
+: >"$GH_LOG"
+.claude/bin/stack merge >"$work/out" 2>&1 || fail "a chain merges without gh stack: $(cat "$work/out")"
+contains "$(cat "$GH_LOG")" "pr merge 12-invite-gA --squash --delete-branch" "a chain merges from the bottom up"
+contains "$(cat "$GH_LOG")" "pr edit 18-next --base main" "each pull request moves onto the base before it merges"
 
 # --- the skills -------------------------------------------------------------------
 

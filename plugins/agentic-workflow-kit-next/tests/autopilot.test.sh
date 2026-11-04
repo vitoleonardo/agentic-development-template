@@ -97,7 +97,7 @@ setup() {
   cd "$project" || exit 1
   printf '.work/\n' >.gitignore
   # Most tests end at the PR; the stack stage has its own section.
-  printf 'KIT_STACK_CHECKS="off"\n' >>.claude/kit.conf
+  printf 'KIT_STACK_CHECKS="off"\nKIT_GATE_MERGE="ask"\n' >>.claude/kit.conf
   {
     echo '| Feature | Spec | Status | Branch | Open questions |'
     echo '|---|---|---|---|---|'
@@ -898,6 +898,83 @@ autopilot
 same "$(calls | wc -l | tr -d ' ')" 2 "a stage that cannot run starts no session"
 contains "$(log_of)" "Stopped at alpha: the stack stage cannot run" "and the closing line says so"
 
+# --- merge by risk (specs/risk-gates.md) ---------------------------------------------
+
+# stub_risk <first line> [layer lines]: a risk command that prints a fixed rank; "high" exits 1.
+stub_risk() {
+  sed -i.bak '/^KIT_GATE_MERGE=/d' .claude/kit.conf && rm -f .claude/kit.conf.bak
+  {
+    echo '#!/bin/sh'
+    echo "cat <<'RANK'"
+    printf '%s\n' "$@"
+    echo 'RANK'
+    case $1 in *high*) echo 'exit 1' ;; *) echo 'exit 0' ;; esac
+  } >.claude/bin/risk
+  chmod +x .claude/bin/risk
+  git add -A
+  git commit -qm "stub risk"
+}
+stub_merge() {
+  rm -f "$fake/stack-calls"
+  cat >.claude/bin/stack <<'EOF'
+#!/bin/sh
+echo "$*" >>"$FAKE_DIR/stack-calls"
+exit 0
+EOF
+  chmod +x .claude/bin/stack
+  git add -A
+  git commit -qm "stub stack merge"
+}
+
+setup alpha:planned
+stub_check
+stub_merge
+stub_risk "risk 1 low" "layer alpha 1 low"
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 0 "RISK-AC24: a low stack merges"
+contains "$(cat "$fake/stack-calls")" "merge" "RISK-AC24: through stack merge"
+contains "$(log_of)" "Every feature has a PR, and the stack is merged" "RISK-AC32: the closing line says the stack is merged"
+
+setup alpha:planned
+stub_check
+stub_merge
+stub_risk "risk 2 high" "layer alpha 2 high" "  high: src/auth/session.ts is in KIT_PUSH_ASK_PATTERNS"
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 1 "RISK-AC25: a high layer stops the build"
+case $(cat "$fake/stack-calls" 2>/dev/null) in *merge*) fail "RISK-AC25: no merge runs" ;; *) ok ;; esac
+contains "$(log_of)" "Stopped at alpha: the pull requests of alpha wait for approval by a person: src/auth/session.ts is in KIT_PUSH_ASK_PATTERNS" "RISK-AC25: the closing line names the pull request and why"
+contains "$(cat .work/alpha.md)" "| approval |" "RISK-AC25: Stops holds an approval line"
+same "$(calls | wc -l | tr -d ' ')" 2 "RISK-AC26: an approval stop starts no answer session"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'echo "$GH_CONFIG_DIR" >"$FAKE_DIR/ghdir"; finish alpha A 1' 'open_pr'
+KIT_BOT_GH_CONFIG=$work/bot-gh autopilot
+same "$(cat "$fake/ghdir")" "$work/bot-gh" "RISK-AC40: a session's gh uses the bot's login"
+ready_err=$(.claude/bin/autopilot --ready 2>&1 >/dev/null)
+contains "$ready_err" "KIT_BOT_GH_CONFIG is not set" "RISK-AC41: --ready warns that the build pushes as the developer"
+
+setup alpha:approved
+stub_check
+script 'printf "# Plan: x (spec: specs/x.md)\n\n## Stops\n- plan | approval | risk 9 high: a new queue | – | user: approve the plan\n" >".work/$(git branch --show-current).md"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "RISK-AC22: a plan that needs approval starts no group session or answer"
+contains "$(log_of)" "Stopped at alpha:" "RISK-AC22: the closing line starts with Stopped at"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+printf '\n## Design\n- Architecture: none\n- Estimate: 40 lines\n' >>.work/alpha.md
+script 'sed -i.bak "s/^- Estimate: 40 lines/- Estimate: 4 lines/" .work/alpha.md; finish alpha A 1'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "RISK-AC23: a session that changes the ranked lines starts nothing more"
+contains "$(log_of)" "Architecture or Estimate line" "RISK-AC23: the closing line names them"
+
 # --- the size limit
 
 setup alpha:planned
@@ -1022,6 +1099,9 @@ ship_wait() {
 
 setup alpha:planned
 stub_check
+# These criteria are about a project at strict, which is no longer the default (specs/risk-gates.md).
+printf 'KIT_APPROVAL="strict"\n' >>.claude/kit.conf
+git commit -qam "strict"
 git checkout -q -b 12-invite
 plan 12-invite 1:A:standard
 printf 'Base: develop\n' >/dev/null
@@ -1049,7 +1129,7 @@ setup alpha:planned
 stub_check
 git checkout -q -b alpha
 plan alpha 1:A:standard
-{ echo 'KIT_GATE_COMMIT="ask"'; echo 'KIT_GATE_DEPS="ask"'; echo 'KIT_GATE_CONFIG="ask"'; } >>.claude/kit.conf
+{ echo 'KIT_APPROVAL="strict"'; echo 'KIT_GATE_COMMIT="ask"'; echo 'KIT_GATE_DEPS="ask"'; echo 'KIT_GATE_CONFIG="ask"'; } >>.claude/kit.conf
 git add -A
 git commit -qm "explicit gates"
 script "$gates; finish alpha A 1" 'open_pr'

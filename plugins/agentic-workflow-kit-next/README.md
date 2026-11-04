@@ -77,11 +77,13 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
                 per group of tasks, one headless session on the group's tier:
                 test red, code, test green, a commit per task, simplify, review
                 the build checks each group itself and stops on the budget
-  4. Final      one session: full-diff review, verify, PR description -> you push*
-  5. Accept     you check it and set the status to done
+  4. Final      one session: full-diff review, verify, one PR per group, stacked
+  5. Stage      once per stack: the selected e2e tests with screenshots, and mutation tests
+  6. Merge      the build merges a low-ranked stack; a high-ranked layer waits for you*
+  7. Accept     you check it and set the status to done
 ```
 
-\* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself, unless the branch changes auth or migration files (`KIT_PUSH_ASK_PATTERNS`). With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
+\* At the default `KIT_APPROVAL=autonomous` the agent approves the spec and the plan, pushes and merges itself, unless `.claude/bin/risk` ranks the plan or a layer high: an architecture change, auth or migration files, the build's own checks, or very complex work. Then you approve, and the `Risk` check holds the merge until you do. `standard` asks for the spec and the plan; `strict` asks at every gate and leaves the merge to you. Every decision the agent makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#merge-by-risk).
 
 A build needs a token budget (`KIT_BUDGET_TOKENS`), and leave its checkout alone while it runs. To build a backlog of approved specs unattended, on stacked branches, run `.claude/bin/autopilot`; `.claude/bin/autopilot --stop` ends a build. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
 
@@ -108,6 +110,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Plan lint | `.claude/bin/plan-lint` | Hard gate for the plan: every criterion in a task, no unknown IDs, named test cases, a reason per raised tier, dependency order, new files in the Map, no placeholder left |
 | Stacked PRs | `.claude/bin/stack` | One pull request per group, stacked with `gh stack` (or a chain without it), each with its own evidence pack and description; the size limit applies per layer |
 | Stack stage | `.claude/bin/stack checks`, `stack-checks.yml` | The selected e2e tests with their screenshots and mutation tests on the changed lines, once per stack before the merge, in CI or locally; screenshots and the mutation score go into each layer's pull request |
+| Risk rank | `.claude/bin/risk`, `risk.yml` | Ranks a plan and each layer of a stack: at the default `autonomous` level a person approves only a high plan and a high layer; the build merges the rest itself after the stack stage. CI enforces it on `pull_request_target` |
 | CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, duplicates, structure, diff size warning, all against the baseline |
 | MCP example | `.mcp.example.json` | GitHub (read-only tools) and a database through a read-only user. Not active until you rename it |
 | Demo | `examples/demo-app/` | A small Next.js 16 app with a spec and tests to try everything on |

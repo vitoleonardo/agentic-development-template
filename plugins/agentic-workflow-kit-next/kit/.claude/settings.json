@@ -22,6 +22,7 @@
     ],
     "ask": [
       "Bash(gh pr merge *)",
+      "Bash(gh stack merge *)",
       "Edit(.claude/settings.json)",
       "Edit(.claude/kit.conf)",
       "Edit(**/.claude/kit.conf)",
@@ -31,6 +32,9 @@
       "Edit(.claude/rules/**)"
     ],
     "deny": [
+      "Bash(gh pr review *)",
+      "Bash(gh api *reviews*)",
+      "Read(~/.config/gh/**)",
       "Read(.env)",
       "Read(.env.local)",
       "Read(.env.*.local)",
