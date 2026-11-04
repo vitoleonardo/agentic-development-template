@@ -13,9 +13,9 @@ Review finds problems in the code; verify proves the behaviour, with artefacts a
 ## 0. Preconditions
 
 - The last `/review-diff` round has no high findings. Copy its report to `.work/<branch>/evidence/review.md`.
-- Every task is committed. Then set the feature's status in `specs/README.md` to `in-review`, run `.claude/bin/runs record` (with `KIT_IMPROVE` on it writes `reports/runs/<branch>.tsv` for `/improve-kit`; off, it writes nothing), and commit the status and the record together, before the gates: the pack is valid only for the commit it was made on, so nothing may be committed after it. Any later commit, even a typo fix, makes it stale, and verify must run again.
+- Every task is committed. Then, when the feature's row in `specs/README.md` names this branch, set its status to `in-review` (a fix branch leaves the list alone); run `.claude/bin/runs record` (with `KIT_IMPROVE` on it writes `reports/runs/<branch>.tsv` for `/improve-kit`; off, it writes nothing), and commit the record and, when it changed, the status together, before the gates: the pack is valid only for the commit it was made on, so nothing may be committed after it. Any later commit, even a typo fix, makes it stale, and verify must run again.
 - The working tree is clean.
-- Read the spec (`specs/<feature>.md`) and the plan (`.work/<branch>.md`), including its test cases and its `Approved dependencies` line.
+- Read the spec the state file's title names, or its `## Criteria` for a fix, and the plan (`.work/<branch>.md`), including its test cases and its `Approved dependencies` line.
 
 ## 1. Hard gates
 

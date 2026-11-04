@@ -6,6 +6,8 @@ set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 cd "$root" || exit 2
+# shellcheck source=criteria.sh
+. "$root/.claude/bin/criteria.sh"
 
 if [ $# -eq 0 ]; then
   set -- specs/*.md
@@ -24,36 +26,11 @@ for file in "$@"; do
   esac
   [ -f "$file" ] || continue
   checked=$((checked + 1))
-  awk -v file="$file" -v status="$(status_of "$file")" '
+  awk -v file="$file" -v status="$(status_of "$file")" "$CRITERION_CHECK"'
     function problem(line, message) { printf "%s:%d: %s\n", file, line, message; bad = 1 }
 
-    # Lowercase words separated by single spaces, padded so " word " always matches whole words.
-    function words(text,    t) {
-      t = tolower(text)
-      gsub(/[^a-z0-9-]+/, " ", t)
-      return " " t " "
-    }
-
-    function count(haystack, needle,    n, i) {
-      n = 0
-      while ((i = index(haystack, needle)) > 0) { n++; haystack = substr(haystack, i + length(needle)) }
-      return n
-    }
-
-    function check_criterion(line, id, text,    t, g, w, th, i) {
-      t = words(text)
-      g = index(t, " given "); w = index(t, " when "); th = index(t, " then ")
-      if (!(g && w && th && g < w && w < th))
-        problem(line, id ": write it as \"Given <state>, when <action>, then <observable result>\".")
-      else if (count(t, " then ") > 1)
-        problem(line, id ": has more than one \"then\"; split it so each criterion is one yes/no check.")
-      for (i = 1; i <= nvague; i++)
-        if (index(t, " " vague[i] " "))
-          problem(line, id ": \"" vague[i] "\" cannot be tested; state a concrete, observable result (numbers, exact text, states).")
-    }
-
     BEGIN {
-      nvague = split("fast|quickly|slow|user-friendly|intuitive|easy|easily|properly|correctly|appropriate|appropriately|reasonable|nice|good|better|best|etc|and so on|as needed|should work|works well|robust|seamless|seamlessly|efficient|efficiently|optimal|tbd|todo|handle|handles|support|supports", vague, "|")
+      criterion_check_init()
       required = "Goal|User flow|Acceptance criteria|Edge cases|Out of scope"
       nrequired = split(required, need, "|")
     }

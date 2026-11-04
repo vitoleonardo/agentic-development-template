@@ -38,3 +38,28 @@ section_lines() {
     inside && /^- / && !/^- </ { print }
   ' "$1"
 }
+
+# plan_feature <state file>: the feature of a plan from its title line: the spec's file name without .md for
+# "# Plan: <name> (spec: specs/<feature>.md)", or the slug for a fix, "# Plan: <slug> (fix)".
+plan_feature() {
+  [ -f "$1" ] || return 0
+  head -n 1 "$1" | tr -d '\r' | sed -n \
+    -e 's/^# Plan:.*(spec: specs\/\([^)]*\)\.md).*$/\1/p' \
+    -e 's/^# Plan:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*(fix)[[:space:]]*$/\1/p'
+}
+
+# plan_spec <state file>: the spec the plan's title names (specs/<feature>.md), empty for a fix.
+plan_spec() {
+  [ -f "$1" ] || return 0
+  head -n 1 "$1" | tr -d '\r' | sed -n 's/^# Plan:.*(spec: \(specs\/[^)]*\.md\)).*$/\1/p'
+}
+
+# plan_criteria <state file>: the IDs of the "- **<ID>**" lines under "## Criteria", one per line.
+plan_criteria() {
+  [ -f "$1" ] || return 0
+  awk '
+    { sub(/\r$/, "") }
+    /^## / { inside = ($0 == "## Criteria"); next }
+    inside && /^- \*\*[A-Z][A-Za-z0-9_-]*-AC[0-9]+\*\*/ { id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id); print id }
+  ' "$1"
+}
