@@ -96,7 +96,7 @@ Records:
 
 Release:
 
-- **RISK-AC50**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.1`.
+- **RISK-AC50**: Given this feature is complete, when the plugin file of `stempel-kit-next` is read, then its version is `0.4.1`.
 
 ## Edge cases
 - **RISK-AC46**: Given a high plan approved by a person, when the stack is ranked later, then the plan's own high reasons are not counted again unless the diff shows them.

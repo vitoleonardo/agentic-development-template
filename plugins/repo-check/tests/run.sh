@@ -11,7 +11,7 @@ XDG_STATE_HOME=$work/state
 export XDG_STATE_HOME
 echo "Working in $work (kept for inspection)"
 
-cp -R "$here/../agentic-workflow-kit/examples/demo-app" "$repo"
+cp -R "$here/../stempel-kit/examples/demo-app" "$repo"
 rm -rf "$repo/node_modules" "$repo/.next"
 cd "$repo" || exit 1
 git init -q -b main
@@ -130,7 +130,7 @@ check "never two questions in one message (RC-AC5)" '! grep -E "Frage [0-9]+ von
 check "German addresses the reader as du (RC-AC2)" '! grep -Eq "[a-zäöüß,] (Sie|Ihnen|Ihr) [a-zäöü]" "$work/interview.text" && grep -Eqi "(^|[^a-z])(du|dein|deine|dir|euch|ihr)([^a-z]|$)" "$work/interview.text"'
 check "the skipped question is recorded as offen (RC-AC6)" 'grep -q "offen" "$work/interview.text"'
 check "the jam is Review (RC-AC7)" 'grep -Eq "Stau.{0,80}Review|Review.{0,40}Stau" "$work/interview.text"'
-check "an offer or none is named (RC-AC7)" 'grep -Eq "Workshop|Pilot|Begleitung|Feature-?[Ss]print|noch keins" "$work/interview.text"'
+check "an offer or none is named (RC-AC7)" 'grep -Eq "Workshop|Pilot|Begleitung|Feature-?[Ss]print|Stempel Kit Pro|noch keins" "$work/interview.text"'
 check "the email draft has the mailto and booking links (RC-AC8)" 'grep -q "mailto:hi@vito.koeln" "$work/interview.text" && grep -q "calendar.app.google/N14WVsxK4fdqBhZv6" "$work/interview.text"'
 check "the interview has no prices or pressure (RC-AC3)" '! grep -Eiq "$forbidden" "$work/interview.text"'
 check "nothing was sent: no web, mail or agent tool was called (RC-AC4)" '! texts "$log" tools | grep -Eq "^(WebFetch|WebSearch|Agent|mcp__)"'
@@ -139,7 +139,7 @@ fi
 
 if [ "$only" = prompt ] || [ "$only" = all ]; then
 pr=$work/prompt-demo
-cp -R "$here/../agentic-workflow-kit/examples/demo-app" "$pr"
+cp -R "$here/../stempel-kit/examples/demo-app" "$pr"
 rm -rf "$pr/node_modules" "$pr/.next"
 cd "$pr" || exit 1
 git init -q -b main

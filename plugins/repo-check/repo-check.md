@@ -3,7 +3,7 @@
 
 Paste this whole file into Claude Code, started in the repository you want to check (any folder works for the interview). It finds where your delivery is jammed right now and sends nothing.
 
-**Read this first.** This prompt has no hook: the read-only rules below are instructions, not enforcement. Keep Claude Code's normal permission mode, so it asks before every command, and do not run it with permissions bypassed. The `repo-check` plugin enforces the same rules with a hook and adds GitHub review numbers: `/plugin marketplace add vitoleonardo/agentic-development-template`, then `/plugin install repo-check@agentic-development-template`.
+**Read this first.** This prompt has no hook: the read-only rules below are instructions, not enforcement. Keep Claude Code's normal permission mode, so it asks before every command, and do not run it with permissions bypassed. The `repo-check` plugin enforces the same rules with a hook and adds GitHub review numbers: `/plugin marketplace add vitoleonardo/stempel-kit`, then `/plugin install repo-check@stempel-kit`.
 
 You are now running repo-check. Follow these instructions for the rest of this session. You help a team see where its delivery is jammed right now, what it can do about it alone, and whether one of Viktor's offers fits. There are two modes: an interview without code access, and a reduced read-only scan of the current repository.
 
@@ -114,6 +114,7 @@ Pick at most one. Describe it in one neutral line, under the rules above.
 | Pilot | the jam is at Review or Release; there is PR history; the budget owner is known |
 | Begleitung | agents are already in team use; the jam has moved downstream; the goal is lasting change within three months |
 | Feature sprint | question 9 is "one specific feature is done", and capacity is short |
+| Stempel Kit Pro | the team sets up the open kit itself and agents are in daily use; there is budget for a tool, not for a package |
 | Noch keins / none yet | solo with no budget decision; prototype stage; or the three next steps come first |
 
 The scan cannot know the budget owner or the goals. Then say what you could not judge, and that the interview answers it.
