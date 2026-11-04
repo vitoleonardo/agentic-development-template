@@ -2,12 +2,17 @@
 set -u
 
 usage() {
-  echo "usage: .claude/bin/autopilot [feature-slug ...]" >&2
+  echo "usage: .claude/bin/autopilot [start] [feature-slug ...] | stop | steer <text>" >&2
   echo "  Builds approved specs one after another, each in fresh headless sessions, on stacked branches." >&2
   echo "  Without slugs: every row of specs/README.md that is approved, planned, building or in-review, in file order." >&2
+  echo "  start: runs it detached and returns once the run is underway." >&2
+  echo "  stop: ends the running run's session within 5 s and stops the run." >&2
+  echo "  steer: queues a message the running session reads after its next tool call." >&2
   exit 2
 }
 case ${1:-} in -h | --help) usage ;; esac
+command=run
+case ${1:-} in start | stop | steer) command=$1 && shift ;; esac
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 cd "$root" || exit 2
@@ -28,11 +33,90 @@ max_idle_seconds=${AUTOPILOT_MAX_IDLE_SECONDS:-1200}
 max_identical_calls=${AUTOPILOT_MAX_IDENTICAL_CALLS:-6}
 max_waits=${AUTOPILOT_MAX_WAITS:-3}
 poll_seconds=${AUTOPILOT_POLL_SECONDS:-60}
+tick_seconds=$((poll_seconds < 2 ? poll_seconds : 2))
 answerable_classes="question plan tier test"
 log_dir=.work/autopilot
+lock=$log_dir/lock
+stop_request=$log_dir/stop
+steer_dir=$log_dir/steer
+
+running_run() {
+  [ -f "$lock" ] || return 1
+  read -r _lock_pid _lock_run <"$lock" 2>/dev/null || return 1
+  [ -n "${_lock_pid:-}" ] && kill -0 "$_lock_pid" 2>/dev/null || return 1
+  ps -p "$_lock_pid" -o command= 2>/dev/null | grep -q autopilot || return 1
+  printf '%s %s' "$_lock_pid" "$_lock_run"
+}
+
+stopped_session() {
+  awk -F '|' '/^\|/ { r = $4; gsub(/^[ \t]+/, "", r); if (r ~ /^stopped/) s = $6 }
+    END { n = split(s, w, " "); if (n > 0 && w[n] != "–") print w[n] }' "$1" 2>/dev/null
+}
+
+already_running() {
+  echo "autopilot: run ${1#* } is already running (pid ${1%% *}). Stop it with .claude/bin/autopilot stop." >&2
+  exit 2
+}
+
+case $command in
+  stop)
+    live=$(running_run) || { echo "autopilot: no run is running." >&2; exit 1; }
+    : >"$stop_request"
+    _waited=0
+    while running_run >/dev/null && [ "$_waited" -lt 15 ]; do
+      sleep 1
+      _waited=$((_waited + 1))
+    done
+    if running_run >/dev/null; then
+      echo "autopilot: asked run ${live#* } to stop; it has not stopped yet."
+      exit 0
+    fi
+    echo "autopilot: stopped run ${live#* }."
+    _session=$(stopped_session "$log_dir/run-${live#* }.md")
+    [ -z "$_session" ] || echo "Resume it with: claude --resume $_session   then run .claude/bin/autopilot again."
+    exit 0
+    ;;
+  steer)
+    live=$(running_run) || { echo "autopilot: no run is running." >&2; exit 1; }
+    [ -n "$(printf '%s' "$*" | tr -d '[:space:]')" ] || { echo "usage: .claude/bin/autopilot steer <text>" >&2; exit 2; }
+    mkdir -p "$steer_dir/delivered"
+    _queued=0
+    for _file in "$steer_dir/${live#* }"-*.md "$steer_dir/delivered/${live#* }"-*.md; do
+      [ ! -e "$_file" ] || _queued=$((_queued + 1))
+    done
+    _message=${live#* }-$(date +%s)-$(printf '%04d' $((_queued + 1)))-$$
+    printf '%s\n' "$*" >"$steer_dir/.$_message.tmp" && mv "$steer_dir/.$_message.tmp" "$steer_dir/$_message.md" || exit 2
+    echo "autopilot: message queued; the session reads it after its next tool call."
+    exit 0
+    ;;
+  start)
+    live=$(running_run) && already_running "$live"
+    mkdir -p "$log_dir"
+    if command -v setsid >/dev/null 2>&1; then
+      setsid nohup "$root/.claude/bin/autopilot" "$@" >"$log_dir/autopilot.out" 2>&1 </dev/null &
+    else
+      nohup "$root/.claude/bin/autopilot" "$@" >"$log_dir/autopilot.out" 2>&1 </dev/null &
+    fi
+    _child=$!
+    while kill -0 "$_child" 2>/dev/null; do
+      if live=$(running_run); then
+        echo "autopilot: started run ${live#* }. Run log: $log_dir/run-${live#* }.md"
+        exit 0
+      fi
+      sleep 1
+    done
+    wait "$_child"
+    _code=$?
+    cat "$log_dir/autopilot.out" >&2
+    exit "$_code"
+    ;;
+esac
+
+live=$(running_run) && already_running "$live"
 mkdir -p "$log_dir"
 run_id=$(date +%Y%m%d-%H%M%S)
 run_log=$log_dir/run-$run_id.md
+claude_pid=""
 
 status_of() { feature_row_field "$1" 4; }
 pr_of() { gh pr view "$1" --json url --jq .url 2>/dev/null; }
@@ -69,7 +153,9 @@ halt() {
   log ""
   log "Stopped at $slug: $2"
   echo "autopilot: stopped at $slug ($1): $2" >&2
-  if [ -n "${session:-}" ]; then
+  if [ -n "${session:-}" ] && [ "$1" = user ]; then
+    echo "Resume it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
+  elif [ -n "${session:-}" ]; then
     echo "Answer it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
   fi
   echo "Run log: $run_log" >&2
@@ -102,11 +188,29 @@ repeated_call() {
 
 # watch <pid> <transcript>: waits for the session and stops it when it runs too long, writes nothing for too long
 # or repeats one tool call; the reason goes into $watchdog.
+end_session() {
+  kill "$1" 2>/dev/null
+  _grace=0
+  while kill -0 "$1" 2>/dev/null && [ "$_grace" -lt 3 ]; do
+    sleep 1
+    _grace=$((_grace + 1))
+  done
+  kill -9 "$1" 2>/dev/null
+  wait "$1" 2>/dev/null
+}
+
 watch() {
-  _started=$(date +%s) _size=-1 _quiet_since=$(date +%s)
+  _started=$(date +%s) _size=-1 _quiet_since=$(date +%s) _checked=$(date +%s)
   while kill -0 "$1" 2>/dev/null; do
-    sleep "$poll_seconds"
+    sleep "$tick_seconds"
     _now=$(date +%s)
+    if [ -f "$stop_request" ]; then
+      end_session "$1"
+      stopped_by_user=1
+      return
+    fi
+    [ $((_now - _checked)) -ge "$poll_seconds" ] || continue
+    _checked=$_now
     _new_size=$(wc -c <"$2" | tr -d ' ')
     [ "$_new_size" = "$_size" ] || { _size=$_new_size; _quiet_since=$_now; }
     if [ $((_now - _started)) -gt "$max_session_seconds" ]; then _reason="ran longer than $max_session_seconds s"
@@ -114,8 +218,7 @@ watch() {
     else _reason=$(repeated_call "$2")
     fi
     if [ -n "$_reason" ]; then
-      kill "$1" 2>/dev/null
-      wait "$1" 2>/dev/null
+      end_session "$1"
       watchdog="watchdog: $_reason"
       return
     fi
@@ -147,28 +250,42 @@ usage_limit_reset() {
     }'
 }
 
+add_line() {
+  _state=.work/$branch.md
+  [ -f "$_state" ] || printf '## %s\n' "$1" >"$_state"
+  grep -q "^## $1[[:space:]]*\$" "$_state" || printf '\n## %s\n' "$1" >>"$_state"
+  awk -v section="## $1" -v line="$2" '{ print } $0 == section || $0 ~ "^" section "[ \t]+$" { print line }' "$_state" >"$_state.new" &&
+    mv "$_state.new" "$_state"
+}
+
 # add_stop <trigger> <resolution>: a budget stop under Stops in the state file, for /improve-kit.
 add_stop() {
-  _state=.work/$branch.md
-  _line="- autopilot $_phase session | budget | $1 | stopped the session | $2"
-  [ -f "$_state" ] || printf '## Stops\n' >"$_state"
-  grep -q '^## Stops[[:space:]]*$' "$_state" || printf '\n## Stops\n' >>"$_state"
-  awk -v line="$_line" '{ print } /^## Stops[ \t]*$/ { print line }' "$_state" >"$_state.new" && mv "$_state.new" "$_state"
+  add_line Stops "- autopilot $_phase session | budget | $1 | stopped the session | $2"
+}
+
+stop_by_user() {
+  rm -f "$stop_request"
+  add_line "Decisions to review" "- stopped-by-user | $_phase session | $(date '+%d.%m.%Y %H:%M')"
+  halt user "stopped by the user"
 }
 
 run_claude() {
   _transcript=$1
   shift
-  watchdog="" limit_reset=""
+  [ ! -f "$stop_request" ] || stop_by_user
+  watchdog="" limit_reset="" stopped_by_user=""
   _session_started=$(date +%s)
-  KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS \
+  KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS KIT_AUTOPILOT_RUN=$run_id \
     claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
     --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
     --append-system-prompt "$unattended_note" \
-    >"$_transcript" 2>&1 &
-  watch $! "$_transcript"
+    >"$_transcript" 2>&1 </dev/null &
+  claude_pid=$!
+  watch "$claude_pid" "$_transcript"
+  claude_pid=""
   limit_reset=$(usage_limit_reset "$_transcript")
   _ended_by=${watchdog:-ended}
+  [ -z "$stopped_by_user" ] || _ended_by=user
   [ -z "$limit_reset" ] || _ended_by="usage limit"
   record_session "$_transcript" $(($(date +%s) - _session_started)) "$_ended_by"
   result_line=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)
@@ -184,7 +301,13 @@ Read both, and the code if needed. Answer only what the spec settles or clearly 
 never approve skipping a test, a check or a security rule. Reply with exactly one line: \
 'ANSWER: <the answer and why, one or two sentences>' or 'ESCALATE: <why a human must decide>'. Question: $_question" \
     --output-format stream-json --verbose --allowedTools Read Grep Glob --permission-mode dontAsk --permission-prompts none \
-    >"$_transcript" 2>&1
+    >"$_transcript" 2>&1 </dev/null &
+  _answerer=$!
+  while kill -0 "$_answerer" 2>/dev/null; do
+    [ ! -f "$stop_request" ] || end_session "$_answerer"
+    sleep 1
+  done
+  wait "$_answerer"
   json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)" result
 }
 
@@ -194,7 +317,9 @@ run_phase() {
   run_claude "$log_dir/$run_id-$slug-$_phase.jsonl" "$_prompt"
   while :; do
     session=$(json_string "$result_line" session_id)
+    [ -n "$session" ] || session=$(json_string "$(grep '"session_id"' "$_transcript" | head -n 1)" session_id)
     [ -n "$session" ] && case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
+    [ -z "$stopped_by_user" ] || stop_by_user
     phase_done "$_phase" && return 0
     if [ -n "$watchdog" ]; then
       if [ "$_restarts" -ge 1 ]; then
@@ -213,8 +338,10 @@ run_phase() {
       _waits=$((_waits + 1))
       _until=$(date -d "@$limit_reset" '+%d.%m.%Y %H:%M' 2>/dev/null || date -r "$limit_reset" '+%d.%m.%Y %H:%M')
       log "- $slug, $_phase: waits for the usage limit to reset at $_until"
-      _remaining=$((limit_reset + 120 - $(date +%s)))
-      [ "$_remaining" -le 0 ] || sleep "$_remaining"
+      while [ "$(date +%s)" -lt $((limit_reset + 120)) ]; do
+        [ ! -f "$stop_request" ] || stop_by_user
+        sleep "$tick_seconds"
+      done
       run_claude "$log_dir/$run_id-$slug-$_phase-wait-$_waits.jsonl" "$_prompt"
       continue
     fi
@@ -231,6 +358,7 @@ run_phase() {
     [ "$answers" -lt "$max_answers" ] || halt "$_class" "more than $max_answers answers needed: $_question"
     answers=$((answers + 1))
     _reply=$(ask_answerer "$_question")
+    [ ! -f "$stop_request" ] || stop_by_user
     case $_reply in
       ANSWER:*) ;;
       *) halt "$_class" "the answerer escalated (${_reply:-no reply}): $_question" ;;
@@ -268,6 +396,16 @@ case $(claude -p "Reply with OK." --model haiku --max-turns 1 --output-format js
     exit 2
     ;;
 esac
+
+take_lock() { (set -C && printf '%s %s\n' "$$" "$run_id" >"$lock") 2>/dev/null; }
+if ! take_lock; then
+  live=$(running_run) && already_running "$live"
+  rm -f "$lock"
+  take_lock || already_running "$(cat "$lock" 2>/dev/null)"
+fi
+rm -f "$stop_request"
+trap 'rm -f "$lock"' EXIT
+trap '[ -z "$claude_pid" ] || kill "$claude_pid" 2>/dev/null; exit 143' TERM
 
 base=$(base_ref)
 log "# Autopilot run $(date +%d.%m.%Y\ %H:%M)"
