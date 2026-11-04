@@ -52,7 +52,8 @@ jobs:
         run: |
           changed=$(git diff --numstat "$BASE_REF...HEAD" -- . \
             ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' \
-            ':(exclude,glob)**/yarn.lock' ':(exclude,glob)**/*.snap' |
+            ':(exclude,glob)**/yarn.lock' ':(exclude,glob)**/*.snap' \
+            ':(exclude,glob)drizzle/meta/*_snapshot.json' |
             awk '{ total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
           # KIT_MAX_CHANGED_LINES in .claude/kit.conf; above it the PR gets a warning to split it.
           MAX_CHANGED_LINES=$(sh -c '. ./.claude/kit.conf; echo "${KIT_MAX_CHANGED_LINES:-400}"')
