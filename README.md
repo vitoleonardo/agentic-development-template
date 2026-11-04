@@ -12,6 +12,7 @@ Plugins and templates that make AI coding agents work like a disciplined team me
 | | What it is | For | Version |
 |---|---|---|---|
 | [**agentic-workflow-kit**](./plugins/agentic-workflow-kit/) | Plugin and installer | Existing projects in any language: spec-driven workflow, permissions, guard and check hooks, subagents, CI gates, onboarding for legacy repos, lead time measurement. Adapters for TypeScript and Python | 0.4.0 |
+| [**agentic-workflow-kit-next**](./plugins/agentic-workflow-kit-next/) | Plugin and installer, under test | The kit's next version: one headless session and one stacked pull request per planned group of tasks, e2e and mutation tests once per stack, risk-ranked merges. Install this or the stable kit, never both | 0.4.1 |
 | [**repo-check**](./plugins/repo-check/) | Plugin or single-file prompt | Any repository: finds where delivery is jammed right now (writing, review or release), by a 10-minute interview or a strictly read-only scan. Sends nothing | 0.1.0 |
 | [**greenfield-nextjs**](./templates/greenfield-nextjs/) | Template to copy | New Next.js apps built by several agents in parallel tracks, contract-first | 0.0.1 |
 
@@ -46,9 +47,10 @@ Requirements: Claude Code (tested with 2.1.309), git and a POSIX shell. The Type
 ## Repository layout
 
 ```text
-.claude-plugin/            marketplace: lists both plugins
+.claude-plugin/            marketplace: lists every plugin
 plugins/
   agentic-workflow-kit/    kit/ (what gets installed), adapters/, install.sh, tests/, docs/, examples/demo-app/
+  agentic-workflow-kit-next/  the kit's next version under test, same layout
   repo-check/              plugin/, the generated single-file prompt repo-check.md, build, tests/, docs/
 templates/
   greenfield-nextjs/       contracts, coordination files, workflows and validators for a new app

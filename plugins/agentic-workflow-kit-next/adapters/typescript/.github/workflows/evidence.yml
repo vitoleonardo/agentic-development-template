@@ -1,0 +1,153 @@
+# Evidence for every pull request: /verify-feature pushes its pack to the kit-evidence branch under
+# <pr-N|branch>/<head sha>/ (a stacked layer's under its own branch). This job fails when the PR's head commit has no
+# pack (stale evidence counts as no evidence), uploads it, and keeps one comment on the PR with the gate table, the
+# matrix summary and the screenshots. With a stack stage (KIT_STACK_CHECKS ci or local, the default) the seed, e2e and
+# screenshots run once per stack in stack-checks.yml, not here; with KIT_STACK_CHECKS="off" this job reruns them so
+# they do not depend on one machine.
+# A pull request runs only the e2e tests its change affects (see KIT_E2E_RELATED in kit.conf); after every merge the
+# "Full e2e" job runs the whole suite on the default branch, so a test the selection skipped fails there.
+# Pull requests opened by bots (Dependabot, Renovate) are skipped, and a pull request from a fork gets no comment
+# because its token cannot write one. Make "Evidence" a required status check next to "Quality gates".
+name: Evidence
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # On main every merge gets its own full run, so a failure points at one merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NO_COLOR: "1"
+  KIT_BASE: origin/${{ github.base_ref }}
+
+jobs:
+  evidence:
+    name: Evidence
+    if: github.event_name == 'pull_request' && !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Evidence pack for this commit
+        id: pack
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          key=$(.claude/bin/evidence ci-check --head "$HEAD_SHA" --key "pr-$PR" --key "$BRANCH")
+          echo "key=$key" >>"$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/pack"
+          git archive "origin/kit-evidence" "$key/$HEAD_SHA" | tar -x -C "$RUNNER_TEMP/pack" --strip-components=2
+          echo "dir=$RUNNER_TEMP/pack" >>"$GITHUB_OUTPUT"
+
+      - name: Stack stage or not
+        id: stage
+        run: echo "where=$(sh -c '. .claude/kit.conf >/dev/null 2>&1; printf "%s" "${KIT_STACK_CHECKS:-ci}"')" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        if: steps.stage.outputs.where == 'off'
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+
+      - name: Install dependencies
+        if: steps.stage.outputs.where == 'off'
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
+            npm install --global "pnpm@$version"
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+          if [ -f playwright.config.ts ] || [ -f playwright.config.js ]; then
+            npx --no-install playwright install --with-deps chromium
+          fi
+
+      - name: Seed, e2e and screenshots in CI
+        id: rerun
+        if: steps.stage.outputs.where == 'off'
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/ci-evidence
+        run: |
+          status=0
+          .claude/bin/evidence data || status=1
+          .claude/bin/evidence screenshots --no-base || status=1
+          cat "$EVIDENCE_DIR/data-runs.md" >>"$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: evidence-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ steps.pack.outputs.dir }}
+            ${{ runner.temp }}/ci-evidence
+
+      - name: Sticky comment
+        if: ${{ !cancelled() && steps.pack.outcome == 'success' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          ci_data=""
+          [ ! -f "$RUNNER_TEMP/ci-evidence/data-runs.tsv" ] || ci_data="--ci-data $RUNNER_TEMP/ci-evidence/data-runs.tsv"
+          # shellcheck disable=SC2086
+          .claude/bin/evidence comment --dir "${{ steps.pack.outputs.dir }}" --repo "$REPO" \
+            --key "${{ steps.pack.outputs.key }}" $ci_data >"$RUNNER_TEMP/comment.md"
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- kit-evidence -->"))][0].id // empty')
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$id" -F "body=@$RUNNER_TEMP/comment.md" >/dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F "body=@$RUNNER_TEMP/comment.md" >/dev/null
+          fi
+
+  full-e2e:
+    name: Full e2e
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
+            npm install --global "pnpm@$version"
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+          if [ -f playwright.config.ts ] || [ -f playwright.config.js ]; then
+            npx --no-install playwright install --with-deps chromium
+          fi
+
+      - name: Seed and the whole e2e suite
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/full-e2e
+        run: |
+          status=0
+          .claude/bin/evidence data --all || status=1
+          cat "$EVIDENCE_DIR/data-runs.md" >>"$GITHUB_STEP_SUMMARY"
+          exit "$status"

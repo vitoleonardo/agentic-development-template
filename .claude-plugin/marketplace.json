@@ -11,6 +11,11 @@
       "description": "Spec-driven workflow, guard hooks, check hooks and subagents for Claude Code"
     },
     {
+      "name": "agentic-workflow-kit-next",
+      "source": "./plugins/agentic-workflow-kit-next/kit/.claude",
+      "description": "Next version of the kit under test: one headless session per planned group of tasks. Install this or agentic-workflow-kit, never both"
+    },
+    {
       "name": "repo-check",
       "source": "./plugins/repo-check/plugin",
       "description": "Find where your delivery is jammed right now: a 10-question interview or a strictly read-only scan of the repository. Sends nothing."
