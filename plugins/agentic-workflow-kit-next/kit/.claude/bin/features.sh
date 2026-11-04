@@ -181,3 +181,15 @@ feature_layers() {
   done
   printf '%s%s\t%s\t%s\n' "$_fl_out" "$1" "$_fl_top" "$_fl_last"
 }
+
+# The build lock's pid file: the build's pid, that process's start time and the build's run. A reused pid never passes
+# for a build, because its start time differs.
+build_lock=.work/autopilot/lock
+process_start() { LC_ALL=C TZ=UTC ps -p "$1" -o lstart= 2>/dev/null; }
+lock_pid() { sed -n 1p "$build_lock/pid" 2>/dev/null; }
+lock_run() { sed -n 3p "$build_lock/pid" 2>/dev/null; }
+is_build() {
+  [ -n "$1" ] || return 1
+  _process_start=$(process_start "$1")
+  [ -n "$_process_start" ] && [ "$_process_start" = "$(sed -n 2p "$build_lock/pid" 2>/dev/null)" ]
+}

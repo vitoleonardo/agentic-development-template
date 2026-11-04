@@ -5,6 +5,7 @@ usage() {
   echo "usage: .claude/bin/autopilot [feature-slug ...]" >&2
   echo "       .claude/bin/autopilot --ship <feature-slug>   build one planned feature on this branch, detached" >&2
   echo "       .claude/bin/autopilot --stop                  end the running build" >&2
+  echo "       .claude/bin/autopilot --steer <text>          queue a message the running session reads after its next tool call" >&2
   echo "       .claude/bin/autopilot --ready                 exit 0: can start; 1: a build is running; 2: not set up" >&2
   echo "  Builds approved specs one after another on stacked branches: a fresh headless session per planned group, then a final one." >&2
   echo "  Without slugs: every row of specs/README.md that is approved, planned, building or in-review, in file order." >&2
@@ -18,6 +19,7 @@ case ${1:-} in
   --ship) mode=ship; shift; [ $# -eq 1 ] || usage ;;
   --ship-run) mode=ship-run; run_id=${2:-}; shift 2 2>/dev/null || usage; [ $# -eq 1 ] || usage ;;
   --stop) mode=stop ;;
+  --steer) mode=steer; shift ;;
   --ready) mode=ready ;;
   -*) usage ;;
 esac
@@ -57,7 +59,10 @@ kill_grace_seconds=${AUTOPILOT_KILL_GRACE_SECONDS:-10}
 answerable_classes="question plan test"
 log_dir=.work/autopilot
 mkdir -p "$log_dir"
-lock_dir=$log_dir/lock
+# shellcheck disable=SC2154 # build_lock comes from features.sh
+lock_dir=$build_lock
+stop_request=$log_dir/stop
+steer_dir=$log_dir/steer
 unfinished_fix=$log_dir/unfinished-fix
 [ -n "$run_id" ] || run_id=$(date +%Y%m%d-%H%M%S)
 run_log=$log_dir/run-$run_id.md
@@ -68,17 +73,11 @@ _transcript="" _phase="" _kind=""
 
 # --- one build at a time ----------------------------------------------------------
 
-# The lock's pid file holds the owner's pid and that process's start time, so a reused pid never passes for a build.
-lock_pid() { sed -n 1p "$lock_dir/pid" 2>/dev/null; }
-process_start() { LC_ALL=C TZ=UTC ps -p "$1" -o lstart= 2>/dev/null; }
-is_build() {
-  [ -n "$1" ] || return 1
-  _process_start=$(process_start "$1")
-  [ -n "$_process_start" ] && [ "$_process_start" = "$(sed -n 2p "$lock_dir/pid" 2>/dev/null)" ]
-}
-# write_lock: a reader sees the old owner or the new one, never half of it.
+# write_lock: a reader sees the old owner or the new one, never half of it. A stop request left by an earlier build
+# goes, so it never shows for this one.
 write_lock() {
-  { echo $$; process_start $$; } >"$lock_dir/pid.$$" 2>/dev/null && mv "$lock_dir/pid.$$" "$lock_dir/pid"
+  { echo $$; process_start $$; echo "$run_id"; } >"$lock_dir/pid.$$" 2>/dev/null && mv "$lock_dir/pid.$$" "$lock_dir/pid" &&
+    rm -f "$stop_request"
 }
 refuse_if_running() {
   _holder=$(lock_pid)
@@ -109,7 +108,7 @@ take_lock() {
   write_lock || { echo "autopilot: another build took the lock; run again." >&2; exit 2; }
 }
 release_lock() {
-  if [ "$(lock_pid)" = "$$" ]; then rm -rf "$lock_dir"; fi
+  if [ "$(lock_pid)" = "$$" ]; then rm -rf "$lock_dir" "$stop_request"; fi
 }
 
 # tree_pids <pid>: the process and its descendants; a session or a check runs children a plain kill leaves behind.
@@ -139,6 +138,12 @@ kill_tree() {
   done
 }
 
+# stopped_session <run log>: the last session of the run's stopped row, the one to resume.
+stopped_session() {
+  awk -F '|' '/^\|/ { r = $4; gsub(/^[ \t]+/, "", r); if (r ~ /^stopped/) s = $6 }
+    END { n = split(s, w, " "); if (n > 0 && w[n] != "–") print w[n] }' "$1" 2>/dev/null
+}
+
 stop_build() {
   _pid=$(lock_pid)
   if ! is_build "$_pid"; then
@@ -146,6 +151,8 @@ stop_build() {
     echo "autopilot: no build is running."
     exit 0
   fi
+  _stopped_run=$(lock_run)
+  : >"$stop_request"
   kill "$_pid"
   _tries=0
   while is_build "$_pid" && [ "$_tries" -lt 30 ]; do
@@ -157,6 +164,26 @@ stop_build() {
     exit 1
   fi
   echo "autopilot: stopped the build (pid $_pid)."
+  _session=$(stopped_session "$log_dir/run-$_stopped_run.md")
+  [ -z "$_session" ] || echo "Resume it with: claude --resume $_session   then run .claude/bin/autopilot again."
+  exit 0
+}
+
+# steer_build <text>: a message for the running build's run, which the steer hook hands to its next session's main
+# agent (specs/kit-steering.md). The name sorts by time, and the pid keeps two messages in one second apart.
+steer_build() {
+  [ -n "$(printf '%s' "$*" | tr -d '[:space:]')" ] || { echo "usage: .claude/bin/autopilot --steer <text>" >&2; exit 2; }
+  _pid=$(lock_pid)
+  _run=$(lock_run)
+  if ! is_build "$_pid" || [ -z "$_run" ]; then
+    echo "autopilot: no build is running." >&2
+    exit 1
+  fi
+  mkdir -p "$steer_dir"
+  _queued=$(find "$steer_dir" -name "$_run-*.md" 2>/dev/null | wc -l | tr -d ' ')
+  _message=$_run-$(date +%s)-$(printf '%04d' $((_queued + 1)))-$$
+  printf '%s\n' "$*" >"$steer_dir/.$_message.tmp" && mv "$steer_dir/.$_message.tmp" "$steer_dir/$_message.md" || exit 2
+  echo "autopilot: message queued; the session reads it after its next tool call."
   exit 0
 }
 
@@ -173,6 +200,7 @@ budget_message="autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, 
 
 case $mode in
   stop) stop_build ;;
+  steer) steer_build "$@" ;;
   ready)
     _holder=$(lock_pid)
     if is_build "$_holder"; then
@@ -223,7 +251,9 @@ halt() {
   log ""
   log "Stopped at $slug: $2"
   echo "autopilot: stopped at $slug ($1): $2" >&2
-  if [ -n "${session:-}" ]; then
+  if [ -n "${session:-}" ] && [ "$1" = stop ]; then
+    echo "Resume it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
+  elif [ -n "${session:-}" ]; then
     echo "Answer it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
   fi
   echo "Run log: $run_log" >&2
@@ -236,9 +266,21 @@ on_stop() {
   if [ -n "$current" ]; then
     kill_tree "$current"
     wait "$current" 2>/dev/null
-    [ -z "$current_transcript" ] || .claude/bin/usage add-killed "$current_transcript"
+    if [ -n "$current_transcript" ]; then
+      .claude/bin/usage add-killed "$current_transcript"
+      # A session ended before its result line still named itself on its first line. The answerer is not resumed:
+      # the session that asked is.
+      _killed=""
+      [ "$current_transcript" = "${_answer_transcript:-}" ] ||
+        _killed=$(json_string "$(grep '"session_id"' "$current_transcript" 2>/dev/null | head -n 1)" session_id)
+      if [ -n "$_killed" ]; then
+        session=$_killed
+        case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
+      fi
+    fi
   fi
   if [ -n "$slug" ]; then
+    [ -z "$state" ] || add_line "Decisions to review" "- stopped-by-user | ${_phase:-build} session | $(date '+%d.%m.%Y %H:%M')"
     halt stop "stopped by .claude/bin/autopilot --stop"
   fi
   log ""
@@ -320,12 +362,17 @@ usage_limit_reset() {
     }'
 }
 
+# add_line <section> <line>: the line first under that section of the state file, which it adds when missing.
+add_line() {
+  [ -f "$state" ] || { mkdir -p "$(dirname "$state")"; printf '## %s\n' "$1" >"$state"; }
+  grep -q "^## $1[[:space:]]*\$" "$state" || printf '\n## %s\n' "$1" >>"$state"
+  awk -v section="## $1" -v line="$2" '{ print } $0 == section || $0 ~ "^" section "[ \t]+$" { print line }' "$state" >"$state.new" &&
+    mv "$state.new" "$state"
+}
+
 # add_stop <class> <trigger> <resolution>: a line under Stops in the state file, for /improve-kit.
 add_stop() {
-  _line="- autopilot $_phase session | $1 | $2 | stopped the session | $3"
-  [ -f "$state" ] || { mkdir -p "$(dirname "$state")"; printf '## Stops\n' >"$state"; }
-  grep -q '^## Stops[[:space:]]*$' "$state" || printf '\n## Stops\n' >>"$state"
-  awk -v line="$_line" '{ print } /^## Stops[ \t]*$/ { print line }' "$state" >"$state.new" && mv "$state.new" "$state"
+  add_line Stops "- autopilot $_phase session | $1 | $2 | stopped the session | $3"
 }
 
 # next_transcript <suffix>: sets $_transcript. A feature's build sessions are numbered, so none overwrites another.
@@ -343,7 +390,7 @@ run_claude() {
   _session_started=$(date +%s)
   [ -z "$session_model" ] || set -- "$@" --model "$session_model"
   [ -z "$session_effort" ] || set -- "$@" --effort "$session_effort"
-  KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS \
+  KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS KIT_AUTOPILOT_RUN=$run_id \
     claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
     --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
     --append-system-prompt "$unattended_note" \

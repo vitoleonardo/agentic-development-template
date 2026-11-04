@@ -54,7 +54,7 @@ COST=0.5
 EXTRA=""
 SLEEP=0
 eval "$(sed -n "${n}p" "$FAKE_DIR/script")"
-printf '{"type":"system","subtype":"init"}\n'
+printf '{"type":"system","subtype":"init","session_id":"s%s"}\n' "$n"
 [ -z "$EXTRA" ] || printf '%s\n' "$EXTRA"
 sleep "$SLEEP"
 printf '{"type":"result","session_id":"s%s","result":"%s","num_turns":%s,"total_cost_usd":%s,"permission_denials":[%s]}\n' "$n" "$RESULT" "$TURNS" "$COST" "$DENIED"
@@ -92,7 +92,7 @@ setup() {
   project=$work/p$(date +%s)$$-$passed-$failed
   mkdir -p "$project"
   cp -R "$here/kit/." "$project/"
-  rm -f "$fake/calls" "$fake/n" "$fake/untrusted" "$fake/prs" "$fake/pr-after" "$fake/order"
+  rm -f "$fake/calls" "$fake/n" "$fake/untrusted" "$fake/prs" "$fake/pr-after" "$fake/order" "$fake/run-env"
   : >"$fake/script"
   cd "$project" || exit 1
   printf '.work/\n' >.gitignore
@@ -1054,8 +1054,23 @@ same "$(cat "$work/err")" "autopilot: a build is already running (pid $_build). 
 autopilot
 same "$?" 2 "AC138: a third build is refused too"
 same "$(.claude/bin/autopilot --ready >/dev/null; echo $?)" 1 "--ready says a build is running"
+_run=$(sed -n 3p .work/autopilot/lock/pid)
+same "$_run" "$(ls .work/autopilot/run-*.md | sed 's#.*/run-##; s#[.]md$##')" "the lock names the build's run"
+.claude/bin/autopilot --steer "keep the CSV columns as in the spec" >"$work/steer-out" 2>&1
+same "$?" 0 "AC167: a message for a running build"
+same "$(cat "$work/steer-out")" "autopilot: message queued; the session reads it after its next tool call." "AC167: with the message"
+same "$(cat .work/autopilot/steer/"$_run"-*.md 2>/dev/null)" "keep the CSV columns as in the spec" "AC167: the text is queued under the build's run"
+.claude/bin/autopilot --steer "   " >/dev/null 2>&1
+same "$?" 2 "AC168: only spaces are no message"
+.claude/bin/autopilot --steer >/dev/null 2>&1
+same "$?" 2 "AC168: nor is no text"
+same "$(ls .work/autopilot/steer/*.md | wc -l | tr -d ' ')" 1 "AC168: neither queues anything"
 _stop_out=$(.claude/bin/autopilot --stop)
 contains "$_stop_out" "stopped the build (pid $_build)" "AC60: --stop reports it"
+same "$(printf '%s\n' "$_stop_out" | tail -n 1)" "Resume it with: claude --resume s1   then run .claude/bin/autopilot again." "AC178: --stop names the session to resume"
+contains "$(log_of)" "| stopped: stop | stopped by .claude/bin/autopilot --stop | s1 |" "AC172: the stopped row names the session from its first line"
+same "$(awk '/^## / { p = ($0 == "## Decisions to review") } p && /^- stopped-by-user/' .work/alpha.md | sed -E 's/[0-9]{2}[.][0-9]{2}[.][0-9]{4} [0-9]{2}:[0-9]{2}$/<date>/')" "- stopped-by-user | build session | <date>" "AC171: the stop is a decision to review"
+if [ -f .work/autopilot/stop ]; then fail "AC174: the stop request ends with the build"; else ok; fi
 if kill -0 "$_build" 2>/dev/null; then fail "AC60: the build's process has ended"; else ok; fi
 if kill -0 "$(cat "$fake/session-pid")" 2>/dev/null; then fail "AC60: the session has ended"; else ok; fi
 contains "$(log_of)" "Stopped at alpha: stopped by .claude/bin/autopilot --stop" "AC139: the closing line says so"
@@ -1066,6 +1081,10 @@ script 'finish alpha A 1' 'open_pr'
 autopilot
 same "$?" 0 "AC61, AC63: a new build runs after a stopped one"
 same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC62: --stop with no build"
+.claude/bin/autopilot --steer "hello" >"$work/steer-out" 2>&1
+same "$?" 1 "AC169: no message without a build"
+same "$(cat "$work/steer-out")" "autopilot: no build is running." "AC169: with the message"
+same "$(ls .work/autopilot/steer/*.md | wc -l | tr -d ' ')" 1 "AC169: nothing is queued"
 same "$(.claude/bin/autopilot --ready >/dev/null 2>&1; echo $?)" 0 "--ready says it can start"
 ready_err=$(.claude/bin/autopilot --ready 2>&1 >/dev/null)
 contains "$ready_err" "gh extension install github/gh-stack" "STACK-AC28: --ready warns that gh stack is missing"
@@ -1238,6 +1257,16 @@ autopilot
 same "$(calls | wc -l | tr -d ' ')" 2 "a repair that records a stop starts nothing more"
 contains "$(log_of)" "stopped: spec" "and the stop's class closes the build"
 
+# Every session the build starts, but not the answerer, knows the run, so the steer hook can reach it.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+_env='printf "%s\n" "${KIT_AUTOPILOT_RUN:-none}" >>"$FAKE_DIR/run-env"'
+script "$_env; RESULT='Which one?'" "$_env; RESULT='ANSWER: the first'" "$_env; finish alpha A 1" "$_env; open_pr"
+autopilot
+_run=$(ls .work/autopilot/run-*.md | sed 's#.*/run-##; s#[.]md$##')
+same "$(tr '\n' ' ' <"$fake/run-env")" "$_run none $_run $_run " "AC170: group and final sessions run with KIT_AUTOPILOT_RUN, the answerer without"
+
 # Found while fixing review 2: a session with no result line must not resume the group before it.
 setup alpha:planned
 stub_check
@@ -1260,6 +1289,7 @@ until [ -f "$fake/session-pid" ]; do sleep 1; _tries=$((_tries + 1)); [ "$_tries
 .claude/bin/autopilot --stop >"$work/stop-out" 2>&1
 same "$?" 0 "AC60: --stop ends a build while the answerer runs"
 if kill -0 "$(cat "$fake/session-pid")" 2>/dev/null; then fail "AC60: the answerer has ended"; else ok; fi
+contains "$(cat "$work/stop-out")" "Resume it with: claude --resume s1 " "AC178: the session to resume is the one that asked, not the answerer"
 contains "$(log_of)" "Stopped at alpha: stopped by .claude/bin/autopilot --stop" "AC139: the closing line says so"
 wait
 

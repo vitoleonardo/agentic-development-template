@@ -243,6 +243,21 @@ One build at a time:
 - **GROUP-AC140**: Given a lock whose pid now belongs to a process that is no build, when `.claude/bin/autopilot --stop` runs, then that process gets no signal.
 - **GROUP-AC63**: Given a build that ended, when `.claude/bin/autopilot` starts in that checkout, then the build runs.
 
+Steering (`kit-steering.md`, PR #36):
+
+- **GROUP-AC167**: Given a running build, when `.claude/bin/autopilot --steer "keep the CSV columns as in the spec"` runs, then `.work/autopilot/steer/` holds a message with that text named after the build's run, and it exits 0 with `autopilot: message queued; the session reads it after its next tool call.`
+- **GROUP-AC168**: Given a running build, when `.claude/bin/autopilot --steer` runs with no text or only spaces, then it exits 2 and queues nothing.
+- **GROUP-AC169**: Given no running build, when `.claude/bin/autopilot --steer <text>` runs, then it exits 1 with `autopilot: no build is running.` and queues nothing.
+- **GROUP-AC170**: Given a build, when it starts a plan, group, final or stack session, then the session runs with `KIT_AUTOPILOT_RUN` set to the build's run, so the steer hook hands it that run's messages as STEER-AC14 to STEER-AC18 say; the answer session runs without it.
+- **GROUP-AC171**: Given a running build, when `.claude/bin/autopilot --stop` has run, then Decisions to review in the feature's state file has `- stopped-by-user | <phase> session | <DD.MM.YYYY HH:MM>`.
+- **GROUP-AC172**: Given a session that wrote no result line yet, when `.claude/bin/autopilot --stop` has run, then the run log's stopped row names the session ID from the session's first line.
+- **GROUP-AC178**: Given a running build, when `.claude/bin/autopilot --stop` has run, then it printed `Resume it with: claude --resume <session>` with the last session of the run log's stopped row, followed by when to run the build again.
+- **GROUP-AC173**: Given a feature branch whose state file has 2 `steered-by-user` and 1 `stopped-by-user` lines under Decisions to review, when the run records are written and reported, then that run counts 3 interventions.
+- **GROUP-AC174**: Given a running build, when the status command runs with `--json`, then `autopilot.running` and `autopilot.active` are `true`, and `autopilot.stop_requested` is `true` once `--stop` has asked it to end; with no lock, a dead build or a reused pid, `running` is `false`.
+- **GROUP-AC175**: Given the newest run has one delivered and one undelivered message, when the status command runs with `--json`, then `autopilot.messages` lists both, oldest first, as `{ text, delivered }`.
+- **GROUP-AC176**: Given the newest run has a plan session, two group sessions, a watchdog restart of the plan and an answer session, when the status command runs with `--json`, then `autopilot.sessions` lists the five transcripts oldest first as `{ file, feature, phase, kind }` with kinds `session`, `session`, `session`, `restart` and `answer`, `file` relative to the project.
+- **GROUP-AC177**: Given the newest run log ends with `Stopped at <feature>` and the stopped row's Sessions cell names `s1 s3`, when the status command runs with `--json`, then `autopilot.resume` is `s3`; for a run without a stop it is `null`.
+
 Sessions and records:
 
 - **GROUP-AC64**: Given a feature with 2 groups, a watchdog restart and a resume, when the build has ended, then every session of the feature has its own transcript file.
@@ -279,4 +294,5 @@ Sessions and records:
 - 03.11.2026: Plans without a Group column are grouped by threes and do not need group rounds, so a feature in progress when a project updates never blocks or repeats finished work.
 - 03.11.2026: This ships as a second plugin next to the current one, not behind a flag or on a branch. Fixes land twice until the release; the release needs two real runs (one small feature and one 13-point sprint), compared with the current version.
 - 04.11.2026: Kit 0.3.1 (plan-lint, `/fix-bug`, PR #40) lands in this plugin too, and `plan-lint` checks the group rules the plan must follow (GROUP-AC158 to GROUP-AC166), so a plan breaks them at planning, not at the build's start. GROUP-AC1 compares with `main`, because `main` now holds 0.3.1 of the current plugin. Autopilot keeps its own narrower check, so plans written before this never block.
+- 04.11.2026: Steering from PR #36 (stable kit 0.4.0) lands here as `--steer`, next to this plugin's `--ship` and `--stop`, which already start a detached build and end it by signal, and it is part of 0.4.1. The steer hook and the interventions in the run records are the stable kit's; the status fields have the same shape, so a pane reads either plugin. Group and stack sessions are numbered, so their transcripts never have the kind `resumed`. When this plugin replaces the current one, the current one's `autopilot start`, `stop` and `steer` become `--ship`, `--stop` and `--steer`.
 - 04.11.2026: The e2e map, stacked group pull requests, the stack stage and the risk gates (`e2e-map.md`, `stacked-groups.md`, `stack-stage.md`, `risk-gates.md`) ship on top of this feature as 0.4.1, together with the fixes of PR #39; RISK-AC50 names the version.

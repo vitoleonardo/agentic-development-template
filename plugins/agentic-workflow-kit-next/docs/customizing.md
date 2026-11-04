@@ -258,6 +258,14 @@ A rerun continues at the first group that is not done, and re-checks the last do
 
 Only one build runs per checkout. A second one is refused; `.claude/bin/autopilot --stop` ends the running build and its session, and `.claude/bin/autopilot --ready` exits with 0 when one can start, 1 while one is running, and 2 when the budget is not set.
 
+**Steer a running build.** `.work/autopilot/lock/pid` names the build's process and its run.
+
+- `.claude/bin/autopilot --steer "<text>"` queues a message. The kit's `steer` hook hands it to the session after the main agent's next tool call, and the session logs what it did under Decisions to review as `steered-by-user`. While a subagent works, the message waits for its end. A message queued at a session's end goes to the build's next session. The answer session never gets one.
+- `.claude/bin/autopilot --stop` writes `stopped-by-user` under Decisions to review and prints `claude --resume <session id>` for the session it stopped; resume it there, then run `autopilot` again.
+- `.claude/bin/status --json` shows whether the build runs, its sessions with their transcripts, the messages and whether they were delivered, and the session to resume after a stop.
+
+Steering messages and user stops count as interventions in `reports/runs.md`, next to stops the user resolved.
+
 A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-review` earlier, before the verify gates run, so that status alone does not count. Features with a PR, and rows marked `done`, are skipped, so running it again resumes. A feature that is `in-review` without a PR resumes at verify.
 
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
@@ -341,6 +349,7 @@ The hooks are in `.claude/hooks/` and registered in `.claude/settings.json`:
 |---|---|---|
 | `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it, and gated commands get `ask` or `allow` per `KIT_APPROVAL` |
 | `PostToolUse` (Edit, Write) | `record-edit` | after every edit; only notes the file, because it runs in parallel |
+| `PostToolUse` (every tool) | `steer` | only in autopilot sessions: hands the main agent the messages queued with `autopilot --steer` |
 | `PostToolBatch` | `check-edits` | once per batch of tool calls: spec lint, format, typecheck, related tests |
 | `Stop` | `summary`, `usage` | when Claude wants to end the turn |
 | `PreToolUse`, `PostToolUse` (Agent), `SubagentStop` | `usage` | token record per agent, and the budget check before each dispatch |
