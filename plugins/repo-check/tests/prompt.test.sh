@@ -14,9 +14,9 @@ fail() { failed=$((failed + 1)); echo "FAIL: $1"; }
 
 "$here/build" --check 2>"$work/err" && ok || fail "build --check: $(cat "$work/err")"
 
-mkdir -p "$work/plugins/agentic-workflow-kit/kit/.claude/bin"
+mkdir -p "$work/plugins/stempel-kit/kit/.claude/bin"
 cp -R "$here" "$work/plugins/repo-check"
-cp "$here/../agentic-workflow-kit/kit/.claude/bin/leadtime" "$work/plugins/agentic-workflow-kit/kit/.claude/bin/"
+cp "$here/../stempel-kit/kit/.claude/bin/leadtime" "$work/plugins/stempel-kit/kit/.claude/bin/"
 copy=$work/plugins/repo-check
 drifts() {
   "$copy/build" --check >/dev/null 2>&1 && fail "build --check misses $1" || ok
@@ -28,7 +28,7 @@ sed 's/Never promise dates/Promise dates/' "$copy/plugin/skills/repo-check/SKILL
 drifts "a rule changed in SKILL.md without a rebuild"
 echo "# edited" >>"$copy/plugin/skills/repo-check/leadtime"
 drifts "an edited leadtime copy"
-echo "# edited" >>"$work/plugins/agentic-workflow-kit/kit/.claude/bin/leadtime"
+echo "# edited" >>"$work/plugins/stempel-kit/kit/.claude/bin/leadtime"
 drifts "a kit leadtime change without a rebuild"
 
 blocks() { sed -n 's/^<!-- shared:\([a-z-]*\) -->$/\1/p' "$1"; }

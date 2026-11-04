@@ -2,7 +2,7 @@
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-kit=$here/../agentic-workflow-kit
+kit=$here/../stempel-kit
 scan=$here/plugin/skills/repo-check/scan
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

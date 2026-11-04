@@ -1,0 +1,20 @@
+#!/bin/sh
+[ -n "${KIT_AUTOPILOT_RUN:-}" ] || exit 0
+. "$(dirname -- "$0")/lib.sh"
+printf '%s' "$HOOK_INPUT" | sed 's/"tool_input".*//' | grep -q '"agent_id"[[:space:]]*:' && exit 0
+
+inbox=.work/autopilot/steer
+delivered=$inbox/delivered
+messages=""
+for message in "$inbox/$KIT_AUTOPILOT_RUN"-*.md; do
+  [ -f "$message" ] || continue
+  mkdir -p "$delivered"
+  mv "$message" "$delivered/" 2>/dev/null || continue
+  messages="$messages
+- $(tr '\n' ' ' <"$delivered/${message##*/}" | sed 's/[[:space:]]*$//')"
+done
+[ -n "$messages" ] || exit 0
+
+context="The person watching this autopilot run says:$messages
+Follow each message within the approved spec and the kit's rules. Log each under Decisions to review as 'steered-by-user | <text> | <what you did>'."
+printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$(printf '%s' "$context" | json_escape)"

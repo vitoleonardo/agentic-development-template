@@ -1,0 +1,141 @@
+#!/bin/sh
+set -u
+
+gates="spec plan deps split config commit push merge"
+name=${1:-}
+case " $gates level round " in
+  *" $name "*) ;;
+  *)
+    echo "usage: .claude/bin/gate <$(printf '%s' "$gates" | tr ' ' '|')>   prints ask or auto" >&2
+    echo "       .claude/bin/gate level   prints strict, standard or autonomous (the default)" >&2
+    echo "       .claude/bin/gate round <kit|test|hotfix|spec> <n>   prints whether failed verify round n continues (auto) or asks" >&2
+    exit 2
+    ;;
+esac
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+gate_variable=KIT_GATE_$(printf '%s' "$name" | tr a-z A-Z)
+gate_value() {
+  eval "printf '%s' \"\${$gate_variable:-}\""
+}
+
+env_level=${KIT_APPROVAL:-}
+env_rounds=${KIT_VERIFY_ROUNDS:-}
+env_gate=$(gate_value)
+env_push_ask=${KIT_PUSH_ASK_PATTERNS:-}
+if [ -f "$root/.claude/kit.conf" ]; then
+  # shellcheck source=/dev/null
+  . "$root/.claude/kit.conf"
+fi
+conf_gate=$(gate_value)
+
+level=${env_level:-${KIT_APPROVAL:-autonomous}}
+case $level in
+  strict | standard | autonomous) ;;
+  *) echo "gate: KIT_APPROVAL='$level' is not strict, standard or autonomous; using strict." >&2; level=strict ;;
+esac
+
+if [ "$name" = round ]; then
+  # A failed verify round n of a class: kit false positives never count, spec changes always ask, and test and
+  # hotfix rounds continue up to their KIT_VERIFY_ROUNDS limit; at autonomous they continue past it.
+  class=${2:-} n=${3:-}
+  case $n in '' | *[!0-9]*) echo "usage: .claude/bin/gate round <kit|test|hotfix|spec> <verify round>" >&2; exit 2 ;; esac
+  rounds=${env_rounds:-${KIT_VERIFY_ROUNDS:-}}
+  limit=$(printf '%s\n' "test:3 hotfix:2 $rounds" | tr ' ' '\n' | sed -n "s/^$class:\([0-9][0-9]*\)$/\1/p" | tail -n 1)
+  case $class in
+    kit) echo auto ;;
+    spec) echo ask ;;
+    test | hotfix)
+      if [ "$n" -le "$limit" ] || [ "$level" = autonomous ]; then echo auto; else echo ask; fi
+      ;;
+    *) echo "usage: .claude/bin/gate round <kit|test|hotfix|spec> <verify round>" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+
+if [ "$name" = level ]; then
+  printf '%s\n' "$level"
+  exit 0
+fi
+
+override=${env_gate:-$conf_gate}
+case $override in
+  ask | auto) printf '%s\n' "$override"; exit 0 ;;
+  '') ;;
+  *) echo "gate: $gate_variable='$override' is not ask or auto; using KIT_APPROVAL=$level." >&2 ;;
+esac
+
+# plan_by_risk: at autonomous a plan approves itself unless .claude/bin/risk ranks it high (an architecture change,
+# a risky path, very complex work); then a person approves the spec and the plan together.
+plan_by_risk() {
+  if ranked=$(cd "$root" && .claude/bin/risk plan 2>&1); then
+    echo auto
+  else
+    printf '%s\n' "$ranked" | sed 's/^/gate plan: /' >&2
+    echo "gate plan: a person approves this plan (.claude/bin/risk)." >&2
+    echo ask
+  fi
+}
+
+# merge_by_risk: the build merges a stack itself once its stage is green on the top layer's head and no layer ranks
+# high, or every high layer has an approval on its head by someone other than its author.
+merge_by_risk() {
+  (
+    cd "$root" || exit 1
+    branch=$(git branch --show-current 2>/dev/null)
+    stage=${KIT_STACK_CHECKS:-ci}
+    if [ "$stage" != off ] && [ "$(cat ".work/$branch/stack/green" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
+      echo "gate merge: the stack stage is not green on $(git rev-parse --short HEAD)." >&2
+      echo ask
+      exit 0
+    fi
+    ranked=$(.claude/bin/risk stack 2>&1)
+    case $? in
+      0) echo auto; exit 0 ;;
+      1) ;;
+      *) printf '%s\n' "$ranked" | sed 's/^/gate merge: /' >&2; echo ask; exit 0 ;;
+    esac
+    waiting=""
+    for layer in $(printf '%s\n' "$ranked" | awk '$1 == "layer" && $4 == "high" { print $2 }'); do
+      approved=$(gh pr view "$layer" --json number,headRefOid,author \
+        --jq '"\(.number) \(.headRefOid) \(.author.login)"' 2>/dev/null | {
+        read -r number head author
+        [ -n "${number:-}" ] || exit 0
+        gh api "repos/{owner}/{repo}/pulls/$number/reviews" --paginate \
+          --jq "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$head\" and .user.login != \"$author\")] | length" 2>/dev/null
+      })
+      [ "${approved:-0}" -gt 0 ] 2>/dev/null || waiting="$waiting $layer"
+    done
+    if [ -n "$waiting" ]; then
+      printf '%s\n' "$ranked" | sed 's/^/gate merge: /' >&2
+      echo "gate merge: high-ranked layers wait for approval by a person:$waiting" >&2
+      echo ask
+    else
+      echo auto
+    fi
+  )
+}
+
+push_by_risk() {
+  patterns=${env_push_ask:-${KIT_PUSH_ASK_PATTERNS:-}}
+  if risky=$(
+    cd "$root" || exit 1
+    KIT_ROOT=$root && export KIT_ROOT
+    # shellcheck source=conf.sh
+    . "$root/.claude/bin/conf.sh"
+    changed_file_matching "$(merge_base)" "$patterns"
+  ); then
+    echo "gate push: the branch changes $risky (KIT_PUSH_ASK_PATTERNS); a person approves this push." >&2
+    echo ask
+  else
+    echo auto
+  fi
+}
+
+case $level:$name in
+  strict:* | standard:spec | standard:plan) echo ask ;;
+  autonomous:plan) plan_by_risk ;;
+  *:merge) merge_by_risk ;;
+  standard:push) push_by_risk ;;
+  *) echo auto ;;
+esac

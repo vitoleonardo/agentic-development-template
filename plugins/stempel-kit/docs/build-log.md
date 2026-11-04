@@ -1,0 +1,198 @@
+# Build log
+
+What the workflow and its tests caught while building the kit. Newest first.
+
+## 04.11.2026: plan-lint and /fix-bug
+
+`.claude/bin/plan-lint` (`tests/plan-lint.test.sh`, 49 cases, also under `dash`), `.claude/bin/criteria.sh`, `/fix-bug` (`tests/fix-bug.test.sh`, 42 cases), and `plan_feature`, `plan_spec`, `plan_criteria` in `features.sh` for `status` and `runs` (8 and 2 new cases). Both came out of a comparison with GitHub's spec-kit: it has a checklist step on the plan and a bug flow; the kit had the plan rules as prose and "small fixes may skip the spec" without a path.
+
+- **The plan gate had no script.** `/plan-feature` listed the rules and the model was trusted. `plan-lint` reads the specs and the plan in one awk pass: coverage both ways, the Tasks table by its header names (a plugin that adds a column keeps working), tiers against `route tier implement`, new paths through `structure`, Design placeholders, Progress. A hand-written plan for the demo spec passed first time. The false-positive risk sits in the Files cell, so paths are the backticked strings when there are any, and a token with `*` or `<` is never a path.
+- **A fix gets its criteria in the plan.** Every reader (the agents, `status`, `runs`, verify, the PR) found criteria only through `specs/README.md`. The fix plan's `## Criteria` is the one place, and it replaces the spec's set for coverage, because a fix of a 40-criterion spec covers one. `status` sets `spec` to null for a fix instead of warning.
+- **Branch names decide the feature row.** `features.sh` matches a row by slug when its Branch cell is empty, so a fix branch named like a spec would adopt that feature's status. Fix branches are `<issue>-<slug>` or `fix-<slug>`.
+- **The shared criterion check.** `words()`, `count()` and the vague list moved to `criteria.sh`; `spec-lint`'s output is byte-identical on the demo spec and on a copy that breaks four rules.
+- **Proven live on the demo app** (`tests/fix-bug/run.sh`, two runs on copies of `examples/demo-app`, the main session on sonnet, `KIT_APPROVAL=autonomous`). Covered bug: a planted 10.00 cap on every transfer against `SPLIT-AC5`, its test deleted. The plan reused the criterion, the test-writer's two tests failed with `expected 6 to be <= 2`, one commit held test and fix, review round 1 passed, verify ran 13 of 13 gates, the pack went to `kit-evidence`, the PR's Why names the report and the criterion; spec and feature list unchanged; 276k tokens. Gap bug: a decimal comma in amounts. The spec gained `SPLIT-AC7` and one Decisions entry, `gate spec` and `gate plan` were logged, then the same red test, fix, review and verify; 134k tokens.
+- **The duplicates gate needs jscpd in the demo.** The TypeScript adapter leaves `KIT_DUPLICATES` empty without `node_modules/.bin/jscpd`, and verify fails on "not configured". The first run stopped there with a Stops line of class `env` and asked for the dependency instead of marking the gate `n/a`, as the rules say. The runner installs `jscpd@5` in the copy before the base commit.
+- **An ask gate cannot be answered headless.** With `KIT_GATE_PUSH=ask` the guard refused `evidence push`, and both sessions asked three times instead of overriding the gate or editing `kit.conf`. The runner sets the push gate to `auto` and forbids the branch push in the prompt instead.
+- **The reviewer reopened task 1 in both runs.** It asked for more cases (several creditors and debtors; thousands separators), and the orchestrator sent the test-writer again under descriptions of its own (`task 1 addendum: …`, `review round 1 fixes: …`), so `usage` counted one of them as task 1 and the other as nothing. The skill does not name the dispatch for a review fix of a test; a rule for it is a candidate for the next `/improve-kit`.
+
+## 31.10.2026: changes from the pilot retrospective
+
+The plain `/improve-kit` over the pilot's nine runs proposed five changes; the three that belong to the kit and the kit side of the other two are in. Each has an entry in `reports/improvements.md` with the metric to judge it by.
+
+- **Duplicates.** `duplicates-new.mjs` passes a clone that lies inside constructor parameter lists in both files, the TypeScript scan leaves out `*.e2e-spec.*`, and `KIT_DUPLICATES_RELATED` runs through the same helper, so the edit hook and the gate agree. The base scan drops `--changed` and the edited files the hook appends; otherwise a new file would be a missing path on the base. `tests/check.test.sh`: 81 cases.
+- **Red check.** A new gate copies the test files whose added lines name a criterion onto the merge base and runs them with `KIT_TEST`; an added criterion test that passes there is named. Matching is by the title on an added line, so unchanged tests in the same file are never named. It warns only for now. Without `KIT_SETUP` every test fails on the base for lack of dependencies and the gate proves nothing, so `/onboard` now reports that as a setup gap. The base worktree code of the screenshots moved into `base_tree` and `in_base`. `tests/evidence.test.sh`: 12 new cases.
+- **Plan side effects.** The plan's Design names every write and external call, what it waits for and where it runs. Not testable by script; measured by `plan` stops.
+- **Pilot configuration stays in the pilot.** The token budget (p75 5.0 M tokens) and the env steps are project values. `/onboard` names an empty `KIT_SETUP`, `KIT_BASE_ENV` and `KIT_BUDGET_TOKENS` instead.
+- **Local test runs on macOS.** `tests/runs.test.sh` and `tests/evidence.test.sh` use GNU `sed -i`, and with gitleaks installed the pattern-scan cases of `evidence.test.sh` do not apply. With a `sed -i` shim, the 13 failures left were the same on `main` and on this branch; CI on Ubuntu is the reference.
+
+## 30.10.2026: leadtime for repo-check
+
+`.claude/bin/leadtime --stdout` prints the CSV and writes nothing, and `LEADTIME_ROOT` names the repository to measure. The `repo-check` plugin ships a byte-identical copy, generated by `plugins/repo-check/build`, and its drift test fails when the two differ (a symlink would be skipped for local-path plugin installs). Two new cases in `tests/leadtime.test.sh`. On macOS the existing `spec to merge` case fails, before and after this change, because the test's `sed -i` is GNU syntax; CI runs on Linux.
+
+## 27.10.2026: only the affected e2e tests on pull requests
+
+`evidence e2e-select`, `evidence data --all`, the `Full e2e` job in the TypeScript adapter's `evidence.yml`, and `tests/evidence.test.sh` (65 cases, 20 new).
+
+- **The selection works from criterion IDs, not import graphs.** E2E tests drive a browser and import no application code, so tools like Playwright's `--only-changed` see only changed test files. The kit already requires test names to start with their criterion, so the diff's criterion IDs name the features whose e2e tests must run. That works for any runner that takes test files as arguments.
+- **Anything it cannot vouch for runs everything.** Shared setup (lockfile, config, fixtures) and code that no e2e test maps to fall back to the whole suite; only tests and docs run none. The whole suite runs again after every merge to `main`, without cancelling, so a miss shows up on the merge that caused it.
+- **A new e2e file was invisible at first.** `git diff --no-index --name-only` prints nothing for an untracked file, so a test written but not yet committed (the normal state during `/verify-feature`) was not selected. `changed_files` lists untracked files separately; a test covers it.
+- **On the demo with real Playwright:** a README change selected nothing, a `settle.ts` change with a new `SPLIT-AC5` test selected `e2e/split.spec.ts` (passed in 16 s, including the Next build), a source change without a criterion ran everything. Screenshots ran on the same selection.
+
+## 27.10.2026: v1.1 part D (lead time)
+
+`.claude/bin/leadtime`, `tests/leadtime.test.sh` (24 cases, also under `dash`).
+
+- **One query, no extra runtime.** A single GraphQL search through `gh api graphql --paginate` with gh's built-in `--jq` gives one line per merged PR. Date arithmetic, medians and p75s are done in awk, because `date -d` and `date -r` differ between GNU and BSD. The query ran unchanged against this repository first: three PRs, which correctly printed "too few PRs" and "n/a: one contributor" for the review metrics.
+- **The fixture was calculated by hand before the script existed.** `tests/leadtime/prs.json` holds eight PRs with known times: a draft with a ReadyForReviewEvent, the author's own comment, a bot comment, a Dependabot PR, a "changes requested" review followed by a push, a fix PR touching an earlier PR's file within 14 days, and two PRs with the evidence comment. The expected values are written in the test's header. Every metric matched on the first run. The one failure was a typo in the test itself.
+- **The fake `gh` uses jq for `--jq`.** gh's built-in `--jq` is gojq, which accepts the same expression, so the test checks the real expression without network.
+- **`--split-by kit` is the comparison for the pilot.** A fresh fork has no PR history, so its baseline is empty (spec 6.5).
+
+## 27.10.2026: v1.1 part C (model routing, usage, budget)
+
+`.claude/bin/route`, `.claude/bin/usage`, `hooks/usage`, a Tier column in `/plan-feature`, routing and escalation in `/ship-feature`. Tests: `tests/usage.test.sh` (23 cases, also under `dash`) and the headless runner `tests/routing/run.sh`.
+
+- **What the docs allow decided the design** (checked 27.10.2026):
+  - An agent's `model` takes aliases, full IDs or `inherit`. The Agent tool's per-call `model` wins over it, but it takes aliases only, so the tiers map to aliases.
+  - A forked skill's model is fixed in its file, so `/ship-feature` dispatches the reviewer itself.
+  - `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides every per-call model, and `route check` warns about it.
+- **No hook input carries token counts.** The usage hook reads the transcripts. A real transcript had 52 assistant lines for 24 messages, because a message is written once per streamed block, so the hook counts the last line per message ID. The test pins that format with fixtures.
+- **Headless routing run on the demo** (Sonnet, `tests/routing/run.sh`). The plan had a Tier column. Both implementers were dispatched with `model: sonnet`, their tier's alias, and their transcripts show `claude-sonnet-5-5` (ROUTE-AC1). The open question from spec 5.3 is answered: a forked `/review-diff` fires SubagentStop, so its tokens are counted.
+- **The same run found two bugs in the record.** Every session wrote its tokens under the key `main`, so a second session on the branch overwrote the first; a quick `claude -p` in the run's folder reproduced it. Spec and plan run before the feature branch exists, so their tokens landed in `.work/main/`. Lines are now keyed `main:<session id>`, and `/ship-feature` runs `usage adopt` after creating the branch.
+- **The budget is enforced by a PreToolUse hook on Agent,** not left to the orchestrator: it warns at 80 percent and blocks at 100. It counts input, output and cache writes. Cache reads are left out: one run read 2.5 million cached tokens against 47,000 written, so counting them would make any budget meaningless.
+- **Not proven live:** an escalation (ROUTE-AC2) and a budget stop (ROUTE-AC3) in a real run. Both are covered by the hook tests with fixture transcripts; forcing a task to fail in a live run was not attempted.
+
+## 27.10.2026: v1.1 part B (verify and the evidence pack)
+
+`/verify-feature`, `.claude/bin/evidence`, the reviewer's screenshot check, the adapter's `evidence.yml`, and Playwright with screenshots in the demo. Tests: `tests/evidence.test.sh` (45 cases, also under `dash`) and the headless runner `tests/verify/run.sh`.
+
+- **The script decides what a script can.** Hard gates, the edge-case matrix against the JUnit results of the same run, data runs, screenshots, `evidence.json` and the push are deterministic. The model writes only the matrix rows and the screenshot judgement. A gate with an empty key fails (VERIFY-AC8). An added `.only`, `test.skip` or `xfail` fails, and so does a dependency the plan did not approve (AC4). A case without a passing test fails (AC3).
+- **Untracked files were invisible to the gates.** `git diff <merge-base>` leaves out new files, so a new 30-line file passed the size gate and a token in a new file passed the secret scan. The gates now diff untracked files too. Found by the tests.
+- **The push builds its commit with a temporary index** (`read-tree`, `update-index`, `commit-tree`), so `kit-evidence` gets the pack without touching the working tree or the current branch. `ci-check` rejects a head without a pack and a pack that names another commit (AC5), tested against a bare local remote.
+- **Headless `/ship-feature` through verify on the demo** (Sonnet, `tests/verify/run.sh`, feature "Total spent"). Every check passed:
+  - The pack had every part, with desktop and mobile screenshots on the branch and on `main` (AC1). Base images exist only for pages that already existed there.
+  - The reviewer judged the screenshots.
+  - The pack was on `kit-evidence` for the head commit, and the rendered comment had the gate table and the inline images (AC6, rendered locally).
+  - With the label changed to "Sum of costs", the e2e assertion failed. The reviewer, given only the images, reported a mismatch for every affected screenshot as a high finding and quoted the wrong label (AC2).
+- **The run found a conflict in the flow.** The model would not commit the `in-review` status after verify, because that commit would make the pack stale. It held back the PR description too, waiting for push approval, although the description is only a file. The status now goes into the last commit before the gates, and the description is written without asking.
+- **Playwright found mistakes in the test setup.** Port 3100 was taken on the build machine, the hand-calculated transfers were wrong, and Next.js adds a second `role="alert"` (its route announcer).
+- **Deviation from prompt B:** the demo has no seed script and no MSW mocks. It stores nothing and calls no external service, so both would test nothing. The pack records them as "not configured", which is the path a reviewer has to see. Its e2e input is fixed and versioned in `e2e/fixtures.ts`.
+- **Not done:**
+  - VERIFY-AC6 on GitHub itself, and open question 9.1 (images from an orphan branch in a private repo). Both need a real pull request, which was not opened without the owner's go-ahead.
+  - VERIFY-AC7 (the owner's review time on three PRs with and without the comment) needs the owner.
+  - gitleaks is not installed here, so the pattern scan stood in.
+
+## 27.10.2026: v1.1 part A (onboarding, baseline, monorepos, Python)
+
+Spec: [SPEC-v1.1.md](SPEC-v1.1.md) section 3. New: `/onboard`, `.claude/bin/baseline`, `.claude/bin/onboard-apply`, `check --against-baseline`, nested `<package>/.claude/kit.conf`, protected paths, `adapters/python`. Tests: `tests/check.test.sh` (43 cases, also under `dash`), 27 new cases in `tests/hooks.test.sh` (93 in total), 3 in `tests/install.test.sh` (16), and the headless runner `tests/onboard/run.sh` with two fixture repos.
+
+- **The baseline gate works with the real tools, not only the fakes.** On the demo app with one assertion broken on `main`, `check --against-baseline test` passed and reported the test as "legacy, not blocking". It failed and named the test when a second test broke on the branch. The first attempt at that second break hit the same test as the legacy one and correctly passed, which made the test case wrong, not the gate. With the Python adapter, mypy and the coverage gate caught a new type error in a changed file and a coverage drop from 100 to 80 percent.
+- **"Removed by the diff" was too generous at first.** A disappeared test counted as removed if any removed line in the diff mentioned its name, and in the fixture that line came from a data file. Only removed lines of test files count now.
+- **Vitest writes no coverage when tests fail** (found in v1). With legacy failures that would have disabled the coverage gate in every brownfield repo. The TypeScript adapter now passes `--coverage.reportOnFailure`; pytest-cov reports on failure by default.
+- **One coverage gate instead of one per language.** `changed-coverage.mjs` read Istanbul only, so Python would have needed a second implementation. The gate is now in `baseline` and reads `<file> TAB <covered> TAB <total>` from a small per-adapter helper (`coverage-files.mjs`, `coverage-files.py`). The Node script is gone, and the CI workflows call `check --against-baseline` for every gate. The first run counted the kit's own helper in `.claude/bin/` as a changed source file; `.claude/` is excluded now.
+- **Error parsing needs several formats.** tsc writes `file(line,col)`, ESLint's default formatter groups errors under a file header, pyright indents its lines. The parser has a test case for each format, and a tool that exits non-zero without readable `file:line` output blocks rather than passing.
+- **Headless `/onboard` on the pnpm monorepo fixture** (Sonnet, four turns, `tests/onboard/run.sh`). Every check passed. The session wrote nothing outside `.work/` before `onboard-apply`, and nothing outside the allowed list after it (ONBOARD-AC1). The gate passed on `main` with the legacy test recorded (AC2). `ai-service/` got its own config. `AGENTS.md` stayed unchanged and `CLAUDE.md` imports it (AC5). `packages/ee` was protected by `denyRead`, deny rules and `KIT_PROTECTED_PATHS`, and the canary string in its source never appeared in the transcript (AC3). The only `ee` file the model opened was `LICENSE`.
+- **The run found two gaps in the skill.** To test the `format` command, the model ran it with `--write`, so Biome reformatted an application file. It reverted the file itself and said so. The skill now forbids running any command that writes application files and proves formatters in check mode. It also asked before running `uv sync`, which creates a gitignored `.venv`: a fair question that the scripted answers did not cover.
+- **Protected paths, as the docs describe them:**
+  - The sandbox covers Bash only, and it merges `Read` deny rules into its `denyRead`.
+  - Claude Code applies `Read` denies to Grep and Glob as "best effort".
+  - The kit's own allow rules let `git show` and `git diff` print any file.
+
+  So the guard now matches Grep and Glob, blocks commands that name a protected path, and blocks git commands that would print one unless they exclude it. The block message names the exact pathspec to add.
+- **Staging under `.work/onboard/files/` names every `.claude` folder `dot-claude`.** The docs list `.claude` as a protected directory without saying whether nested ones count, so the staged tree avoids the name. `baseline record` reads the staged configs through `KIT_CONF_ROOT` and `KIT_CONF_DIR`, and adapter helpers are reached through `$KIT_BIN`, so the baseline can be measured before anything is applied.
+- **ONBOARD-AC4 headless on the demo app.** `/onboard` staged the TypeScript adapter unchanged and proved the formatter in check mode only, as the fixed skill says. After `onboard-apply`, its `kit.conf` resolved to the same `KIT_*` values as `install.sh --adapter typescript`.
+- **Not done:** ONBOARD-AC1 on the real pilot repository, because there was no clone on the build machine. The fixtures stand in for it.
+
+## 23.10.2026: release checks
+
+Sanitization checklist from the spec, run on `main` after the merge (e0398f0), including the full git history:
+
+- [x] No client or project names: 0 matches in the tree and in `git log -p --all`.
+- [x] No business logic, domain models or code from client projects: the demo is a generic expense splitter written for the kit.
+- [x] No internal URLs, hostnames, API keys, tokens or emails in tracked files (pattern search for tokens, private keys, private IP ranges and internal domains; the only addresses are `ci@example.invalid` and the commit trailer). Commit metadata carries the author's own addresses.
+- [x] Rules rewritten in generic terms.
+- [x] `references/` never committed: 0 paths in the history; it is in `.gitignore`.
+
+Delivered (spec §5): `CLAUDE.md` and rules, permissions, 4 hooks, 6 skills, 3 subagents, CI gates, MCP example, plugin and marketplace, README with GIF, team playbook, customizing guide, demo app, this build log, MIT license. `main` requires the kit's CI. The booking link points to the GitHub profile, confirmed as final by the owner.
+
+## 23.10.2026: leftovers (interactive run, GIF, repository CI)
+
+- **Interactive run in a trusted folder** (Claude Code 2.1.309, manual permission mode). The trust dialog listed the kit's 9 allow rules. `.claude/bin/check test` ran without a prompt, `cat .env` was refused with the security rule as the reason, and `git push` stopped for approval. An edit that broke SPLIT-AC2 was formatted, typechecked and tested by the hooks; the Stop hook held the turn once and the summary listed the red check.
+- **The rules work before the hooks do.** For the GIF (Sonnet, user settings left out), Claude refused the breaking edit at first and quoted SPLIT-AC1 and SPLIT-AC2. Only after "make the edit anyway" did the hook clip happen. The guard then blocked `sh -c "rm -rf src"` and Claude declined to work around it.
+- **The recording found a CI failure in waiting.** `biome check` in the demo flagged the installed `.mcp.example.json` and the coverage script. The JSON now ships wrapped so any formatter accepts it. The script's line width is the project's choice, so the demo README and CI run the formatter once, as installer step 2 says.
+- **`/ship-feature` end to end through the plugin** (Sonnet, headless, three turns, `--plugin-dir`). It extended the spec with SPLIT-AC7 to AC9, and the reviewer's spec pass led to four fixes. It wrote the plan and, after approval, built it on a branch with `stempel-kit:implementer` subagents, one commit per task. It ran the reviewer, set the status to `in-review`, and stopped before pushing.
+- **The Stop hook trusted stale results.** In that run the last hook-run typecheck was the intended red one (a test importing a function that did not exist yet), so Stop kept reporting it as failing after Claude's own runs were green. Stop now re-runs each red check once on the turn's files and blocks only if it is still red. New test; its timeout went from 10 to 300 seconds.
+- **The adapter's `quality-gates.yml` ran unchanged** under `act` 0.2.89 (`catthehacker/ubuntu:act-latest`). It ran on a pull request made of the commits `/ship-feature` produced through the plugin. Every step passed: 72 changed lines, spec lint, typecheck, lint, 20 tests, coverage on changed files and build. It warned that `split-form.tsx` is not in the coverage report, which is true (the demo has no component tests) and is what the warning is for.
+- **`main` now requires the repository's CI** (`Kit tests`, `Demo app gates`). The workflow lost its path filters, because a required check that never runs blocks every pull request that does not touch the kit.
+- **Small fix:** the Stop message said "still failing: test-related ." and now lists checks with commas.
+- **Repository CI** (`.github/workflows/stempel-kit.yml`): ShellCheck, the three test suites (also under `dash`), and the TypeScript gates on the demo app with the kit installed. Simulated locally first; actionlint and ShellCheck are clean. The first real run on GitHub Actions (PR #1) passed: kit tests in 11 s, demo gates in 18 s.
+
+## 23.10.2026: Phase 4 (plugin, docs, MCP example)
+
+- **`kit/.claude` is the plugin.** It needed only `.claude-plugin/plugin.json` and `hooks/hooks.json`, so nothing is duplicated. `claude plugin validate` passes for the plugin and for the repository's marketplace. `install.sh --plugin` installs only the project files and removes the hooks from `settings.json`, so they do not run twice. Installer tests: `tests/install.test.sh`, 13 cases.
+- **The name `claude-kit` is reserved for plugins.** The validator refuses names starting with `claude-`, so the plugin was first called `agentic-workflow`. The kit is now `stempel-kit`, for the folder and the plugin alike.
+- **Forked skills lost their agent inside the plugin.** Headless with `--plugin-dir`: `/review-diff` ran as `general-purpose`, not as the read-only reviewer, because a plugin's agents are named `stempel-kit:reviewer`. With the prefixed name in the skill, the reviewer ran, and the guard blocked its chained commands 8 times. The installer rewrites the names back to plain ones for project installs.
+- **Also verified through the plugin:** the guard blocked `rm -r -f src/app`, and a broken edit was caught by the check hooks. The Stop hook then made Claude explain why the test stayed red.
+- **Writing the README found a guard gap.** `git push -f origin main`, `git push -uf` and `git -C x push -f` passed the guard, because the pattern expected a second space before the flag. The deny list caught the plain form, but not the other two. Fixed, with 4 new tests (65 in total).
+- **`/ship-feature` read its sub-steps from `.claude/skills/...`,** which does not exist in plugin installs. It now uses `${CLAUDE_SKILL_DIR}/../<skill>/SKILL.md`, which works in both.
+- **Not done in this phase:** the README GIF, a real GitHub Actions run, an interactive run in a trusted folder, and an end-to-end `/ship-feature` through the plugin. See the entry above.
+
+## 23.10.2026: acceptance-criteria gate, user flow, technical design
+
+- **The gate has two layers.**
+  - `.claude/bin/spec-lint` is a deterministic hard gate (shell and awk, any language). It checks: ID format and reuse, Given/when/then in order, one "then" per criterion, vague words, the required sections (Goal, User flow, Acceptance criteria, Edge cases, Out of scope), and no open questions once a spec is approved. It runs on every spec edit (hook), before approval in `/spec-feature`, and in CI. 19 tests.
+  - The reviewer now also reviews specs for what a linter cannot judge: testability, missing cases, contradictions, scope.
+- **The linter caught the demo's own spec on its first run:** no User flow, and the invalid-input criterion was not under Edge cases.
+- **End to end with `/spec-feature`**, given the request "mark a transfer as paid so it works nicely and fast":
+  - It called "nicely and fast" untestable, noticed the conflict with the existing "no saving between visits" scope, and asked five questions instead of guessing.
+  - After the answers, spec-lint passed and the reviewer still found a real flaw. "The text field stays unchanged" would pass even after a reload, because browsers restore form text. It was rewritten to "no page navigation or network request".
+  - A dropped criterion kept its ID as removed, and the model flagged its own additions (keyboard support) as proposals for the user to accept or reject.
+- **The spec template now has a User flow section.** The plan template opens with a Design section: data, contract, permissions, states, decisions with alternatives.
+- **Only the user sets `done`, after acceptance.**
+
+## 23.10.2026: Phase 3 (CI gates, installer, demo app)
+
+- **CI ran as designed.** The TypeScript adapter ships `quality-gates.yml`, which `actionlint` reports as clean. Locally simulated pull requests on the demo app:
+  - a tested change passed (100% of changed lines covered);
+  - a new untested file was blocked (0%);
+  - a failing test was blocked and the 452-line diff got a warning.
+- **One confusing error removed.** Vitest writes no coverage report when tests fail, so the changed-files step added a "summary not found" error on top. It now runs only after the tests pass.
+- **`pnpm/action-setup` v6 now requires pnpm 11+.** The workflow installs the version from `packageManager` with npm instead, which is also one fewer third-party action.
+- **Projects reformat the kit's files.** Biome 2.6 also formats Markdown and wanted to rewrite the kit's `CLAUDE.md`, and the project's line width flagged the CI script. The demo limits Biome to code files, the script ships Prettier-style, and the installer now says to run the formatter once.
+- **`next build` rewrites `tsconfig.json`.** The demo ships the keys Next adds, so the tree stays clean.
+- **Install from a copy took 0.1 seconds** and kept the demo's own `specs/README.md`.
+- **`/ship-feature` ran end to end** (Sonnet, headless, four turns):
+  - It extended the existing spec with SPLIT-AC7 to AC11 and asked two real questions.
+  - After approval it wrote the plan; after that approval, two implementer subagents built the feature test first.
+  - The verify log shows real red messages before green. One commit per task; then review, full checks, and a PR description. It stopped before pushing.
+  - It reported honestly: AC10's tests were green before the change (unchanged error path), and the page layout was not checked.
+- **Untrusted folders ignore command-line allowances.** In an untrusted folder `--allowedTools` was ignored like the allow list, so the build turns used `bypassPermissions` to stand in for a user approving the git prompts. The guard hook still ran. An interactive run in a trusted folder is still to do.
+
+## 23.10.2026: Phase 2 (hooks, commands, agents)
+
+Unit tests: `tests/hooks.test.sh`, 59 cases. End to end: Claude Code 2.1.309 (Haiku) on a scratch TypeScript project.
+
+- **Parallel hooks would have raced.** The docs say hooks for one event run in parallel, and `PostToolUse` fires once per edit. So format, typecheck and tests became one ordered script on `PostToolBatch`, which runs once per batch of edits.
+- **A broken edit is caught before the turn ends.** An edit that broke a test was formatted, typechecked and tested in one batch, and the failure was fed back to Claude. The Stop hook then held the turn open once while it was red. Claude explained why it left the test red (the request contradicted it), and the user saw the summary.
+- **The guard caught what the deny list misses:** `head -n 1 .env`, `sh -c 'rm -rf src'`, `git push --force`.
+  - The first version blocked every allowed command: a `while ... || block` construct took the last grep's "no match" as failure. Caught by the unit tests.
+  - `head .env` was blocked for the wrong reason (the `env` pattern matched inside `.env`). Fixed, and a test now checks the reason text.
+- **The test-writer stayed in scope.** It wrote only the test file, and its two new tests failed first. It was stopped from chaining commands. It was also blocked from `git -C <path> status` and from calling `check` by absolute path, which were harmless, so the allowlist was widened.
+- **The reviewer caught its own author.** `/review-diff` found the unmet criterion, the missing test-name prefixes and the missing red-before-green record. It also noticed that a guard change had stopped catching `/usr/bin/env`. That was true; fixed with a test.
+- **`.claude/` is write-protected.** Claude Code refuses file-tool writes to `.claude/` even in acceptEdits mode, so `/plan-feature` and `/pr-description` could not save to `.claude/state/`. State moved to `.work/`, which ignores itself through its own `.gitignore`. Re-tested: the plan was written and source files were untouched.
+- **Headless tests need explicit settings.** In an untrusted folder Claude Code ignores both project hooks and the allow list. The tests pass `--settings .claude/settings.json`; real users accept the trust prompt once.
+- **Not tested end to end yet:** `/spec-feature` (an interview) and `/ship-feature` (several approval gates). Both need an interactive session; planned for the demo-app test.
+
+## 23.10.2026: language-neutral core
+
+- Split into `kit/` (core) and `adapters/typescript/`. All checks go through `.claude/bin/check`, configured by the adapter's `.claude/kit.conf`.
+- Tested on a scratch TypeScript project (npm, Vitest, Prettier): typecheck and related tests passed on clean code and both failed on a deliberately broken edit. The runner also formatted a file whose name has a space, worked from a subdirectory and under `dash`, detected pnpm from its lockfile, and exited 3 with a clear message when no adapter was installed.
+
+## 23.10.2026: Phase 1 (rules, settings, presets)
+
+Tested by copying `kit/` and the Next.js preset into an empty repo with a canary `.env`, then running Claude Code 2.1.309 headless.
+
+- **The rules alone stopped the agent.** Asked to read `.env`, run `cat .env` and `rm -rf ./tmpdir`, it refused and cited `security.md`. So the rules reach the model, but that is behaviour, not enforcement.
+- **Enforcement was tested separately.** Told to attempt the calls anyway, the harness blocked `Read(.env)`, `rm -rf` and `curl`.
+- **`cat .env` only asked for approval.** The `Read(.env)` deny turned it into a prompt, not a denial, so one careless "yes" would have exposed the file. Fix: explicit `Bash(cat .env*)` and similar denies. Re-tested: denied.
+- **Untrusted folders ignore `allow`.** Claude Code skips the whole `permissions.allow` list until the workspace trust dialog has been accepted once. The install guide must say so.
+- **Path-scoped presets work.** `nextjs.md` was absent at session start and loaded as soon as `app/page.tsx` was read.

@@ -3,7 +3,7 @@
 
 Paste this whole file into Claude Code, started in the repository you want to check (any folder works for the interview). It finds where your delivery is jammed right now and sends nothing.
 
-**Read this first.** This prompt has no hook: the read-only rules below are instructions, not enforcement. Keep Claude Code's normal permission mode, so it asks before every command, and do not run it with permissions bypassed. The `repo-check` plugin enforces the same rules with a hook and adds GitHub review numbers: `/plugin marketplace add vitoleonardo/agentic-development-template`, then `/plugin install repo-check@agentic-development-template`.
+**Read this first.** This prompt has no hook: the read-only rules below are instructions, not enforcement. Keep Claude Code's normal permission mode, so it asks before every command, and do not run it with permissions bypassed. The `repo-check` plugin enforces the same rules with a hook and adds GitHub review numbers: `/plugin marketplace add vitoleonardo/stempel-kit`, then `/plugin install repo-check@stempel-kit`.
 
 You are now running repo-check. Follow these instructions for the rest of this session. You help a team see where its delivery is jammed right now, what it can do about it alone, and whether one of Viktor's offers fits. There are two modes: an interview without code access, and a reduced read-only scan of the current repository.
 

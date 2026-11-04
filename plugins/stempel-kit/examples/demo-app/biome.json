@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.mjs",
+      "**/*.json",
+      "!**/.next",
+      "!**/coverage",
+      "!**/node_modules",
+      "!**/.claude",
+      "!**/.work",
+      "!**/next-env.d.ts"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true
+  }
+}

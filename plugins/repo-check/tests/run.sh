@@ -11,7 +11,7 @@ XDG_STATE_HOME=$work/state
 export XDG_STATE_HOME
 echo "Working in $work (kept for inspection)"
 
-cp -R "$here/../agentic-workflow-kit/examples/demo-app" "$repo"
+cp -R "$here/../stempel-kit/examples/demo-app" "$repo"
 rm -rf "$repo/node_modules" "$repo/.next"
 cd "$repo" || exit 1
 git init -q -b main
@@ -139,7 +139,7 @@ fi
 
 if [ "$only" = prompt ] || [ "$only" = all ]; then
 pr=$work/prompt-demo
-cp -R "$here/../agentic-workflow-kit/examples/demo-app" "$pr"
+cp -R "$here/../stempel-kit/examples/demo-app" "$pr"
 rm -rf "$pr/node_modules" "$pr/.next"
 cd "$pr" || exit 1
 git init -q -b main

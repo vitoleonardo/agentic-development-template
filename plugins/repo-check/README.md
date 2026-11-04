@@ -2,13 +2,13 @@
 
 Find where your team's delivery is jammed right now: **Schreiben**, **Review** or **Release**. Once agents write code faster, the jam moves downstream ("Der Stau wandert"). repo-check shows where it sits today, three steps you can take alone, and honestly whether one of my offers fits, or none yet.
 
-It works in any repository. It does not need the [agentic-workflow-kit](../agentic-workflow-kit/), and it sends nothing.
+It works in any repository. It does not need the [stempel-kit](../stempel-kit/), and it sends nothing.
 
 ## Two ways to run it
 
 | | Plugin | Single-file prompt |
 |---|---|---|
-| Install | `/plugin marketplace add vitoleonardo/agentic-development-template`, then `/plugin install repo-check@agentic-development-template` | paste [repo-check.md](./repo-check.md) into Claude Code |
+| Install | `/plugin marketplace add vitoleonardo/stempel-kit`, then `/plugin install repo-check@stempel-kit` | paste [repo-check.md](./repo-check.md) into Claude Code |
 | Interview (10 questions, about 10 minutes) | yes | yes |
 | Scan | full: file contents of config and docs, git history, and GitHub review numbers if you allow `gh` | reduced: git history and file names only |
 | Read-only | enforced by a hook | instructions only; keep Claude Code's permission prompts on |
