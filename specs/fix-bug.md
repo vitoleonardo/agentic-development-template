@@ -61,7 +61,7 @@ Review, verify and PR:
 
 - **FIXBUG-AC19**: Given the fix is committed, when review starts, then the `reviewer` is dispatched with the description `review round 1`, and later rounds follow step 5 of `/ship-feature`.
 - **FIXBUG-AC20**: Given verify fails because the product is wrong, when the round is classified, then `.claude/bin/gate round hotfix <n>` decides whether to ask.
-- **FIXBUG-AC21**: Given verify passed, when `/fix-bug` ends, then `.work/<branch>-pr.md` exists and its Why line links the report's source and no spec.
+- **FIXBUG-AC21**: Given verify passed, when `/fix-bug` ends, then `.work/<branch>-pr.md` exists and its Why line names the report's source.
 
 Status and run records:
 
@@ -100,3 +100,4 @@ Agents and sibling skills:
 - 04.11.2026: The red test and the fix go into one commit, because the test alone leaves the branch red.
 - 04.11.2026: Fix branches are `<issue>-<slug>` or `fix-<slug>`, because a branch named like a spec would match that feature's row in `specs/README.md`.
 - 04.11.2026: `gh issue view` stays a prompt, because the kit allows no network command without asking.
+- 04.11.2026: The PR's Why names the report first and may name the spec's criterion too, because a covered bug has both and the reviewer wants the criterion.
