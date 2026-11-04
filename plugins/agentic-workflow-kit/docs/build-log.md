@@ -2,6 +2,16 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 04.11.2026: plan-lint and /fix-bug
+
+`.claude/bin/plan-lint` (`tests/plan-lint.test.sh`, 49 cases, also under `dash`), `.claude/bin/criteria.sh`, `/fix-bug` (`tests/fix-bug.test.sh`, 42 cases), and `plan_feature`, `plan_spec`, `plan_criteria` in `features.sh` for `status` and `runs` (8 and 2 new cases). Both came out of a comparison with GitHub's spec-kit: it has a checklist step on the plan and a bug flow; the kit had the plan rules as prose and "small fixes may skip the spec" without a path.
+
+- **The plan gate had no script.** `/plan-feature` listed the rules and the model was trusted. `plan-lint` reads the specs and the plan in one awk pass: coverage both ways, the Tasks table by its header names (a plugin that adds a column keeps working), tiers against `route tier implement`, new paths through `structure`, Design placeholders, Progress. A hand-written plan for the demo spec passed first time. The false-positive risk sits in the Files cell, so paths are the backticked strings when there are any, and a token with `*` or `<` is never a path.
+- **A fix gets its criteria in the plan.** Every reader (the agents, `status`, `runs`, verify, the PR) found criteria only through `specs/README.md`. The fix plan's `## Criteria` is the one place, and it replaces the spec's set for coverage, because a fix of a 40-criterion spec covers one. `status` sets `spec` to null for a fix instead of warning.
+- **Branch names decide the feature row.** `features.sh` matches a row by slug when its Branch cell is empty, so a fix branch named like a spec would adopt that feature's status. Fix branches are `<issue>-<slug>` or `fix-<slug>`.
+- **The shared criterion check.** `words()`, `count()` and the vague list moved to `criteria.sh`; `spec-lint`'s output is byte-identical on the demo spec and on a copy that breaks four rules.
+- **Not proven live yet.** The headless run of `/fix-bug` on the demo app (`tests/fix-bug/run.sh`) follows.
+
 ## 31.10.2026: changes from the pilot retrospective
 
 The plain `/improve-kit` over the pilot's nine runs proposed five changes; the three that belong to the kit and the kit side of the other two are in. Each has an entry in `reports/improvements.md` with the metric to judge it by.

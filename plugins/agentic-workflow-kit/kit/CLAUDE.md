@@ -26,7 +26,7 @@ Every feature goes through the same steps. Each step leaves a file behind, so a 
 7. **PR** (`/pr-description`): what, why, the evidence table, and how to review it in five minutes.
 8. **Acceptance**: the user checks the result and marks the feature `done`. Claude never sets `done`.
 
-`/ship-feature` runs steps 1 to 7 with the approval gates. `KIT_APPROVAL` (`strict`, `standard`, `autonomous`; in the environment or `.claude/kit.conf`) decides which gates ask; `.claude/bin/gate <name>` answers `ask` or `auto`. Every decision made at an `auto` gate gets one line under `## Decisions to review` in `.work/<branch>.md` (`- <gate> | <decision> | <why>`), and the PR description repeats them. Small fixes can skip the spec but not the test.
+`/ship-feature` runs steps 1 to 7 with the approval gates. `KIT_APPROVAL` (`strict`, `standard`, `autonomous`; in the environment or `.claude/kit.conf`) decides which gates ask; `.claude/bin/gate <name>` answers `ask` or `auto`. Every decision made at an `auto` gate gets one line under `## Decisions to review` in `.work/<branch>.md` (`- <gate> | <decision> | <why>`), and the PR description repeats them. A bug fix (`/fix-bug`) skips the spec but not the red test; its one to three criteria live in `.work/<branch>.md`.
 
 Where things live:
 
