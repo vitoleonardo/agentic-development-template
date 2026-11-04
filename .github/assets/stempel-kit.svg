@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-label="Stempel Kit: nothing ships without a stamp">
+  <defs>
+    <pattern id="rules" width="8" height="28" patternUnits="userSpaceOnUse">
+      <rect width="8" height="28" fill="#EFE7D6"/>
+      <rect y="27" width="8" height="1" fill="#D8CFBC"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="420" fill="url(#rules)"/>
+
+  <!-- sheet with hard shadow -->
+  <rect x="68" y="58" width="1080" height="318" fill="#15110C"/>
+  <rect x="60" y="50" width="1080" height="318" fill="#F8F2E5" stroke="#15110C" stroke-width="3"/>
+
+  <!-- label band -->
+  <rect x="104" y="92" width="438" height="30" fill="#C8302C"/>
+  <rect x="100" y="88" width="438" height="30" fill="#15110C"/>
+  <text x="112" y="109" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace" font-size="14" font-weight="700" letter-spacing="2.2" fill="#F8F2E5">CLAUDE CODE · SPEC-DRIVEN · TEST-FIRST</text>
+
+  <!-- headline with highlighter -->
+  <rect x="96" y="176" width="430" height="38" fill="#E2AE34"/>
+  <text x="100" y="208" font-family="'Bricolage Grotesque','Inter','Helvetica Neue',Arial,sans-serif" font-size="92" font-weight="900" letter-spacing="-3" fill="#15110C">STEMPEL KIT</text>
+
+  <!-- subline -->
+  <text x="102" y="262" font-family="'Newsreader',Georgia,'Times New Roman',serif" font-size="30" fill="#15110C">Nothing ships without a stamp.</text>
+  <text x="102" y="294" font-family="'Newsreader',Georgia,'Times New Roman',serif" font-size="19" fill="#4A4136">Spec before code. Tests before features. An independent review.</text>
+  <text x="102" y="318" font-family="'Newsreader',Georgia,'Times New Roman',serif" font-size="19" fill="#4A4136">An evidence pack per commit. CI gates that hold the agent to what it promised.</text>
+
+  <!-- stamp -->
+  <g transform="translate(960 188) rotate(-9)">
+    <rect x="-140" y="-62" width="280" height="124" fill="none" stroke="#1F7A4D" stroke-width="5"/>
+    <rect x="-130" y="-52" width="260" height="104" fill="none" stroke="#1F7A4D" stroke-width="2"/>
+    <text x="0" y="-8" text-anchor="middle" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace" font-size="40" font-weight="800" letter-spacing="4" fill="#1F7A4D">GEPRÜFT</text>
+    <text x="0" y="24" text-anchor="middle" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace" font-size="10.5" font-weight="700" letter-spacing="1" fill="#1F7A4D">SPEC · TEST · REVIEW · PROOF · CI</text>
+  </g>
+
+  <!-- footer -->
+  <text x="100" y="346" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace" font-size="13" font-weight="700" letter-spacing="2" fill="#4A4136">MIT · POSIX SH · MARKDOWN · JSON</text>
+  <text x="1100" y="338" text-anchor="end" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace" font-size="15" font-weight="800" letter-spacing="1" fill="#15110C">vito.koeln</text>
+</svg>

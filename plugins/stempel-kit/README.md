@@ -1,5 +1,7 @@
 # Stempel Kit for Claude Code
 
+[![CI](https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml/badge.svg?branch=main)](https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml) [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitoleonardo%2Fstempel-kit%2Fmain%2Fplugins%2Fstempel-kit%2Fkit%2F.claude%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&labelColor=15110C&color=1F7A4D)](../../README.md) [![License: MIT](https://img.shields.io/github/license/vitoleonardo/stempel-kit?labelColor=15110C&color=E2AE34)](../../LICENSE)
+
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
 ![Claude Code with the kit: it pushes back on an edit that breaks an acceptance criterion, the hooks catch the failing test, and the guard blocks rm -rf](docs/assets/demo.gif)
@@ -65,6 +67,8 @@ Projects installed before the manifest existed have no checksums yet. Their firs
 The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SIMILAR` in `kit.conf`. If the update staged `kit.conf`, copy them from the adapter (or run `/onboard --refresh`); until then `/verify-feature` fails its duplicates gate.
 
 ## How a feature flows
+
+The [diagram in the repository README](../../README.md#how-it-works) shows this flow with every gate and who sets it.
 
 ```text
 /ship-feature Invite colleagues to a team by email
