@@ -19,6 +19,7 @@ esac
 printf '%s|%s|%s|%s|%s\n' "$(git branch --show-current)" "${KIT_BASE:-}" "${KIT_APPROVAL:-}" "${KIT_IMPROVE:-}" "$(printf '%s' "$*" | tr '\n' ' ')" >>"$FAKE_DIR/calls"
 n=$(($(cat "$FAKE_DIR/n" 2>/dev/null || echo 0) + 1))
 echo "$n" >"$FAKE_DIR/n"
+echo session >>"$FAKE_DIR/order"
 set_status() {
   set_status_only "$1" "$2"
   git commit -qam "status $1 $2"
@@ -60,7 +61,14 @@ cat >"$work/bin/gh" <<'EOF'
 #!/bin/sh
 case "$1 $2" in
   "auth status") exit 0 ;;
-  "pr view") awk -v b="$3" '$1 == b { print $2; found = 1 } END { exit !found }' "$FAKE_DIR/prs" 2>/dev/null ;;
+  "pr view")
+    if [ -f "$FAKE_DIR/pr-after" ]; then
+      left=$(cat "$FAKE_DIR/pr-after")
+      if [ "$left" -le 0 ]; then echo https://example.invalid/pull/late; exit 0; fi
+      echo $((left - 1)) >"$FAKE_DIR/pr-after"
+      exit 1
+    fi
+    awk -v b="$3" '$1 == b { print $2; found = 1 } END { exit !found }' "$FAKE_DIR/prs" 2>/dev/null ;;
   *) exit 1 ;;
 esac
 EOF
@@ -82,7 +90,7 @@ setup() {
   project=$work/p$(date +%s)$$-$passed-$failed
   mkdir -p "$project"
   cp -R "$here/kit/." "$project/"
-  rm -f "$fake/calls" "$fake/n" "$fake/untrusted" "$fake/prs"
+  rm -f "$fake/calls" "$fake/n" "$fake/untrusted" "$fake/prs" "$fake/pr-after" "$fake/order"
   : >"$fake/script"
   cd "$project" || exit 1
   printf '.work/\n' >.gitignore
@@ -300,6 +308,8 @@ stub_check() {
   cat >.claude/bin/check <<'EOF'
 #!/bin/sh
 echo "$*" >>"$FAKE_DIR/check-calls"
+echo "check $*" >>"$FAKE_DIR/order"
+[ ! -f "$FAKE_DIR/ignore-term" ] || trap '' TERM
 case $* in
   "--against-baseline typecheck") name=base-typecheck ;;
   "--against-baseline test") name=base-test ;;
@@ -350,7 +360,6 @@ threes() {
   } >"$_file"
 }
 tick_now() { sed -i.bak "s/^- \[ \] $2 /- [x] $2 /" ".work/$1.md"; }
-final_pr='open_pr'
 log_of() { cat .work/autopilot/run-*.md; }
 
 setup alpha:planned
@@ -395,9 +404,10 @@ contains "$(tail -n 3 .work/autopilot/run-*.md)" "Every feature has a PR" "AC100
 setup alpha:planned
 stub_check
 plan alpha 1:A:standard
-script 'finish alpha A 1' '.claude/bin/status --json >"$FAKE_DIR/status"; open_pr'
+script 'finish_some alpha 1' '.claude/bin/status --json >"$FAKE_DIR/status"; open_pr'
 autopilot
 same "$?" 0 "AC31: one group needs no group round"
+case $(cat .work/alpha.md) in *"- group "*) fail "AC31: the fixture records no group round" ;; *) ok ;; esac
 contains "$(cat "$fake/status")" '"current":{"feature":"alpha","phase":"build"}' "AC65: status reads the session's name"
 
 # --- the build's own checks
@@ -443,12 +453,12 @@ same "$?" 1 "AC27: a second failed check stops the build"
 same "$(calls | wc -l | tr -d ' ')" 2 "AC27: no further session"
 contains "$(log_of)" "Stopped at alpha: the build's checks failed again for group A" "AC27: the closing line says so"
 contains "$(cat .work/alpha.md)" "| tier | the build's checks failed again for group A" "AC88: Stops holds a line"
-rm -f "$fake/calls" "$fake/n"
+rm -f "$fake/calls" "$fake/n" "$fake/order"
 codes typecheck 0
 script 'finish alpha B 2' 'open_pr'
 autopilot
 same "$?" 0 "AC95: a rerun with passing checks goes on"
-same "$(head -n 1 "$fake/check-calls")" "typecheck" "AC95: the checks ran"
+same "$(head -n 1 "$fake/order")" "check typecheck" "AC95: the checks run before any session"
 contains "$(call 1)" "--group B" "AC95: before the next group"
 
 setup alpha:planned
@@ -861,7 +871,7 @@ script 'echo $$ >"$FAKE_DIR/session-pid"; SLEEP=60'
 (AUTOPILOT_MAX_IDLE_SECONDS=120 .claude/bin/autopilot >"$work/out" 2>"$work/err") &
 _tries=0
 until [ -f .work/autopilot/lock/pid ] && [ -f "$fake/calls" ]; do sleep 1; _tries=$((_tries + 1)); [ "$_tries" -lt 20 ] || break; done
-_build=$(cat .work/autopilot/lock/pid)
+_build=$(head -n 1 .work/autopilot/lock/pid)
 autopilot
 same "$?" 2 "AC58: a second build is refused"
 same "$(cat "$work/err")" "autopilot: a build is already running (pid $_build). Stop it with .claude/bin/autopilot --stop." "AC58: with the message"
@@ -922,7 +932,7 @@ same "$?" 0 "AC35: --ship starts a build"
 contains "$(cat "$work/out")" "Run log: .work/autopilot/run-" "AC35: it prints the run log's path"
 contains "$(cat "$work/out")" "Do not edit this checkout until the build ends." "AC37: it says to leave the checkout alone"
 if command -v setsid >/dev/null 2>&1; then
-  _running=$(cat .work/autopilot/lock/pid 2>/dev/null)
+  _running=$(head -n 1 .work/autopilot/lock/pid 2>/dev/null)
   if [ -n "$_running" ] && [ "$(ps -o sid= -p "$_running" | tr -d ' ')" = "$(ps -o sid= -p $$ | tr -d ' ')" ]; then fail "AC36: the build runs in its own session"; else ok; fi
 fi
 ship_wait
@@ -966,6 +976,338 @@ tick_now alpha 1
 git checkout -q -b alpha
 script 'open_pr'
 same "$(.claude/bin/usage tsv | cut -f 9)" 1 "AC66: the tasks field counts ticked tasks"
+
+# --- found by the code review: each of these failed before its fix
+
+# hold_lock <pid>: the lock as a build writes it.
+hold_lock() { { echo "$1"; LC_ALL=C TZ=UTC ps -p "$1" -o lstart=; } >.work/autopilot/lock/pid; }
+
+# Review 1: a starter that has made the lock but not yet written its pid still owns it.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+mkdir -p .work/autopilot/lock
+sleep 30 &
+_holder=$!
+(sleep 1; hold_lock "$_holder") &
+_writer=$!
+autopilot
+same "$?" 2 "lock: a lock still being written is not taken over"
+same "$(calls)" "" "lock: no session starts while another starter holds the lock"
+wait "$_writer" 2>/dev/null
+kill "$_holder" 2>/dev/null
+wait "$_holder" 2>/dev/null
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+mkdir -p .work/autopilot/lock
+autopilot
+same "$?" 0 "lock: a lock that never gets a pid counts as stale"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1; SLEEP=4' 'open_pr'
+for _i in 1 2 3 4; do
+  (.claude/bin/autopilot >"$work/out-$_i" 2>&1; echo $? >"$work/code-$_i") &
+done
+wait
+same "$(cat "$work"/code-[1-4] | sort | tr '\n' ' ')" "0 2 2 2 " "lock: of four builds started together, one runs"
+same "$(calls | grep -c -- '--group A' | tr -d ' ')" 1 "lock: and group A starts once"
+
+# Review 2: a check repair is held to the same rules as any session.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+printf 'Approved size: 2000 lines\n' >>.work/alpha.md
+codes typecheck 1 0
+script 'finish alpha A 1' 'sed -i.bak "s/^Approved size: 2000/Approved size: 9000/" .work/alpha.md' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC156: a repair that changes the limit starts nothing more"
+contains "$(log_of)" "Approved size" "AC156: the closing line names it"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'git checkout -q -b elsewhere' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC135: a repair on another branch starts nothing more"
+contains "$(log_of)" "ended on branch elsewhere" "AC135: the closing line names the branch"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'sed -i.bak "s/^- \[x\] 1 /- [ ] 1 /" .work/alpha.md' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC26: a group no longer done after its repair starts nothing more"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1' 'add_stop_line spec; RESULT="AC3 cannot be tested"' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "a repair that records a stop starts nothing more"
+contains "$(log_of)" "stopped: spec" "and the stop's class closes the build"
+
+# Found while fixing review 2: a session with no result line must not resume the group before it.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 0 1
+script 'finish alpha A 1' 'finish alpha B 2; exit 0' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC24: a failed check with no session id to resume starts nothing more"
+contains "$(log_of)" "Stopped at alpha: group B" "AC24: the closing line names the group"
+
+# Review 3: --stop ends the answerer too.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+rm -f "$fake/session-pid"
+script 'RESULT="Which one?"' 'echo $$ >"$FAKE_DIR/session-pid"; SLEEP=60'
+(AUTOPILOT_MAX_IDLE_SECONDS=120 .claude/bin/autopilot >"$work/out" 2>"$work/err") &
+_tries=0
+until [ -f "$fake/session-pid" ]; do sleep 1; _tries=$((_tries + 1)); [ "$_tries" -lt 20 ] || break; done
+.claude/bin/autopilot --stop >"$work/stop-out" 2>&1
+same "$?" 0 "AC60: --stop ends a build while the answerer runs"
+if kill -0 "$(cat "$fake/session-pid")" 2>/dev/null; then fail "AC60: the answerer has ended"; else ok; fi
+contains "$(log_of)" "Stopped at alpha: stopped by .claude/bin/autopilot --stop" "AC139: the closing line says so"
+wait
+
+# Review 4: a process that ignores TERM cannot hold the build up.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+echo 30 >"$fake/sleep-typecheck"
+touch "$fake/ignore-term"
+script 'finish alpha A 1'
+_before=$(date +%s)
+AUTOPILOT_MAX_SESSION_SECONDS=2 AUTOPILOT_KILL_GRACE_SECONDS=1 autopilot
+same "$?" 1 "AC94: a check that ignores TERM stops the build"
+if [ $(($(date +%s) - _before)) -lt 20 ]; then ok; else fail "AC94: the build did not wait the check out"; fi
+contains "$(log_of)" "Stopped at alpha: a check ran longer than 2 s" "AC94: the closing line says so"
+rm -f "$fake/sleep-typecheck" "$fake/ignore-term"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+rm -f "$fake/session-pid"
+script 'trap "" TERM; echo $$ >"$FAKE_DIR/session-pid"; SLEEP=60'
+(AUTOPILOT_MAX_IDLE_SECONDS=120 AUTOPILOT_KILL_GRACE_SECONDS=1 .claude/bin/autopilot >"$work/out" 2>"$work/err") &
+_tries=0
+until [ -f "$fake/session-pid" ]; do sleep 1; _tries=$((_tries + 1)); [ "$_tries" -lt 20 ] || break; done
+.claude/bin/autopilot --stop >"$work/stop-out" 2>&1
+same "$?" 0 "AC60: --stop ends a build whose session ignores TERM"
+if kill -0 "$(cat "$fake/session-pid")" 2>/dev/null; then fail "AC60: that session has ended"; else ok; fi
+wait
+
+# Review 5: only the process that took the lock is a build.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+sh -c 'sleep 30; :' /elsewhere/.claude/bin/autopilot &
+_other=$!
+mkdir -p .work/autopilot/lock
+echo "$_other" >.work/autopilot/lock/pid
+same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC140: a command line that names autopilot is no build"
+if kill -0 "$_other" 2>/dev/null; then ok; else fail "AC140: that process got no signal"; fi
+mkdir -p .work/autopilot/lock
+printf '%s\nMon Jan  1 00:00:00 2001\n' "$_other" >.work/autopilot/lock/pid
+same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC140: nor is a reused pid"
+if kill -0 "$_other" 2>/dev/null; then ok; else fail "AC140: the reused pid got no signal"; fi
+kill "$_other" 2>/dev/null
+wait "$_other" 2>/dev/null
+
+# Review 6: the budget holds after every session that leaves work to do.
+setup alpha:approved
+stub_check
+script 'mkdir -p .work; write_ticked; spend 100000; set_status alpha planned' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC149: a plan session that reaches the budget starts nothing more"
+contains "$(log_of)" "budget reached" "AC149: the closing line names the budget"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'RESULT="Which one?"' 'spend 100000; RESULT="ANSWER: the first"' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "AC149: an answerer that reaches the budget resumes nothing"
+contains "$(log_of)" "budget reached" "AC149: the closing line names the budget"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'spend 100001; open_pr'
+autopilot
+same "$?" 0 "a final session that opened its PR is not stopped by the budget"
+contains "$(log_of)" "Every feature has a PR" "AC100: nothing is left for the budget to stop"
+
+# Review 7: a fresh session only gets the tasks still open.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard 3:A:standard
+script 'finish_some alpha 1; SLEEP=4' 'finish alpha A 2 3' 'open_pr'
+AUTOPILOT_MAX_IDLE_SECONDS=2 autopilot
+contains "$(call 1)" "--tasks 1,2,3 --from " "AC50: the first session gets all three"
+contains "$(call 2)" "--tasks 2,3 --from " "AC50: the fresh session gets only what is open"
+same "$(call 2 | sed 's/.*--from \([^ ]*\).*/\1/')" "$(call 1 | sed 's/.*--from \([^ ]*\).*/\1/')" "AC129: the group diff keeps its start"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard
+past=$(($(date +%s) - 300))
+script "finish_some alpha 1; EXTRA='{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":$past}}'; RESULT=limit" 'finish alpha A 2' 'open_pr'
+autopilot
+contains "$(call 2)" "--tasks 2 --from " "AC78: after the usage limit too"
+
+# Review 8: a stash that fails stops the build.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b alpha
+echo one >conflict.txt
+git add conflict.txt
+git commit -qm conflict
+git checkout -q -b theirs
+echo two >conflict.txt
+git commit -qam theirs
+git checkout -q alpha
+echo three >conflict.txt
+git commit -qam ours
+git merge theirs >/dev/null 2>&1
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$?" 2 "a stash that fails stops the build"
+same "$(calls)" "" "no session starts on the changes it could not stash"
+contains "$(log_of)" "Stopped at the start: could not stash" "the closing line says so"
+case $(log_of) in *"stashed uncommitted changes"*) fail "the run log does not claim a stash" ;; *) ok ;; esac
+
+# Review 9: the size limit also holds before a repair and on a rerun.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+codes typecheck 1 0
+script 'finish alpha A 1; seq 1 900 >big.txt; git add big.txt; git commit -qm big' 'RESULT=fixed' 'finish alpha B 2'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 1 "AC155: over the limit with a failed check starts no repair"
+contains "$(log_of)" "over its size limit of 800" "AC155: the closing line names the limit"
+rm -f "$fake/calls" "$fake/n" .work/autopilot/run-*.md
+codes typecheck 0
+autopilot
+same "$(calls)" "" "AC155: a rerun over the limit starts nothing"
+contains "$(log_of)" "over its size limit of 800" "AC155: and says so"
+
+# Review 10: a task may name an HTML tag; only the template's placeholder is no task.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard
+sed -i.bak 's/^- \[ \] 2 t$/- [ ] 2 Render <dialog> on small screens/' .work/alpha.md
+script 'finish alpha A 1 2' 'open_pr'
+autopilot
+contains "$(call 1)" "--tasks 1,2 --from " "a task that names a tag is a task"
+same "$(.claude/bin/usage tsv | cut -f 9)" 2 "and the usage record counts it"
+contains "$(.claude/bin/status --line)" "tasks 2/2" "and so does the status command"
+
+setup alpha:planned
+stub_check
+git checkout -q -b alpha
+printf '# Plan: x (spec: specs/x.md)\n\n## Progress\n- [ ] 1 <task>\n' >.work/alpha.md
+script 'open_pr'
+autopilot
+same "$(calls)" "" "AC54: the template's placeholder is no task"
+contains "$(log_of)" "has no tasks under Progress" "AC54: the closing line says so"
+
+# Review 11: a state file with CRLF line ends reads the same.
+crlf() { awk '{ printf "%s\r\n", $0 }' "$1" >"$1.new" && mv "$1.new" "$1"; }
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+tick_now alpha 1
+crlf .work/alpha.md
+script 'RESULT="Which one?"' 'RESULT="ESCALATE: stop here"'
+autopilot
+contains "$(call 1)" "--group A" "AC127: CRLF: a ticked group with no round is still first"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:A:standard 3:A:standard 4:A:standard
+crlf .work/alpha.md
+autopilot
+same "$(calls)" "" "AC6: CRLF: a group of four starts nothing"
+contains "$(log_of)" "at most 3 tasks" "AC6: CRLF: the closing line says so"
+
+# Review 12: a killed session counts once.
+setup alpha:planned
+git checkout -q -b alpha
+mkdir -p .work/alpha
+killed_tokens='{"type":"assistant","message":{"id":"msg_1","model":"m","usage":{"input_tokens":5000,"output_tokens":0}},"session_id":"s1"}'
+printf '{"type":"system","subtype":"init","session_id":"s1"}\n%s\n' "$killed_tokens" >"$work/killed.jsonl"
+printf 'main:s1\tm\t4000\t0\t0\t0\n' >.work/alpha/usage.tsv
+.claude/bin/usage add-killed "$work/killed.jsonl"
+same "$(.claude/bin/usage total)" 5000 "AC123: tokens the hook already recorded count once"
+printf 'main:s1\tm\t13000\t0\t0\t0\n' >.work/alpha/usage.tsv
+.claude/bin/usage add-killed "$work/killed.jsonl"
+same "$(.claude/bin/usage total)" 13000 "AC123: a resumed session keeps its larger record"
+printf 'agent1\tm\t700\t0\t0\t0\n' >.work/alpha/usage.tsv
+.claude/bin/usage add-killed "$work/killed.jsonl"
+same "$(.claude/bin/usage total)" 5700 "AC123: a session the hook never saw adds its tokens"
+
+# Review 13: --ship reports a child that refused to start.
+setup alpha:planned
+stub_check
+git checkout -q -b alpha
+plan alpha 1:A:standard
+echo half >>specs/README.md
+echo 1 >"$fake/pr-after"
+script 'finish alpha A 1' 'open_pr'
+ship alpha
+same "$?" 2 "--ship: a build that refuses to start is not reported as started"
+contains "$(cat "$work/err")" "commit or stash your changes first." "--ship: with the build's reason"
+case $(cat "$work/out") in *"build started"*) fail "--ship: it does not claim a start" ;; *) ok ;; esac
+if [ -d .work/autopilot/lock ]; then fail "AC102: no lock remains"; else ok; fi
+same "$(calls)" "" "--ship: no session starts"
+
+# Review 14: changes made after the earlier stop's fix was committed are not that fix.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+script 'finish alpha A 1; echo more >>src.txt'
+autopilot
+git add src.txt
+git commit -qm "the fix"
+echo half >>specs/README.md
+rm -f "$fake/calls" "$fake/n"
+script 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "AC131: with the old fix committed, new changes stash as usual"
+contains "$(git stash list)" "autopilot " "AC131: they are in the named stash"
+
+# Review 15: a rename into .claude is a change under .claude.
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+git checkout -q -b alpha
+echo helper >helper.txt
+git add helper.txt
+git commit -qm helper
+git mv helper.txt .claude/helper.txt
+autopilot
+same "$?" 2 "AC144: a rename into .claude refuses"
+same "$(git stash list | wc -l | tr -d ' ')" 0 "AC144: nothing is stashed"
+
+# Review 16: a status row the plan session only staged is committed too, and alone.
+setup alpha:approved
+stub_check
+script 'mkdir -p .work; write_ticked; set_status_only alpha planned; git add specs/README.md; echo other >other.txt; git add other.txt' 'open_pr'
+autopilot
+same "$(git log -1 --format=%s specs/README.md)" "Set alpha to planned" "AC143: a staged status row is committed"
+same "$(git show --name-only --format= "$(git log -1 --format=%H specs/README.md)")" "specs/README.md" "AC143: and nothing else with it"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

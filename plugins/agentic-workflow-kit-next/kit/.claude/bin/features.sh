@@ -62,7 +62,7 @@ plan_rows() {
       if (id ~ /^[0-9]+$/) { group[id] = col_group ? trim(c[col_group]) : ""; tier[id] = col_tier ? trim(c[col_tier]) : "" }
       next
     }
-    section == "Progress" && /^- \[[ xX]\] [0-9]+/ && !/</ {
+    section == "Progress" && /^- \[[ xX]\] [0-9]+/ && !/^- \[[ xX]\] [0-9]+[ \t]+<[^<>]*>[ \t]*$/ {
       id = $0
       sub(/^- \[[ xX]\] /, "", id)
       sub(/[^0-9].*$/, "", id)
@@ -82,6 +82,7 @@ plan_rows() {
 plan_has_groups() {
   [ -f "$1" ] || return 1
   awk '
+    { sub(/\r$/, "") }
     /^## / { inside = ($0 == "## Tasks"); next }
     inside && /^\|/ { n = split(tolower($0), c, "|"); for (i = 2; i < n; i++) { gsub(/[ \t\r]/, "", c[i]); if (c[i] == "group") found = 1 } exit }
     END { exit !found }

@@ -169,7 +169,7 @@ tasks_done=0
 tasks_total=0
 task_items=''
 if [ -n "$state" ]; then
-  task_items=$(awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[ xX]\]/ && !/</' "$state")
+  task_items=$(awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[ xX]\]/ && !/^- \[[ xX]\] ([0-9]+[ \t]+)?<[^<>]*>[ \t]*$/' "$state")
   if [ -n "$task_items" ]; then
     tasks_total=$(printf '%s\n' "$task_items" | grep -c .)
     tasks_done=$(printf '%s\n' "$task_items" | grep -c '^- \[[xX]\]')

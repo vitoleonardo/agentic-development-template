@@ -44,24 +44,32 @@ max_idle_seconds=${AUTOPILOT_MAX_IDLE_SECONDS:-1200}
 max_identical_calls=${AUTOPILOT_MAX_IDENTICAL_CALLS:-6}
 max_waits=${AUTOPILOT_MAX_WAITS:-3}
 poll_seconds=${AUTOPILOT_POLL_SECONDS:-60}
+kill_grace_seconds=${AUTOPILOT_KILL_GRACE_SECONDS:-10}
 answerable_classes="question plan test"
 log_dir=.work/autopilot
 mkdir -p "$log_dir"
 lock_dir=$log_dir/lock
+unfinished_fix=$log_dir/unfinished-fix
 [ -n "$run_id" ] || run_id=$(date +%Y%m%d-%H%M%S)
 run_log=$log_dir/run-$run_id.md
 
-slug="" branch="" state="" base="" session="" sessions="" current="" current_group=""
+slug="" branch="" state="" base="" session="" sessions="" current="" current_transcript="" current_group=""
 session_model="" session_effort="" answers=0 sequence=0 approved_size="" stash_changes=""
 _transcript="" _phase="" _kind=""
 
 # --- one build at a time ----------------------------------------------------------
 
-lock_pid() { cat "$lock_dir/pid" 2>/dev/null; }
+# The lock's pid file holds the owner's pid and that process's start time, so a reused pid never passes for a build.
+lock_pid() { sed -n 1p "$lock_dir/pid" 2>/dev/null; }
+process_start() { LC_ALL=C TZ=UTC ps -p "$1" -o lstart= 2>/dev/null; }
 is_build() {
-  [ -n "$1" ] && kill -0 "$1" 2>/dev/null || return 1
-  case $(ps -p "$1" -o args= 2>/dev/null) in *bin/autopilot*) return 0 ;; esac
-  return 1
+  [ -n "$1" ] || return 1
+  _process_start=$(process_start "$1")
+  [ -n "$_process_start" ] && [ "$_process_start" = "$(sed -n 2p "$lock_dir/pid" 2>/dev/null)" ]
+}
+# write_lock: a reader sees the old owner or the new one, never half of it.
+write_lock() {
+  { echo $$; process_start $$; } >"$lock_dir/pid.$$" 2>/dev/null && mv "$lock_dir/pid.$$" "$lock_dir/pid"
 }
 refuse_if_running() {
   _holder=$(lock_pid)
@@ -71,20 +79,55 @@ refuse_if_running() {
   fi
 }
 take_lock() {
-  refuse_if_running
-  [ ! -d "$lock_dir" ] || rm -rf "$lock_dir"
-  mkdir "$lock_dir" 2>/dev/null || refuse_if_running
-  mkdir -p "$lock_dir"
-  echo $$ >"$lock_dir/pid"
+  _lock_waits=0
+  until mkdir "$lock_dir" 2>/dev/null; do
+    refuse_if_running
+    # No pid yet: another starter is about to write it. Only a lock that stays empty is stale.
+    if [ -z "$_holder" ] && [ "$_lock_waits" -lt 5 ]; then
+      sleep 1
+      _lock_waits=$((_lock_waits + 1))
+      continue
+    fi
+    # Stale. A rename lets one starter take it; if another starter's new lock came along instead, it goes back.
+    if mv "$lock_dir" "$lock_dir.$$" 2>/dev/null; then
+      if [ "$(sed -n 1p "$lock_dir.$$/pid" 2>/dev/null)" = "$_holder" ]; then
+        rm -rf "$lock_dir.$$"
+      else
+        mv "$lock_dir.$$" "$lock_dir"
+      fi
+    fi
+  done
+  write_lock || { echo "autopilot: another build took the lock; run again." >&2; exit 2; }
 }
 release_lock() {
   if [ "$(lock_pid)" = "$$" ]; then rm -rf "$lock_dir"; fi
 }
 
-# kill_tree <pid>: a session or a check runs child processes that a plain kill leaves behind.
+# tree_pids <pid>: the process and its descendants; a session or a check runs children a plain kill leaves behind.
+tree_pids() {
+  for _child in $(pgrep -P "$1" 2>/dev/null); do tree_pids "$_child"; done
+  echo "$1"
+}
+# kill_tree <pid>: asks the tree to end, and kills whatever is still there after the grace period.
 kill_tree() {
-  for _child in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$_child"; done
-  kill "$1" 2>/dev/null
+  _tree=$(tree_pids "$1")
+  # shellcheck disable=SC2086
+  kill $_tree 2>/dev/null
+  _grace=0
+  while :; do
+    _alive=""
+    for _pid_in_tree in $_tree; do
+      if kill -0 "$_pid_in_tree" 2>/dev/null; then _alive="$_alive $_pid_in_tree"; fi
+    done
+    [ -n "$_alive" ] || return 0
+    if [ "$_grace" -ge "$kill_grace_seconds" ]; then
+      # shellcheck disable=SC2086
+      kill -s KILL $_alive 2>/dev/null
+      return 0
+    fi
+    pause 1
+    _grace=$((_grace + 1))
+  done
 }
 
 stop_build() {
@@ -134,6 +177,7 @@ pr_of() { gh pr view "$1" --json url --jq .url 2>/dev/null; }
 section_rows() { section_lines "$1" "$2" | wc -l | tr -d ' '; }
 last_stop_class() {
   awk '
+    { sub(/\r$/, "") }
     /^## / { inside = ($0 == "## Stops"); next }
     inside && /^- / && !/^- </ { n = split($0, p, "|"); c = (n >= 2) ? p[2] : ""; gsub(/^ +| +$/, "", c) }
     END { print c }
@@ -173,7 +217,7 @@ on_stop() {
   if [ -n "$current" ]; then
     kill_tree "$current"
     wait "$current" 2>/dev/null
-    [ -z "$_transcript" ] || .claude/bin/usage add-killed "$_transcript"
+    [ -z "$current_transcript" ] || .claude/bin/usage add-killed "$current_transcript"
   fi
   if [ -n "$slug" ]; then
     halt stop "stopped by .claude/bin/autopilot --stop"
@@ -286,8 +330,9 @@ run_claude() {
     --append-system-prompt "$unattended_note" \
     >"$_transcript" 2>&1 &
   current=$!
+  current_transcript=$_transcript
   watch "$current" "$_transcript"
-  current=""
+  current="" current_transcript=""
   limit_reset=$(usage_limit_reset "$_transcript")
   _ended_by=${watchdog:-ended}
   [ -z "$limit_reset" ] || _ended_by="usage limit"
@@ -302,6 +347,7 @@ run_claude() {
   fi
 }
 
+# ask_answerer <question>: the reply goes into $_reply. It runs in this shell, so a signal can end it.
 ask_answerer() {
   _question=$1
   _answer_transcript=$log_dir/$run_id-$slug-answer-$answers.jsonl
@@ -313,9 +359,10 @@ never approve skipping a test, a check or a security rule. Reply with exactly on
     --output-format stream-json --verbose --allowedTools Read Grep Glob --permission-mode dontAsk --permission-prompts none \
     >"$_answer_transcript" 2>&1 &
   current=$!
+  current_transcript=$_answer_transcript
   wait "$current"
-  current=""
-  json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_answer_transcript" | tail -n 1)" result
+  current="" current_transcript=""
+  _reply=$(json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_answer_transcript" | tail -n 1)" result)
 }
 
 # --- groups -----------------------------------------------------------------------
@@ -440,12 +487,26 @@ group_checks() {
 }
 check_tail() { tail -n 40 "$check_output" 2>/dev/null; }
 
+# stop_uncommitted <what happened>: nothing would redo a finished group's uncommitted changes, so the next build must
+# not stash these files while they stay changed.
+stop_uncommitted() {
+  git diff --name-only HEAD >"$unfinished_fix"
+  add_stop env "$1" "halted the run"
+  halt env "$1; commit or stash them, then run again"
+}
+
+# session_kept_to_plan: a session may not leave the feature's branch or change the size the plan approved.
+session_kept_to_plan() {
+  _on_branch=$(git branch --show-current)
+  [ "$_on_branch" = "$branch" ] || halt env "the $_phase session ended on branch $_on_branch, not $branch"
+  if [ "$_kind" != plan ] && [ "$(approved_size_line)" != "$approved_size" ]; then
+    halt plan "a session changed the plan's Approved size line"
+  fi
+}
+
 # after_group <group> <tier>: the group session ended on its own with every task ticked.
 after_group() {
-  if dirty_tree; then
-    add_stop env "group $1 ended with its tasks ticked and uncommitted changes" "halted the run"
-    halt env "group $1 ended with its tasks ticked and uncommitted changes; commit or stash them, then run again"
-  fi
+  if dirty_tree; then stop_uncommitted "group $1 ended with its tasks ticked and uncommitted changes"; fi
   if ! group_finished "$1"; then
     if [ -n "$(group_last_round "$1")" ]; then
       halt hotfix "group $1 ended with open high findings after its review rounds"
@@ -453,30 +514,41 @@ after_group() {
     add_stop env "group $1 ended without a group review round" "halted the run"
     halt env "group $1 ended without a group review round"
   fi
-  stop_if_over_budget
+  check_size
   if ! group_checks "$1"; then
+    [ -n "$session" ] || halt env "group $1 failed the build's checks and its session left no id to resume; see $check_output"
     if [ "$2" = deep ]; then
       session_effort=max
     else
       session_model=$(.claude/bin/route "$(.claude/bin/route up "$2")")
     fi
     log "- $slug, group $1: the build's checks failed; resuming the session once on a stronger model or effort"
+    _stops_before=$(section_rows "$state" Stops)
     next_transcript ""
     run_claude --resume "$session" "The build's own checks failed after this group. Fix the cause, commit it, and end the session. Do not weaken a test.
 
 $(check_tail)"
     session_model="" session_effort=""
-    if dirty_tree; then
-      add_stop env "group $1 ended its check repair with uncommitted changes" "halted the run"
-      halt env "group $1 ended its check repair with uncommitted changes"
+    session_kept_to_plan
+    if [ "$(section_rows "$state" Stops)" -gt "$_stops_before" ]; then
+      halt "$(last_stop_class "$state")" "group $1's check repair recorded a stop: $(json_string "$result_line" result)"
     fi
+    if dirty_tree; then stop_uncommitted "group $1 ended its check repair with uncommitted changes"; fi
+    group_finished "$1" || halt env "group $1 is no longer done after its check repair"
     stop_if_over_budget
+    check_size
     if ! group_checks "$1"; then
       add_stop tier "the build's checks failed again for group $1 after a resume" "halted the run"
       halt tier "the build's checks failed again for group $1 after a resume; see $check_output"
     fi
   fi
-  check_size
+}
+
+# group_prompt: how a fresh session of the current group starts. It names only the tasks still open.
+group_prompt() {
+  _open_tasks=$(group_open_tasks "$current_group")
+  printf '/ship-feature %s --group %s --tasks %s --from %s' "$slug" "$current_group" "${_open_tasks:-none}" "$_group_from"
+  [ -z "$_group_note" ] || printf '\n\n%s' "$_group_note"
 }
 
 # run_group <group> [what to fix]
@@ -485,13 +557,11 @@ run_group() {
   _group_tier=$(group_tier "$_group")
   session_model=$(.claude/bin/route "$_group_tier") || halt env "no model for tier $_group_tier"
   session_effort=""
+  session=""
   current_group=$_group
-  _open_tasks=$(group_open_tasks "$_group")
-  _group_prompt="/ship-feature $slug --group $_group --tasks ${_open_tasks:-none} --from $(group_from "$_group")"
-  [ -z "${2:-}" ] || _group_prompt="$_group_prompt
-
-$2"
-  run_phase group "$_group_prompt"
+  _group_from=$(group_from "$_group")
+  _group_note=${2:-}
+  run_phase group "$(group_prompt)"
   after_group "$_group" "$_group_tier"
   session_model=""
 }
@@ -524,6 +594,8 @@ session_finished() {
   return 0
 }
 
+fresh_prompt() { if [ "$_kind" = group ]; then group_prompt; else printf '%s' "$_prompt"; fi; }
+
 run_phase() {
   _kind=$1 _prompt=$2 _restarts=0 _waits=0
   case $_kind in plan) _phase=plan ;; *) _phase=build ;; esac
@@ -531,13 +603,11 @@ run_phase() {
   next_transcript ""
   run_claude "$_prompt"
   while :; do
-    _on_branch=$(git branch --show-current)
-    [ "$_on_branch" = "$branch" ] || halt env "the $_phase session ended on branch $_on_branch, not $branch"
-    if [ "$_kind" != plan ] && [ "$(approved_size_line)" != "$approved_size" ]; then
-      halt plan "a session changed the plan's Approved size line"
-    fi
-    session_finished && return 0
+    session_kept_to_plan
+    # A final session that opened its PR leaves nothing for the budget to stop.
+    if [ "$_kind" = final ] && session_finished; then return 0; fi
     stop_if_over_budget
+    session_finished && return 0
     if [ -n "$watchdog" ]; then
       if [ "$_restarts" -ge 1 ]; then
         add_stop budget "$watchdog" "halted the run"
@@ -548,7 +618,7 @@ run_phase() {
       log "- $slug, $_phase: $watchdog; started a fresh session, which resumes from $state"
       _stops_before=$(section_rows "$state" Stops)
       next_transcript "-restart-$_restarts"
-      run_claude "$_prompt"
+      run_claude "$(fresh_prompt)"
       continue
     fi
     if [ -n "$limit_reset" ]; then
@@ -559,7 +629,7 @@ run_phase() {
       _remaining=$((limit_reset + 120 - $(date +%s)))
       [ "$_remaining" -le 0 ] || pause "$_remaining"
       next_transcript "-wait-$_waits"
-      run_claude "$_prompt"
+      run_claude "$(fresh_prompt)"
       continue
     fi
     [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $_transcript"
@@ -574,12 +644,13 @@ run_phase() {
     case " $answerable_classes " in *" $_class "*) ;; *) halt "$_class" "$_question" ;; esac
     [ "$answers" -lt "$max_answers" ] || halt "$_class" "more than $max_answers answers needed: $_question"
     answers=$((answers + 1))
-    _reply=$(ask_answerer "$_question")
+    ask_answerer "$_question"
     case $_reply in
       ANSWER:*) ;;
       *) halt "$_class" "the answerer escalated (${_reply:-no reply}): $_question" ;;
     esac
     log "- $slug, $_phase, answer $answers: Q: $_question A: ${_reply#ANSWER: }"
+    stop_if_over_budget
     _stops_before=$(section_rows "$state" Stops)
     next_transcript "-$answers"
     run_claude --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
@@ -604,6 +675,7 @@ build_feature() {
   else
     log "- $slug: the plan has no Group column; grouped by threes."
   fi
+  check_size
   recheck_last_done_group
   while :; do
     _next=$(first_open_group)
@@ -621,13 +693,12 @@ build_feature() {
 decide_stash() {
   dirty_tree || return 0
   _dirty_message="autopilot: commit or stash your changes first."
-  if git status --porcelain --untracked-files=no | grep -Eq '^.. "?\.claude/'; then
+  if [ -n "$(git status --porcelain --untracked-files=no -- .claude)" ]; then
     echo "$_dirty_message" >&2
     exit 2
   fi
   # A finished group's uncommitted fix: nothing would redo it, so it must not go into a stash.
-  _last_run=$(ls "$log_dir"/run-*.md 2>/dev/null | sort | tail -n 1)
-  if [ -n "$_last_run" ] && grep -q '^Stopped at .*uncommitted changes' "$_last_run"; then
+  if [ -s "$unfinished_fix" ] && git diff --name-only HEAD | grep -Fxq -f "$unfinished_fix"; then
     echo "$_dirty_message" >&2
     exit 2
   fi
@@ -705,24 +776,28 @@ case $mode in
     else
       nohup sh "$root/.claude/bin/autopilot" --ship-run "$run_id" "$1" >>"$_runner_log" 2>&1 </dev/null &
     fi
+    _child=$!
     _tries=0
-    while [ "$(lock_pid)" = "$$" ] && [ "$_tries" -lt 20 ]; do
+    while [ "$(lock_pid)" = "$$" ] && kill -0 "$_child" 2>/dev/null && [ "$_tries" -lt 20 ]; do
       sleep 1
       _tries=$((_tries + 1))
     done
     if [ "$(lock_pid)" = "$$" ]; then
+      tail -n 3 "$_runner_log" >&2
       echo "autopilot: the build did not start; see $_runner_log" >&2
       exit 2
     fi
     trap - EXIT
-    echo "autopilot: build started (pid $(lock_pid)). Run log: $run_log"
+    _started_pid=$(lock_pid)
+    echo "autopilot: build started (pid ${_started_pid:-$_child}). Run log: $run_log"
     echo "Do not edit this checkout until the build ends."
     exit 0
     ;;
   ship-run)
-    echo $$ >"$lock_dir/pid"
-    trap release_lock EXIT
+    # The lock passes to this process only once it will really build, which is what --ship waits for.
     decide_stash "$@"
+    write_lock || exit 2
+    trap release_lock EXIT
     # This shell may start from inside a Claude Code session; its sessions must not look like nested ones.
     unset CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ATTENDED \
       CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_EXECPATH CLAUDE_CODE_VERSION CLAUDE_PID CLAUDE_EFFORT
@@ -754,9 +829,15 @@ log "| Feature | Branch | Result | Details | Sessions |"
 log "|---|---|---|---|---|"
 if [ -n "$stash_changes" ]; then
   _stash_name="autopilot $run_id $(git branch --show-current)"
-  git stash push -q -m "$_stash_name"
+  if ! git stash push -q -m "$_stash_name" || dirty_tree; then
+    log ""
+    log "Stopped at the start: could not stash the uncommitted changes; commit or stash them, then run again"
+    echo "autopilot: could not stash the uncommitted changes; commit or stash them, then run again." >&2
+    exit 2
+  fi
   log "- $stash_changes: stashed uncommitted changes as '$_stash_name'; the next session redoes the task"
 fi
+rm -f "$unfinished_fix"
 
 for slug in "$@"; do
   if [ "$mode" = queue ]; then branch=$(feature_branch "$slug"); else branch=$(git branch --show-current); fi
@@ -784,8 +865,8 @@ for slug in "$@"; do
     halt push "verified, and the push gate asks before a push. Run /ship-feature in a terminal to approve it"
   fi
   phase_done plan || run_phase plan "/plan-feature $slug"
-  if ! git diff --quiet -- specs/README.md; then
-    git add specs/README.md && git commit -qm "Set $slug to $(status_of "$slug")" || halt env "cannot commit the status of $slug"
+  if ! git diff --quiet HEAD -- specs/README.md; then
+    git commit -qm "Set $slug to $(status_of "$slug")" -- specs/README.md || halt env "cannot commit the status of $slug"
   fi
   approved_size=$(approved_size_line)
   build_feature
