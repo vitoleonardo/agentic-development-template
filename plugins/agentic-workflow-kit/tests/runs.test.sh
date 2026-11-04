@@ -113,5 +113,15 @@ grep -q '| Interventions per run (stops resolved by the user) | 0 | 1 | 3 |' "$m
 grep -q '| 2026-09-10 | old-b | 0 | 1 | 0 | 2000 | 1000 | 1 | 1 |' "$m" && ok || fail "a run row counts its interventions: $(grep old-b "$m")"
 grep -q 'Reviewer tokens per review round: round 1 median 550 (2 rounds), later rounds median 300 (1 rounds).' "$m" && ok || fail "reviewer tokens per round: $(grep -i 'reviewer tokens' "$m")"
 
+# --- a fix plan (specs/fix-bug.md) ------------------------------------------------------
+
+git symbolic-ref HEAD refs/heads/fix-login-redirect
+mkdir -p .work/fix-login-redirect
+cp .work/12-export/usage.tsv .work/12-export/agents.tsv .work/fix-login-redirect/
+printf '# Plan: login-redirect (fix)\nBase: main\n\n## Criteria\n- **LOGINFIX-AC1**: Given a, when b, then c.\n\n## Progress\n- [x] 1 reproduce\n- [x] 2 fix\n' >.work/fix-login-redirect.md
+.claude/bin/runs record >/dev/null 2>"$project/err"
+same "$(grep '^run' reports/runs/fix-login-redirect.tsv | cut -f3,4)" "login-redirect${tab}fix-login-redirect" "FIXBUG-AC26: the record's feature is the fix plan's slug"
+same "$(cat "$project/err")" "" "FIXBUG-AC26: a fix plan records without a warning"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
