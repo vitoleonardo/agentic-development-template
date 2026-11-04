@@ -35,7 +35,7 @@ Separate plugin:
 
 - **GROUP-AC1**: Given this feature is complete, when its branch is compared with `main`, then no file under `plugins/agentic-workflow-kit/` differs.
 - **GROUP-AC2**: Given this feature is complete, when the repository's marketplace file is read, then it lists both `agentic-workflow-kit` and `agentic-workflow-kit-next`.
-- **GROUP-AC3**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.0`.
+- **GROUP-AC3**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.0` or later.
 - **GROUP-AC68**: Given only `agentic-workflow-kit-next` is installed, when `/review-diff` runs, then it runs in that plugin's reviewer agent.
 - **GROUP-AC69**: Given only `agentic-workflow-kit-next` is installed, when `/write-tests` runs, then it runs in that plugin's test-writer agent.
 - **GROUP-AC70**: Given the new plugin's installer has run without `--plugin`, when the project's skills are read, then none names an agent with a plugin prefix.
@@ -279,3 +279,4 @@ Sessions and records:
 - 03.11.2026: Plans without a Group column are grouped by threes and do not need group rounds, so a feature in progress when a project updates never blocks or repeats finished work.
 - 03.11.2026: This ships as a second plugin next to the current one, not behind a flag or on a branch. Fixes land twice until the release; the release needs two real runs (one small feature and one 13-point sprint), compared with the current version.
 - 04.11.2026: Kit 0.3.1 (plan-lint, `/fix-bug`, PR #40) lands in this plugin too, and `plan-lint` checks the group rules the plan must follow (GROUP-AC158 to GROUP-AC166), so a plan breaks them at planning, not at the build's start. GROUP-AC1 compares with `main`, because `main` now holds 0.3.1 of the current plugin. Autopilot keeps its own narrower check, so plans written before this never block.
+- 04.11.2026: The e2e map, stacked group pull requests, the stack stage and the risk gates (`e2e-map.md`, `stacked-groups.md`, `stack-stage.md`, `risk-gates.md`) ship on top of this feature as 0.4.1, together with the fixes of PR #39; RISK-AC50 names the version.

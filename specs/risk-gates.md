@@ -94,6 +94,10 @@ Records:
 - **RISK-AC44**: Given a submitted stack, when the layer descriptions are written, then each holds a `Risk:` line with the layer's rank and its reasons.
 - **RISK-AC45**: Given 3 runs with one Stops line of class `approval` each, when `.claude/bin/runs report` runs, then the stops by class count 3 for `approval`.
 
+Release:
+
+- **RISK-AC50**: Given this feature is complete, when the plugin file of `agentic-workflow-kit-next` is read, then its version is `0.4.1`.
+
 ## Edge cases
 - **RISK-AC46**: Given a high plan approved by a person, when the stack is ranked later, then the plan's own high reasons are not counted again unless the diff shows them.
 - **RISK-AC47**: Given a diff that renames a file into `KIT_ARCHITECTURE_PATTERNS`, when `risk diff` runs, then the rank is high.

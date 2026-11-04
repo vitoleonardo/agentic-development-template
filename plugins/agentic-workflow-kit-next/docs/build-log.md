@@ -2,6 +2,18 @@
 
 What the workflow and its tests caught while building the kit. Newest first.
 
+## 04.11.2026: 0.4.1, stacked group pull requests, one stack stage, risk-ranked merges
+
+0.4.1 builds on 0.4.0's group sessions (specs `e2e-map.md`, `stacked-groups.md`, `stack-stage.md`, `risk-gates.md`). New: `.claude/bin/stack` (`tests/stack.test.sh`, 65 cases) and `.claude/bin/risk` (`tests/risk.test.sh`, 43 cases). `evidence` gains the e2e map, per-layer packs and sizes, `stage-e2e`, `mutation` and `shots-md` (226 cases), and `autopilot` the stack stage and the merge (324 cases). Every suite also passes under `dash`. It came out of os.home, where one feature ran Playwright up to five times and three stacked pull requests took over an hour of e2e.
+
+- **E2e tests by map.** `.kit/e2e-map.tsv` maps source globs to e2e specs. A changed source file without a row runs the whole suite; before, the whole suite ran whenever no e2e test named a changed criterion.
+- **One pull request per group.** The layers are cut at submit time, as refs `<branch>-g<id>` on the one feature branch, because a branch per group would break the usage budget, `base_ref` and `status`. `gh stack link` links them when the extension is installed; otherwise they open as a chain of plain pull requests. The size limit counts per layer.
+- **One stack stage.** The selected e2e tests, with screenshots from the same Playwright run, and mutation tests (Stryker on the changed lines, a hard gate at 60 %) run once per stack on its top layer: in CI by default (`stack-checks.yml`), locally as the option. The workflow posts `kit/e2e` and `kit/mutation` on every layer head itself. Fixes go on the top layer, so no pushed layer moves.
+- **Autonomous by default.** `.claude/bin/risk` ranks the plan before any code and the stack before the merge. An architecture change, `KIT_PUSH_ASK_PATTERNS`, and edits to the build's own checks are high whatever the score. The build merges a stack below high itself; `risk.yml` holds a high pull request until someone other than its author approves it, so builds push as a bot (`KIT_BOT_GH_CONFIG`). `strict` stays selectable.
+- **PR #39 lands here too.** Run records count the ticked tasks and the dispatches, drizzle's migration snapshots leave the size count, and the guard lets `evidence data` past a protected `data` path. The size count now lives once, in `numstat_total` in `conf.sh`, for `evidence` and `risk`; before, three copies of the lockfile pattern drifted.
+- **What the tests caught.** The fake session's stage helpers sat outside its heredoc and never ran. Sourcing `kit.conf` overwrote a `KIT_BOT_GH_CONFIG` set in the environment; the environment wins now. Two layers of the same size picked the reported one by chance; the upper one wins now. A `\|` alternation in `grep` worked only in GNU grep.
+- **Not proven live yet.** Everything ran against a fake `gh`. A headless run on a scratch repository with stacking enabled and a bot, and one feature on os.home, follow. `gh stack` is in public preview: exit 9 and parts of `view --json` are undocumented.
+
 ## 04.11.2026: plan-lint and /fix-bug
 
 `.claude/bin/plan-lint` (`tests/plan-lint.test.sh`, 49 cases, also under `dash`), `.claude/bin/criteria.sh`, `/fix-bug` (`tests/fix-bug.test.sh`, 42 cases), and `plan_feature`, `plan_spec`, `plan_criteria` in `features.sh` for `status` and `runs` (8 and 2 new cases). Both came out of a comparison with GitHub's spec-kit: it has a checklist step on the plan and a bug flow; the kit had the plan rules as prose and "small fixes may skip the spec" without a path.
