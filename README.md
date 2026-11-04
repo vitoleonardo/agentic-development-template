@@ -4,7 +4,6 @@ Plugins and templates that make AI coding agents work like a disciplined team me
 
 [![agentic-workflow-kit](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/agentic-workflow-kit.yml/badge.svg?branch=main)](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/agentic-workflow-kit.yml)
 [![repo-check](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/repo-check.yml/badge.svg?branch=main)](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/repo-check.yml)
-[![greenfield-nextjs](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/greenfield-nextjs.yml/badge.svg?branch=main)](https://github.com/vitoleonardo/agentic-development-template/actions/workflows/greenfield-nextjs.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 ## What's inside
@@ -14,13 +13,11 @@ Plugins and templates that make AI coding agents work like a disciplined team me
 | [**agentic-workflow-kit**](./plugins/agentic-workflow-kit/) | Plugin and installer | Existing projects in any language: spec-driven workflow, permissions, guard and check hooks, subagents, CI gates, onboarding for legacy repos, lead time measurement. Adapters for TypeScript and Python | 0.4.0 |
 | [**agentic-workflow-kit-next**](./plugins/agentic-workflow-kit-next/) | Plugin and installer, under test | The kit's next version: one headless session and one stacked pull request per planned group of tasks, e2e and mutation tests once per stack, risk-ranked merges. Install this or the stable kit, never both | 0.4.1 |
 | [**repo-check**](./plugins/repo-check/) | Plugin or single-file prompt | Any repository: finds where delivery is jammed right now (writing, review or release), by a 10-minute interview or a strictly read-only scan. Sends nothing | 0.1.0 |
-| [**greenfield-nextjs**](./templates/greenfield-nextjs/) | Template to copy | New Next.js apps built by several agents in parallel tracks, contract-first | 0.0.1 |
 
 ### Which one do I need?
 
 - **You want to know where AI agents would help your team most:** start with `repo-check`. It takes ten minutes and changes nothing.
 - **You have a codebase and want agents to work in it under rules:** install the `agentic-workflow-kit`.
-- **You start a new web app from an empty repository:** copy `greenfield-nextjs`.
 
 ## Quick start
 
@@ -52,8 +49,6 @@ plugins/
   agentic-workflow-kit/    kit/ (what gets installed), adapters/, install.sh, tests/, docs/, examples/demo-app/
   agentic-workflow-kit-next/  the kit's next version under test, same layout
   repo-check/              plugin/, the generated single-file prompt repo-check.md, build, tests/, docs/
-templates/
-  greenfield-nextjs/       contracts, coordination files, workflows and validators for a new app
 .github/workflows/         one CI workflow per product
 ```
 
@@ -63,7 +58,6 @@ Every product has its own CI workflow that runs on each pull request and on `mai
 
 - **agentic-workflow-kit:** shellcheck over every script, thirteen test suites (hooks, spec lint, plan lint, installer, checks and baseline, evidence pack, routing, lead time, run records, structure map, autopilot, status, fix-bug skill), and eleven of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
 - **repo-check:** shellcheck, the read-only hook, the scanner, and a drift test that fails when the single-file prompt or the bundled `leadtime` differs from its source. All under `dash` as well.
-- **greenfield-nextjs:** shellcheck over the scripts, and the naming, docs, contract and design validators on the untouched template.
 
 What the tests and real end-to-end runs caught while building each product is in its build log: [kit](./plugins/agentic-workflow-kit/docs/build-log.md), [repo-check](./plugins/repo-check/docs/build-log.md). The specifications behind them are next to the logs. Every change to the kit after a real run is in its [improvements log](./plugins/agentic-workflow-kit/reports/improvements.md), with the metric it should move and the value before, and `/improve-kit` checks each one after three more runs. What the tools cannot do is under the kit's [limits](./plugins/agentic-workflow-kit/README.md#limits).
 
