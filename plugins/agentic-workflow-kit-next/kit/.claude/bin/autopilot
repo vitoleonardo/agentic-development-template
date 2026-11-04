@@ -318,9 +318,9 @@ add_stop() {
 
 # next_transcript <suffix>: sets $_transcript. A feature's build sessions are numbered, so none overwrites another.
 next_transcript() {
-  if [ "$_phase" = build ]; then
+  if [ "$_phase" = build ] || [ "$_phase" = stack ]; then
     sequence=$((sequence + 1))
-    _transcript=$log_dir/$run_id-$slug-build-$sequence.jsonl
+    _transcript=$log_dir/$run_id-$slug-$_phase-$sequence.jsonl
   else
     _transcript=$log_dir/$run_id-$slug-$_phase$1.jsonl
   fi
@@ -580,6 +580,7 @@ phase_done() {
     plan) case $(status_of "$slug") in planned | building | in-review | done) return 0 ;; esac; return 1 ;;
     group) [ -z "$(group_open_tasks "$current_group")" ] ;;
     final) [ -n "$(pr_of "$branch")" ] ;;
+    stack) [ "$(stack_rounds)" -gt "$_stack_rounds_before" ] && ! dirty_tree ;;
   esac
 }
 
@@ -594,7 +595,7 @@ fresh_prompt() { if [ "$_kind" = group ]; then group_prompt; else printf '%s' "$
 
 run_phase() {
   _kind=$1 _prompt=$2 _restarts=0 _waits=0
-  case $_kind in plan) _phase=plan ;; *) _phase=build ;; esac
+  case $_kind in plan) _phase=plan ;; stack) _phase=stack ;; *) _phase=build ;; esac
   _stops_before=$(section_rows "$state" Stops)
   next_transcript ""
   run_claude "$_prompt"
@@ -652,6 +653,64 @@ run_phase() {
     run_claude --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
 Log it under Decisions to review as 'answered-by-autopilot | <the question> | <the answer>' and continue."
   done
+}
+
+# --- the stack stage (specs/stack-stage.md) --------------------------------------------
+
+stack_rounds() { section_lines "$state" Rounds | grep -c '^- stack '; }
+
+# stack_session <prompt>: one session of the stack stage on the top layer, on the verify role's model.
+stack_session() {
+  session_model=$(.claude/bin/route verify) || halt env "no model for the verify role"
+  session_effort="" session=""
+  _stack_rounds_before=$(stack_rounds)
+  run_phase stack "$1"
+  session_model=""
+}
+
+# run_stack: after the last feature, the slow checks once on the stack's top layer: a red run starts a session that
+# fixes it on the top layer, then only the red e2e tests run again; a green run gets its screenshots reviewed, and
+# the pull requests their screenshots and the mutation score.
+run_stack() {
+  case $(conf_value . KIT_STACK_CHECKS) in off) return 0 ;; esac
+  [ -n "$(pr_of "$branch")" ] || return 0
+  _phase=stack _kind=stack
+  _stage_tests="" _stage_fixes=0
+  while :; do
+    stop_if_over_budget
+    check_output=$log_dir/$run_id-stack-$((_stage_fixes + 1)).txt
+    : >"$check_output"
+    log "- stack: the stack checks on $branch${_stage_tests:+, again: $_stage_tests}"
+    # shellcheck disable=SC2086
+    run_limited .claude/bin/stack checks ${_stage_tests:+--tests "$_stage_tests"}
+    _code=$?
+    case $_code in
+      0)
+        stack_session "/ship-feature $slug --stack review"
+        case $(section_lines "$state" Rounds | grep '^- stack ' | tail -n 1 | sed 's/[[:space:]]*$//') in
+          *"| pass") break ;;
+        esac
+        ;;
+      1)
+        if [ "$_stage_fixes" -ge 2 ]; then
+          add_stop test "the stack stage is still red after 2 fixes" "halted the run"
+          halt test "the stack stage is still red after 2 fixes; see $check_output"
+        fi
+        stack_session "/ship-feature $slug --stack
+
+The stack stage is red. Fix it on this branch, the top layer, as the Stack session says.
+
+$(tail -n 40 "$check_output")"
+        ;;
+      *) halt env "the stack stage cannot run: $(tail -n 2 "$check_output" | tr '\n' ' ')" ;;
+    esac
+    _stage_fixes=$((_stage_fixes + 1))
+    # Only the red e2e tests run again; with none red, the e2e part passed and only the mutation tests repeat.
+    _stage_tests=$(tr '\n' ' ' <".work/$branch/stack/red.txt" 2>/dev/null | sed 's/ *$//')
+    if [ -z "$_stage_tests" ] && grep -Eq '^e2e[[:space:]]+(pass|n/a)' ".work/$branch/stack/data-runs.tsv" 2>/dev/null; then _stage_tests=-; fi
+  done
+  run_limited .claude/bin/stack bodies || halt env "the pull requests did not get the stage's screenshots; see $check_output"
+  log "- stack: green; $(grep '^mutation:' "$check_output" | tail -n 1)"
 }
 
 # is_verified: the last verify round passed and the evidence pack was made on this commit.
@@ -874,6 +933,8 @@ for slug in "$@"; do
   log "| $slug | $branch | in-review | $pr; ${minutes} min; $(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
   base=$branch
 done
+
+run_stack
 
 log ""
 log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."

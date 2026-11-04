@@ -367,6 +367,11 @@ same "$(jx '[d["autopilot"]["active"], d["autopilot"]["current"]]')" '[true, {"f
 same "$(jx 'd["autopilot"]["features"]')" '[{"feature": "a", "branch": "a-branch", "result": "in-review"}]' "COCKPIT-AC18: an active run lists the finished row"
 
 rm -f "$autopilot_dir"/*.jsonl
+transcript invite-stack-3 5
+ap
+same "$(jx 'd["autopilot"]["current"]')" '{"feature": "invite", "phase": "stack"}' "STAGE-AC36: a stack session reports phase stack"
+
+rm -f "$autopilot_dir"/*.jsonl
 transcript a-plan 600
 transcript b-build 5
 ap

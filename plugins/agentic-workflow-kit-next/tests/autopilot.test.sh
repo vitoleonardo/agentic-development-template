@@ -35,6 +35,8 @@ write_ticked() {
 tick() { sed -i.bak "s/^- \[ \] $2 /- [x] $2 /" ".work/$1.md"; }
 commit_task() { echo "$1" >>src.txt; git add src.txt; git commit -qm "task $1: work"; }
 round() { printf -- '- group %s review 1 | full | a..b | %s\n' "$1" "$2" >>".work/$(git branch --show-current).md"; }
+stage_round() { printf -- '- stack %s\n' "$1" >>".work/$(git branch --show-current).md"; }
+stage_fix() { echo fix >>src.txt; git add src.txt; git commit -qm "stack fix"; stage_round "$1"; }
 finish() { _slug=$1; _group=$2; shift 2; for _t in "$@"; do commit_task "$_t"; tick "$_slug" "$_t"; done; round "$_group" pass; }
 finish_some() { _slug=$1; shift; for _t in "$@"; do commit_task "$_t"; tick "$_slug" "$_t"; done; }
 spend() { mkdir -p ".work/$(git branch --show-current)"; printf 'main:s\tm\t%s\t0\t0\t0\n' "$1" >".work/$(git branch --show-current)/usage.tsv"; }
@@ -94,6 +96,8 @@ setup() {
   : >"$fake/script"
   cd "$project" || exit 1
   printf '.work/\n' >.gitignore
+  # Most tests end at the PR; the stack stage has its own section.
+  printf 'KIT_STACK_CHECKS="off"\n' >>.claude/kit.conf
   {
     echo '| Feature | Spec | Status | Branch | Open questions |'
     echo '|---|---|---|---|---|'
@@ -807,6 +811,92 @@ echo half >>specs/README.md
 autopilot
 same "$?" 2 "AC133: changes on another branch refuse"
 same "$(cat "$work/err")" "autopilot: commit or stash your changes first." "AC133: with today's message"
+
+# --- the stack stage (specs/stack-stage.md) ------------------------------------------
+
+# stub_stack: a stack command whose `checks` exits with the next code from $fake/stack-codes (the last repeats, none is
+# 0); code 1 leaves e2e/a.spec.ts red.
+stub_stack() {
+  rm -f "$fake/stack-codes" "$fake/stack-calls"
+  sed -i.bak 's/^KIT_STACK_CHECKS=.*/KIT_STACK_CHECKS="ci"/' .claude/kit.conf && rm -f .claude/kit.conf.bak
+  cat >.claude/bin/stack <<'EOF'
+#!/bin/sh
+echo "$*" >>"$FAKE_DIR/stack-calls"
+b=$(git branch --show-current)
+case $1 in
+  checks)
+    mkdir -p ".work/$b/stack"
+    code=0
+    if [ -f "$FAKE_DIR/stack-codes" ]; then
+      code=$(head -n 1 "$FAKE_DIR/stack-codes")
+      [ "$(wc -l <"$FAKE_DIR/stack-codes")" -le 1 ] || sed -i.bak 1d "$FAKE_DIR/stack-codes"
+    fi
+    if [ "$code" = 1 ]; then
+      printf 'e2e/a.spec.ts\n' >".work/$b/stack/red.txt"
+      printf 'e2e\tfail\t1\trelated\n' >".work/$b/stack/data-runs.tsv"
+      echo "e2e: fail, red: e2e/a.spec.ts"
+    else
+      : >".work/$b/stack/red.txt"
+      printf 'e2e\tpass\t1\trelated\n' >".work/$b/stack/data-runs.tsv"
+      echo "e2e: pass"
+    fi
+    echo "mutation: score 80 threshold 60 killed 8 survived 2 mutants 10"
+    exit "$code" ;;
+esac
+exit 0
+EOF
+  chmod +x .claude/bin/stack
+  git add -A
+  git commit -qm "stub stack"
+}
+
+setup alpha:planned
+stub_check
+stub_stack
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr' 'stage_round "review 1 | full | a..b | pass"'
+autopilot
+same "$?" 0 "a green stage ends the build"
+same "$(cat "$fake/stack-calls")" "checks
+bodies" "STAGE-AC4: one stage run, then the descriptions"
+contains "$(call 3)" "--stack review" "STAGE-AC34: a green stage gets its screenshots reviewed"
+contains "$(call 3)" "--model sonnet" "the stack session runs on the verify role's model"
+grep -q "${tab:-$(printf '\t')}stack${tab:-$(printf '\t')}" .work/autopilot/sessions.tsv && ok || fail "STAGE-AC37: sessions.tsv has a stack row: $(cat .work/autopilot/sessions.tsv)"
+
+setup alpha:planned
+stub_check
+stub_stack
+printf '1\n0\n' >"$fake/stack-codes"
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr' 'stage_fix "1 | fix | a..b | test"' 'stage_round "review 1 | full | a..b | pass"'
+autopilot
+same "$?" 0 "a fixed stage ends the build"
+same "$(cat "$fake/stack-calls")" "checks
+checks --tests e2e/a.spec.ts
+bodies" "STAGE-AC17: after a fix only the red test runs again"
+contains "$(call 3)" "e2e: fail, red: e2e/a.spec.ts" "STAGE-AC19: the fix session gets the failure output"
+contains "$(call 3)" "--model sonnet" "STAGE-AC19: on the verify role's model"
+same "$(git branch --show-current)" "alpha" "STAGE-AC20: the fix stays on the top layer"
+
+setup alpha:planned
+stub_check
+stub_stack
+printf '1\n' >"$fake/stack-codes"
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr' 'stage_fix "1 | fix | a..b | test"' 'stage_fix "2 | fix | a..b | test"' 'stage_fix "3 | fix | a..b | test"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 4 "STAGE-AC21: two fixes, then no further session"
+contains "$(log_of)" "Stopped at alpha: the stack stage is still red after 2 fixes" "STAGE-AC21: the closing line says so"
+
+setup alpha:planned
+stub_check
+stub_stack
+printf '2\n' >"$fake/stack-codes"
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "a stage that cannot run starts no session"
+contains "$(log_of)" "Stopped at alpha: the stack stage cannot run" "and the closing line says so"
 
 # --- the size limit
 

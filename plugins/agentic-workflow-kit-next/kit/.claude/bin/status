@@ -126,8 +126,8 @@ autopilot_state() {
         "$run_id-"*)
           name=${name#"$run_id-"}
           ending='(-(restart|wait)-[0-9]+|-[0-9]+)?'
-          ap_phase=$(printf '%s' "$name" | sed -nE "s/^.*-(plan|build|answer)$ending\$/\\1/p")
-          ap_feature=$(printf '%s' "$name" | sed -nE "s/^(.*)-(plan|build|answer)$ending\$/\\1/p")
+          ap_phase=$(printf '%s' "$name" | sed -nE "s/^.*-(plan|build|stack|answer)$ending\$/\\1/p")
+          ap_feature=$(printf '%s' "$name" | sed -nE "s/^(.*)-(plan|build|stack|answer)$ending\$/\\1/p")
           if [ -n "$ap_phase" ] && [ -n "$ap_feature" ]; then
             ap_current="{\"feature\":$(json_str "$ap_feature"),\"phase\":$(json_str "$ap_phase")}"
           fi

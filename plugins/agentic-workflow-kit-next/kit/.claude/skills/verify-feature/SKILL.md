@@ -29,7 +29,7 @@ The red check copies the criterion tests this branch adds onto the base and runs
 
 ## 2. Data runs
 
-Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against the seeded data, and `KIT_TEST_MOCKED` with external dependencies replaced, and records the seed version and the mock set. A run that is `not configured` or `n/a` is recorded as such; say so in the report, because a reviewer must see what was not checked.
+Run `.claude/bin/evidence data`. It runs `KIT_SEED` and then `KIT_E2E` against the seeded data, and `KIT_TEST_MOCKED` with external dependencies replaced, and records the seed version and the mock set. With a stack stage (`KIT_STACK_CHECKS` `ci` or `local`, the default), the seed and the e2e tests are recorded as `deferred: stack stage`: they run once per stack, on its top layer, before the merge (`specs/stack-stage.md`). Report that line as it is. A run that is `not configured` or `n/a` is recorded as such; say so in the report, because a reviewer must see what was not checked.
 
 The e2e run covers only the tests the change affects when `KIT_E2E_RELATED` is set: the changed e2e files and the ones that name this feature's criteria. Its row says what ran and why (`related: …`, `all: …`, or `n/a` when only tests and docs changed). Report that line as it is. Do not pass `--all` to make a selection go away; the whole suite runs in CI after the merge.
 
@@ -53,7 +53,9 @@ Run `.claude/bin/evidence matrix`. A case without a passing test is a failure, n
 
 ## 4. Screenshots
 
-Run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` (with the same selection as the e2e run) on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. The base run gets the variables of `KIT_BASE_ENV`. When no e2e test on the base names this feature, it is skipped and recorded as `n/a: base has no <FEATURE>`, which is not a failure. A criterion without UI has no screenshots.
+With a stack stage, `.claude/bin/evidence screenshots` prints `deferred: stack stage`: the e2e run of the stage takes the screenshots, and its review session checks them. An e2e case in the matrix reads `deferred: stack stage` until then; it is not a failure here. Skip the rest of this step.
+
+Without a stack stage (`KIT_STACK_CHECKS="off"`), run `.claude/bin/evidence screenshots`. It runs `KIT_SCREENSHOTS` (with the same selection as the e2e run) on the branch and, in a worktree, on the base, so each step has `<AC-ID>-<step>-<desktop|mobile>.png` and, where the page exists on the base, a `.main.png` next to it. The base run gets the variables of `KIT_BASE_ENV`. When no e2e test on the base names this feature, it is skipped and recorded as `n/a: base has no <FEATURE>`, which is not a failure. A criterion without UI has no screenshots.
 
 Then dispatch the `reviewer` (Agent tool, description `review screenshots`, `model` from `.claude/bin/route review`) with: the spec path, the screenshot folder, and the instruction to check the screenshots as described in its agent file. Save its report to `.work/<branch>/evidence/screenshots-review.md`. A mismatch between an image and the criterion text is a high finding: verify fails, and the fix goes through the implementer and review. The implementer and the review round have judged these flows already, so this check confirms them at the final commit. A finding here is one they missed: mark the round `(screenshots)` under Rounds, so `/improve-kit` can count it.
 

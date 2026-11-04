@@ -5,6 +5,11 @@
 #   .claude/bin/stack chain     the layers of the features this one builds on, then this one's, bottom to top
 #   .claude/bin/stack submit    cut the layer branches, push them with their evidence packs, and open or update one
 #                               pull request per layer, linked as a GitHub stack (gh stack) or, without it, as a chain
+#   .claude/bin/stack checks [--tests 'files']   the stack stage on the top layer (specs/stack-stage.md): the
+#                               selected e2e tests with their screenshots and the mutation tests, in CI
+#                               (stack-checks.yml) or in this checkout (KIT_STACK_CHECKS); results in
+#                               .work/<branch>/stack/. Exit 0 green, 1 red, 2 cannot run
+#   .claude/bin/stack bodies    each layer's pull request gets its criteria's screenshots and the mutation score
 # The feature is the current branch; its plan is .work/<branch>.md. Exit codes: 0 done, 1 refused, 2 not set up.
 set -u
 
@@ -144,9 +149,140 @@ submit() {
   done <"$tmp/layers"
 }
 
+# stage_result: whether the stage in $sdir is green, with one line each for e2e and mutation.
+stage_result() {
+  _green=0
+  _e2e=$(grep "^e2e$tab" "$sdir/data-runs.tsv" 2>/dev/null | head -n 1 | cut -f2)
+  case $_e2e in
+    pass | n/a) echo "e2e: $_e2e" ;;
+    '') echo "e2e: no result"; _green=1 ;;
+    *) echo "e2e: $_e2e, red: $(tr '\n' ' ' <"$sdir/red.txt" 2>/dev/null)"; _green=1 ;;
+  esac
+  _mutation=$(head -n 1 "$sdir/mutation.txt" 2>/dev/null)
+  case $_mutation in
+    n/a:*) echo "mutation: $_mutation" ;;
+    score*)
+      # shellcheck disable=SC2086
+      set -- $_mutation
+      echo "mutation: $_mutation"
+      [ "$2" -ge "$4" ] || _green=1
+      ;;
+    *) echo "mutation: ${_mutation:-no result}"; _green=1 ;;
+  esac
+  return "$_green"
+}
+
+checks() {
+  _tests=""
+  [ "${1:-}" = --tests ] && _tests=${2:-}
+  _where=$(conf_value . KIT_STACK_CHECKS)
+  case ${_where:-ci} in
+    off) echo "stack: KIT_STACK_CHECKS is off; the stack has no stage."; return 0 ;;
+    ci | local) ;;
+    *) echo "stack: KIT_STACK_CHECKS='$_where' is not ci, local or off." >&2; return 2 ;;
+  esac
+  chain >"$tmp/chain"
+  _shas=$(cut -f2 "$tmp/chain" | tr '\n' ' ' | sed 's/ *$//')
+  _base=$(stack_base)
+  sdir=.work/$branch/stack
+  rm -rf "$sdir"
+  mkdir -p "$sdir"
+  if [ "${_where:-ci}" = local ]; then
+    # shellcheck disable=SC2086
+    KIT_BASE=$_base .claude/bin/evidence stage-e2e --dir "$sdir" ${_tests:+--tests "$_tests"} >"$sdir/e2e.log" 2>&1
+    _e2e_code=$?
+    KIT_BASE=$_base .claude/bin/evidence mutation --dir "$sdir" >"$sdir/mutation.log" 2>&1
+    _mutation_code=$?
+    _repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)
+    if [ -n "$_repo" ]; then
+      # shellcheck disable=SC2086
+      .claude/bin/evidence stage-status --dir "$sdir" --repo "$_repo" --e2e "$_e2e_code" --mutation "$_mutation_code" $_shas || echo "stack: could not post the statuses." >&2
+    fi
+  else
+    gh workflow view stack-checks.yml >/dev/null 2>&1 || {
+      echo "stack: .github/workflows/stack-checks.yml is not on the default branch, so it cannot be dispatched. Merge it there first, or set KIT_STACK_CHECKS=local." >&2
+      return 2
+    }
+    git push -q "$remote" "$branch" 2>/dev/null || { echo "stack: could not push $branch." >&2; return 2; }
+    _run=$(date +%Y%m%d-%H%M%S)-$$
+    _head=$(git rev-parse HEAD)
+    gh workflow run stack-checks.yml --ref "$branch" -f base="$_base" -f layers="$_shas" -f tests="$_tests" -f kit_run="$_run" >/dev/null || {
+      echo "stack: gh workflow run stack-checks.yml failed." >&2
+      return 2
+    }
+    _id="" _tries=0
+    while [ -z "$_id" ] && [ "$_tries" -lt "${STACK_RUN_TRIES:-60}" ]; do
+      _id=$(gh run list --workflow stack-checks.yml --branch "$branch" --event workflow_dispatch --json databaseId,displayTitle,headSha \
+        --jq ".[] | select(.displayTitle == \"stack $_run\" and .headSha == \"$_head\") | .databaseId" 2>/dev/null | head -n 1)
+      [ -n "$_id" ] || { sleep "${STACK_POLL_SECONDS:-5}"; _tries=$((_tries + 1)); }
+    done
+    [ -n "$_id" ] || { echo "stack: the stack-checks run 'stack $_run' did not show up." >&2; return 2; }
+    echo "stack: stack checks run $_id on $branch ($_head)"
+    gh run watch "$_id" --exit-status >/dev/null 2>&1
+    gh run download "$_id" --dir "$sdir/artifacts" >/dev/null 2>&1 || echo "stack: could not download the artifacts of run $_id." >&2
+    for _artifact in "$sdir"/artifacts/*/; do
+      [ -d "$_artifact" ] && cp -R "$_artifact". "$sdir/"
+    done
+  fi
+  stage_result
+}
+
+# layer_criteria <plan> <group, or * for all>: the criterion IDs of the group's tasks, one per line.
+layer_criteria() {
+  [ -f "$1" ] || return 0
+  awk -F '|' -v want="$2" '
+    function trim(v) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); return v }
+    { sub(/\r$/, "") }
+    /^## / { inside = ($0 == "## Tasks"); next }
+    inside && /^\|/ {
+      if (!head) { for (i = 2; i < NF; i++) { h = tolower(trim($i)); if (h == "criteria") cc = i; if (h == "group") cg = i }; head = 1; next }
+      if ($0 ~ /^\|[[:space:]:|-]*$/ || !cc) next
+      if (want != "*" && (!cg || trim($cg) != want)) next
+      s = $cc
+      while (match(s, /[A-Z][A-Z0-9]*-AC[0-9]+/)) { id = substr(s, RSTART, RLENGTH); if (!(id in seen)) { seen[id] = 1; print id }; s = substr(s, RSTART + RLENGTH) }
+    }' "$1"
+}
+
+bodies() {
+  sdir=.work/$branch/stack
+  _repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || { echo "stack: gh repo view failed." >&2; return 1; }
+  _key=$(printf '%s' "$branch" | tr -c 'A-Za-z0-9._-' '-')
+  _head=$(git rev-parse HEAD)
+  _pack=${EVIDENCE_DIR:-.work/$branch/evidence}
+  _mutation=$(head -n 1 "$sdir/mutation.txt" 2>/dev/null)
+  chain >"$tmp/chain"
+  while IFS="$tab" read -r _layer _commit _group; do
+    _feature=$_layer
+    case $_layer in *-g"$_group") _feature=${_layer%-g"$_group"} ;; esac
+    _which=$_group
+    [ "$(grep -c . ".work/$_feature/layers.tsv" 2>/dev/null)" -gt 1 ] || _which='*'
+    # shellcheck disable=SC2046
+    .claude/bin/evidence shots-md --repo "$_repo" --key "$_key" --head "$_head" --dir "$_pack" \
+      $(layer_criteria ".work/$_feature.md" "$_which") >"$tmp/shots" 2>/dev/null
+    # A layer without criteria gets no screenshots: shots-md without IDs would list them all.
+    [ -n "$(layer_criteria ".work/$_feature.md" "$_which")" ] || : >"$tmp/shots"
+    {
+      echo "<!-- kit-stage -->"
+      echo "## Stack stage"
+      echo
+      if [ -s "$tmp/shots" ]; then echo "### Screenshots"; echo; cat "$tmp/shots"; fi
+      echo "**Mutation:** ${_mutation:-no result}"
+      echo "<!-- /kit-stage -->"
+    } >"$tmp/block"
+    gh pr view "$_layer" --json body --jq .body 2>/dev/null |
+      awk '/^<!-- kit-stage -->$/ { skip = 1; next } /^<!-- \/kit-stage -->$/ { skip = 0; next } !skip' >"$tmp/body"
+    printf '\n' >>"$tmp/body"
+    cat "$tmp/block" >>"$tmp/body"
+    gh pr edit "$_layer" --body-file "$tmp/body" >/dev/null || { echo "stack: could not update the pull request of $_layer." >&2; return 1; }
+    echo "stack: $_layer: $(grep -c '^\*\*' "$tmp/shots" 2>/dev/null) screenshots, mutation: ${_mutation:-no result}"
+  done <"$tmp/chain"
+}
+
 case ${1:-} in
   layers) layers ;;
   chain) chain ;;
   submit) submit ;;
-  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  checks) shift; checks "$@" ;;
+  bodies) bodies ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

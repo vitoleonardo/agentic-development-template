@@ -14,6 +14,14 @@
 #                                              <layer>/<sha>/ whose evidence.json names that sha and the top
 #   .claude/bin/evidence ci-check --head SHA --key KEY...   CI: the pushed pack exists for SHA and names it
 #   .claude/bin/evidence comment --dir DIR --repo OWNER/NAME --key KEY   print the PR comment for a pack
+#   .claude/bin/evidence stage-e2e --dir DIR [--tests 'files']   the stack stage's e2e run: seed, the selected e2e
+#                                              tests (or only the given files) with their screenshots in DIR
+#   .claude/bin/evidence stage-results --dir DIR   the stage's e2e results and screenshots into the pack
+#   .claude/bin/evidence mutation-scope        the changed line ranges of source files, "<file>:<start>-<end>"
+#   .claude/bin/evidence mutation --dir DIR    KIT_MUTATION on those ranges; score, survivors and mutation.tsv in DIR
+#   .claude/bin/evidence stage-status --dir DIR --repo O/N --url URL --e2e R --mutation R SHA...   post the
+#                                              statuses kit/e2e and kit/mutation on every layer head
+#   .claude/bin/evidence shots-md --repo O/N --key KEY --head SHA [--dir DIR] [ID...]   the screenshots as markdown
 #   .claude/bin/evidence size                  print the changed lines of the largest stacked layer and the size limit,
 #                                              then that layer and its group when the feature has several layers
 # The pack lives in .work/<branch>/evidence/ (EVIDENCE_DIR overrides it). See docs/SPEC-v1.1.md, section 4.
@@ -404,9 +412,18 @@ matrix() {
   file=$dir/edge-cases.md
   [ -f "$file" ] || { echo "evidence: $file is missing; write the matrix first." >&2; return 2; }
   [ -s "$dir/tests.tsv" ] || { echo "evidence: no test results in $dir/tests.tsv; run 'evidence gates' first." >&2; return 2; }
-  awk -F '|' -v results="$dir/tests.tsv" '
+  # An e2e test that has not run yet waits for the stack stage, which runs the matrix again with its results.
+  : >"$tmp/e2e-corpus"
+  if stage_on && ! grep -q "${tab}e2e\$" "$dir/tests.tsv"; then
+    e2e_patterns=$(conf_value . KIT_E2E_PATTERNS)
+    e2e_files | while IFS= read -r f; do cat "$f"; done >"$tmp/e2e-corpus"
+  fi
+  awk -F '|' -v results="$dir/tests.tsv" -v corpus="$tmp/e2e-corpus" '
     function trim(s) { gsub(/^[[:space:]`]+|[[:space:]`]+$/, "", s); return s }
-    BEGIN { while ((getline line < results) > 0) { n = split(line, f, "\t"); status[f[1]] = f[2] } }
+    BEGIN {
+      while ((getline line < results) > 0) { n = split(line, f, "\t"); status[f[1]] = f[2] }
+      while ((getline line < corpus) > 0) e2e_text = e2e_text "\n" line
+    }
     /^\|/ && NF >= 7 {
       c = trim($2); kase = trim($3); test = trim($6)
       if (c == "Criterion" || c ~ /^-+$/) next
@@ -415,7 +432,8 @@ matrix() {
       else {
         r = "fail: no test named like this ran"
         for (id in status) if (index(id, test) > 0) { r = status[id] == "pass" ? "pass" : "fail: " status[id]; if (status[id] == "pass") break }
-        if (r != "pass") bad = 1
+        if (r == "fail: no test named like this ran" && e2e_text != "" && index(e2e_text, test) > 0) r = "deferred: stack stage"
+        else if (r != "pass") bad = 1
       }
       printf "%s\t%s\t%s\t%s\n", c, kase, test, r
     }
@@ -640,6 +658,14 @@ run_resources() {
   export KIT_RUN_DB KIT_RUN_REDIS_DB KIT_RUN_PORT
 }
 
+# stage_on: the seed and the e2e tests wait for the stack stage (KIT_STACK_CHECKS ci or local, the default ci), unless
+# this is the stage's own run or the whole suite after a merge (--all).
+stage_on() {
+  [ -z "${KIT_STAGE_RUN:-}" ] || return 1
+  case $(conf_value . KIT_STACK_CHECKS) in off) return 1 ;; esac
+  return 0
+}
+
 data() {
   run_resources
   mkdir -p "$dir"
@@ -649,10 +675,26 @@ data() {
   status=0
   seed=$(conf_value . KIT_SEED)
   e2e=$(conf_value . KIT_E2E)
+  if [ "${1:-}" != --all ] && stage_on; then
+    case $seed in '' | n/a:*) ;; *) seed="n/a: deferred: stack stage" ;; esac
+    case $e2e in '' | n/a:*) ;; *) e2e="n/a: deferred: stack stage" ;; esac
+  fi
   case $e2e in '' | n/a:*) ;; *) e2e=$(e2e_command KIT_E2E KIT_E2E_RELATED "${1:-}") ;; esac
+  if [ "${KIT_STAGE_TESTS:-}" = - ]; then
+    case $seed in '' | n/a:*) ;; *) seed="n/a: the e2e tests passed in the previous stack run" ;; esac
+    case $e2e in '' | n/a:*) ;; *) e2e="n/a: passed in the previous stack run" ;; esac
+  fi
+  [ -z "${KIT_STAGE_TESTS:-}" ] || [ "$KIT_STAGE_TESTS" = - ] || case $e2e in '' | n/a:*) ;; *)
+    # shellcheck disable=SC2086
+    printf '%s\n' $KIT_STAGE_TESTS >"$tmp/selected-files"
+    printf 'related: %s red e2e test files rerun\n' "$(grep -c . "$tmp/selected-files")" >"$tmp/selection"
+    e2e="$(conf_value . KIT_E2E_RELATED) $(quoted "$tmp/selected-files")" ;;
+  esac
   mocked=$(conf_value . KIT_TEST_MOCKED)
+  [ -z "${KIT_STAGE_RUN:-}" ] || mocked=""
   for pair in "seed:$seed" "e2e:$e2e" "mocked:$mocked"; do
     name=${pair%%:*} cmd=${pair#*:}
+    [ -n "${KIT_STAGE_RUN:-}" ] && [ "$name" = mocked ] && continue
     case $cmd in
       '') printf '%s\tnot configured\t0\t\n' "$name" >>"$dir/data-runs.tsv"; printf '| %s | not configured | – | – | – |\n' "$name" >>"$tmp/data-table" ;;
       n/a:*) printf '%s\tn/a\t0\t%s\n' "$name" "$cmd" >>"$dir/data-runs.tsv"; printf '| %s | %s | – | – | – |\n' "$name" "$cmd" >>"$tmp/data-table" ;;
@@ -707,6 +749,13 @@ screenshots() {
   for arg; do
     case $arg in --no-base) with_base=0 ;; --all) all=--all ;; esac
   done
+  # With a stack stage, the screenshots come from its e2e run (specs/stack-stage.md).
+  if [ -z "$all" ] && stage_on; then
+    mkdir -p "$dir"
+    echo "screenshots: deferred: stack stage"
+    printf 'deferred: stack stage\n' >"$dir/screenshots.txt"
+    return 0
+  fi
   cmd=$(conf_value . KIT_SCREENSHOTS)
   case $cmd in '' | n/a:*) ;; *) cmd=$(e2e_command KIT_SCREENSHOTS KIT_SCREENSHOTS_RELATED "$all") ;; esac
   case $cmd in
@@ -834,6 +883,178 @@ json() {
   fi
 }
 
+# --- the stack stage (specs/stack-stage.md) -------------------------------------
+
+# stage_e2e --dir DIR [--tests "files"]: the seed and the selected e2e tests, against KIT_BASE, with the screenshots
+# the tests write into DIR/screenshots; data-runs.tsv, the e2e JUnit report and red.txt (failed files) go to DIR.
+stage_e2e() {
+  stage_dir="" stage_tests=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --dir) stage_dir=$2; shift 2 ;;
+      --tests) stage_tests=$2; shift 2 ;;
+      *) echo "evidence stage-e2e: unknown option $1" >&2; return 2 ;;
+    esac
+  done
+  [ -n "$stage_dir" ] || { echo "usage: evidence stage-e2e --dir DIR [--tests 'files']" >&2; return 2; }
+  mkdir -p "$stage_dir/screenshots"
+  dir=$(CDPATH='' cd -- "$stage_dir" && pwd)
+  KIT_SCREENSHOT_DIR=$dir/screenshots KIT_SCREENSHOT_SUFFIX="" KIT_STAGE_RUN=1 KIT_STAGE_TESTS=$stage_tests
+  export KIT_SCREENSHOT_DIR KIT_SCREENSHOT_SUFFIX KIT_STAGE_RUN KIT_STAGE_TESTS
+  : >"$dir/tests.tsv"
+  data
+  code=$?
+  [ ! -f "$tmp/selection" ] || head -n 1 "$tmp/selection" >"$dir/selection.txt"
+  : >"$dir/red.txt"
+  for pkg in $(packages); do
+    report=$(conf_value "$pkg" KIT_E2E_REPORT)
+    [ -n "$report" ] && [ -f "$pkg/$report" ] || continue
+    cp "$pkg/$report" "$dir/e2e-junit.xml"
+    # The files of failed test cases: Playwright writes the file as the classname.
+    .claude/bin/baseline junit "$pkg/$report" | awk -F '\t' '$2 == "fail" { split($1, id, "::"); print id[1] }' | sort -u >>"$dir/red.txt"
+  done
+  [ "$code" -eq 0 ] || [ -s "$dir/red.txt" ] || echo "evidence: the e2e run failed and its report names no failed test; see $dir/data-runs.md" >&2
+  return "$code"
+}
+
+# stage_results --dir DIR: the stage's e2e results replace the e2e rows of the pack's tests.tsv, and its screenshots
+# join the pack's, so the matrix and the pack describe the stage's run.
+stage_results() {
+  [ "${1:-}" = --dir ] && [ -n "${2:-}" ] || { echo "usage: evidence stage-results --dir DIR" >&2; return 2; }
+  sdir=$2
+  mkdir -p "$dir/screenshots"
+  [ -f "$dir/tests.tsv" ] || : >"$dir/tests.tsv"
+  grep -v "${tab}e2e\$" "$dir/tests.tsv" >"$tmp/tests"
+  [ ! -f "$sdir/tests.tsv" ] || grep "${tab}e2e\$" "$sdir/tests.tsv" >>"$tmp/tests"
+  cp "$tmp/tests" "$dir/tests.tsv"
+  copied=0
+  if [ -d "$sdir/screenshots" ]; then
+    for shot in "$sdir"/screenshots/*.png; do
+      [ -f "$shot" ] || continue
+      cp "$shot" "$dir/screenshots/"
+      copied=$((copied + 1))
+    done
+  fi
+  [ ! -f "$sdir/data-runs.tsv" ] || cp "$sdir/data-runs.tsv" "$dir/stage-runs.tsv"
+  [ ! -f "$sdir/mutation.txt" ] || cp "$sdir/mutation.txt" "$dir/mutation.txt"
+  echo "evidence: the stage's e2e results and $copied screenshots are in $dir"
+}
+
+# mutation_ranges: "<file> TAB <start> TAB <end>" for each block of added or changed lines in source files since the
+# merge base, without tests and protected paths.
+mutation_ranges() {
+  patterns=$(conf_value . KIT_SOURCE_PATTERNS)
+  diff_all -U0 | awk '
+    /^\+\+\+ / { f = substr($0, 7); if (f == "/dev/null" || f == "ev/null") f = ""; next }
+    /^@@ / && f != "" {
+      h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/ @@.*/, "", h)
+      n = split(h, p, ","); start = p[1] + 0; count = (n > 1) ? p[2] + 0 : 1
+      if (count > 0) printf "%s\t%d\t%d\n", f, start, start + count - 1
+    }' | while IFS="$tab" read -r f start end; do
+    matches_any "$f" "$(test_patterns "$(package_of "$f")")" && continue
+    if [ -n "$patterns" ] && ! matches_any "$f" "$patterns"; then continue; fi
+    printf '%s\t%s\t%s\n' "$f" "$start" "$end"
+  done
+}
+
+mutation_scope() { mutation_ranges | awk -F '\t' '{ printf "%s:%s-%s\n", $1, $2, $3 }'; }
+
+# mutation --dir DIR: KIT_MUTATION with the changed ranges, comma-separated, appended; KIT_MUTATION_FILES turns its
+# report into "<file> TAB <line> TAB <mutator> TAB <status>". Only mutants on changed lines count; the rows of
+# KIT_MUTATION_EXCEPTIONS ("<file> TAB <line> TAB <mutator> TAB <reason>") do not. Writes mutation.tsv, survivors.tsv
+# and mutation.txt ("score <n> threshold <t> killed <k> survived <s> mutants <m>") to DIR; exit 1 below the threshold.
+mutation() {
+  stage_dir=""
+  [ "${1:-}" = --dir ] && stage_dir=${2:-}
+  [ -n "$stage_dir" ] || { echo "usage: evidence mutation --dir DIR" >&2; return 2; }
+  mkdir -p "$stage_dir"
+  mdir=$(CDPATH='' cd -- "$stage_dir" && pwd)
+  cmd=$(conf_value . KIT_MUTATION)
+  threshold=$(conf_value . KIT_MUTATION_THRESHOLD)
+  threshold=${threshold:-60}
+  : >"$mdir/mutation.tsv"
+  : >"$mdir/survivors.tsv"
+  case $cmd in
+    '') printf 'not configured: set KIT_MUTATION in kit.conf, or n/a: <reason>\n' >"$mdir/mutation.txt"; cat "$mdir/mutation.txt"; return 1 ;;
+    n/a:*) printf '%s\n' "$cmd" >"$mdir/mutation.txt"; cat "$mdir/mutation.txt"; return 0 ;;
+  esac
+  mutation_ranges >"$tmp/ranges"
+  if [ ! -s "$tmp/ranges" ]; then
+    printf 'score 100 threshold %s killed 0 survived 0 mutants 0 (no changed source line)\n' "$threshold" >"$mdir/mutation.txt"
+    cat "$mdir/mutation.txt"
+    return 0
+  fi
+  scope=$(awk -F '\t' '{ printf "%s%s:%s-%s", (NR > 1 ? "," : ""), $1, $2, $3 }' "$tmp/ranges")
+  scope=$(printf '%s' "$scope" | sed "s/'/'\\\\''/g")
+  (sh -c "$cmd '$scope'" </dev/null) >"$mdir/mutation.log" 2>&1
+  files_cmd=$(conf_value . KIT_MUTATION_FILES)
+  [ -n "$files_cmd" ] || { echo "evidence: KIT_MUTATION_FILES is not set; it reads KIT_MUTATION's report." >&2; return 1; }
+  (sh -c "$files_cmd" </dev/null) >"$tmp/mutants" 2>>"$mdir/mutation.log" || { echo "evidence: KIT_MUTATION_FILES failed; see $mdir/mutation.log" >&2; return 1; }
+  exceptions=$(conf_value . KIT_MUTATION_EXCEPTIONS)
+  exceptions=${exceptions:-.kit/mutation-exceptions.tsv}
+  awk -F '\t' -v OFS='\t' -v ranges="$tmp/ranges" -v exceptions="$exceptions" -v survivors="$mdir/survivors.tsv" -v threshold="$threshold" '
+    BEGIN {
+      while ((getline line < ranges) > 0) { split(line, r, "\t"); n++; rf[n] = r[1]; rs[n] = r[2] + 0; re[n] = r[3] + 0 }
+      while ((getline line < exceptions) > 0) {
+        sub(/\r$/, "", line); if (line ~ /^[[:space:]]*(#|$)/) continue
+        split(line, e, "\t"); excepted[e[1] SUBSEP (e[2] + 0) SUBSEP e[3]] = 1
+      }
+    }
+    function changed(file, line,    i) { for (i = 1; i <= n; i++) if (rf[i] == file && line >= rs[i] && line <= re[i]) return 1; return 0 }
+    {
+      file = $1; line = $2 + 0; mutator = $3; st = $4
+      if (!changed(file, line)) next
+      if ((file SUBSEP line SUBSEP mutator) in excepted) { print file, line, mutator, st, "excepted"; next }
+      print file, line, mutator, st
+      if (st == "Killed" || st == "Timeout") killed++
+      else if (st == "Survived" || st == "NoCoverage") { survived++; print file, line, mutator, st > survivors }
+    }
+    END {
+      total = killed + survived
+      score = total ? int(killed * 100 / total) : 100
+      printf "score %d threshold %d killed %d survived %d mutants %d\n", score, threshold, killed, survived, total > "/dev/stderr"
+      exit (score < threshold)
+    }' "$tmp/mutants" >"$mdir/mutation.tsv" 2>"$mdir/mutation.txt"
+  result=$?
+  cat "$mdir/mutation.txt"
+  [ "$result" -eq 0 ] || { echo "Survivors (file, line, mutator, status):"; cat "$mdir/survivors.tsv"; }
+  return "$result"
+}
+
+# stage_status --dir DIR --repo OWNER/NAME --url URL --e2e RESULT --mutation RESULT SHA...: the statuses kit/e2e and
+# kit/mutation on every layer head. RESULT is a job result (success, failure, cancelled, skipped) or a local exit code.
+stage_status() {
+  sdir="" repo="" url="" e2e_result="" mutation_result=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --dir) sdir=$2; shift 2 ;;
+      --repo) repo=$2; shift 2 ;;
+      --url) url=$2; shift 2 ;;
+      --e2e) e2e_result=$2; shift 2 ;;
+      --mutation) mutation_result=$2; shift 2 ;;
+      --) shift; break ;;
+      -*) echo "evidence stage-status: unknown option $1" >&2; return 2 ;;
+      *) break ;;
+    esac
+  done
+  [ -n "$repo" ] && [ $# -gt 0 ] || { echo "usage: evidence stage-status --dir DIR --repo O/N --url URL --e2e R --mutation R SHA..." >&2; return 2; }
+  state_of() { case $1 in success | 0) echo success ;; *) echo failure ;; esac; }
+  e2e_state=$(state_of "$e2e_result")
+  mutation_state=$(state_of "$mutation_result")
+  e2e_desc=$(head -n 1 "$sdir/selection.txt" 2>/dev/null)
+  e2e_desc=${e2e_desc:-e2e $e2e_state}
+  [ ! -s "$sdir/red.txt" ] || e2e_desc="red: $(tr '\n' ' ' <"$sdir/red.txt")"
+  mutation_desc=$(head -n 1 "$sdir/mutation.txt" 2>/dev/null)
+  mutation_desc=${mutation_desc:-mutation $mutation_state}
+  for sha in "$@"; do
+    gh api --method POST "repos/$repo/statuses/$sha" -f state="$e2e_state" -f context=kit/e2e \
+      -f description="$(printf '%s' "$e2e_desc" | cut -c1-140)" ${url:+-f target_url="$url"} >/dev/null || return 1
+    gh api --method POST "repos/$repo/statuses/$sha" -f state="$mutation_state" -f context=kit/mutation \
+      -f description="$(printf '%s' "$mutation_desc" | cut -c1-140)" ${url:+-f target_url="$url"} >/dev/null || return 1
+  done
+  echo "kit/e2e $e2e_state, kit/mutation $mutation_state on $# layer heads"
+}
+
 # --- push to kit-evidence ------------------------------------------------------
 
 push() {
@@ -957,16 +1178,47 @@ comment() {
     echo
     echo "### Screenshots"
     echo
-    for path in "$cdir"/screenshots/*.png; do
-      f=${path##*/}
-      case $f in *.main.png) continue ;; esac
-      main=${f%.png}.main.png
-      printf '**%s**\n\n' "${f%.png}"
-      printf '![%s](https://github.com/%s/blob/kit-evidence/%s/%s/screenshots/%s?raw=true)' "$f" "$repo" "$key" "$head" "$f"
-      [ -f "$cdir/screenshots/$main" ] && printf ' ![%s](https://github.com/%s/blob/kit-evidence/%s/%s/screenshots/%s?raw=true)' "$main" "$repo" "$key" "$head" "$main"
-      printf '\n\n'
-    done
+    shots_md "$cdir" "$repo" "$key" "$head"
   fi
+}
+
+# shots_md <pack dir> <repo> <key> <head> [criterion ID...]: markdown with the pack's screenshots as images from
+# kit-evidence, each with its base image (.main.png) next to it; only those of the given criteria when IDs are given.
+shots_md() {
+  sd=$1 srepo=$2 skey=$3 shead=$4
+  shift 4
+  for path in "$sd"/screenshots/*.png; do
+    [ -f "$path" ] || continue
+    f=${path##*/}
+    case $f in *.main.png) continue ;; esac
+    if [ $# -gt 0 ]; then
+      _match=""
+      for id in "$@"; do case $f in "$id"-*) _match=1; break ;; esac; done
+      [ -n "$_match" ] || continue
+    fi
+    main=${f%.png}.main.png
+    printf '**%s**\n\n' "${f%.png}"
+    printf '![%s](https://github.com/%s/blob/kit-evidence/%s/%s/screenshots/%s?raw=true)' "$f" "$srepo" "$skey" "$shead" "$f"
+    [ -f "$sd/screenshots/$main" ] && printf ' ![%s](https://github.com/%s/blob/kit-evidence/%s/%s/screenshots/%s?raw=true)' "$main" "$srepo" "$skey" "$shead" "$main"
+    printf '\n\n'
+  done
+  return 0
+}
+
+# shots-md --repo R --key K --head H [--dir DIR] [ID...]: shots_md for the pack in DIR (default: this branch's pack).
+shots_md_command() {
+  mrepo="" mkey="" mhead="" mdir=$dir
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --repo) mrepo=$2; shift 2 ;;
+      --key) mkey=$2; shift 2 ;;
+      --head) mhead=$2; shift 2 ;;
+      --dir) mdir=$2; shift 2 ;;
+      *) break ;;
+    esac
+  done
+  [ -n "$mrepo" ] && [ -n "$mkey" ] && [ -n "$mhead" ] || { echo "usage: evidence shots-md --repo O/N --key KEY --head SHA [--dir DIR] [ID...]" >&2; return 2; }
+  shots_md "$mdir" "$mrepo" "$mkey" "$mhead" "$@"
 }
 
 command=${1:-}
@@ -986,6 +1238,12 @@ case $command in
   json) json ;;
   push) push "$@" ;;
   ci-check) ci_check "$@" ;;
+  stage-e2e) stage_e2e "$@" ;;
+  stage-results) stage_results "$@" ;;
+  shots-md) shots_md_command "$@" ;;
+  mutation-scope) mutation_scope ;;
+  mutation) mutation "$@" ;;
+  stage-status) stage_status "$@" ;;
   comment) comment "$@" ;;
   *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

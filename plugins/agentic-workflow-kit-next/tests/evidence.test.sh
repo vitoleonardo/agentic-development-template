@@ -54,6 +54,7 @@ KIT_MAX_CHANGED_LINES="20"
 KIT_SEED="echo seeding; echo 'seed: fixtures-v2'"
 KIT_E2E="echo e2e ok"
 KIT_TEST_MOCKED="n/a: the app calls no external service"
+KIT_STACK_CHECKS="off"
 EOF
 printf '{\n  "name": "shop",\n  "dependencies": {\n    "zod": "4.0.0"\n  }\n}\n' >package.json
 printf 'export const total = 0;\n' >src/total.ts
@@ -304,7 +305,7 @@ cat >bin/fake-e2e <<'EOF'
 #!/bin/sh
 printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
 [ -n "${BASE_HINT:-}" ] && printf 'env:%s\n' "$BASE_HINT" >>"$E2E_LOG"
-if [ -z "${KIT_SCREENSHOT_DIR:-}" ]; then
+if [ -z "${KIT_SCREENSHOT_DIR:-}" ] || [ -n "${KIT_STAGE_RUN:-}" ]; then
   mkdir -p .work
   failure=""
   [ -n "${E2E_FAIL:-}" ] && failure='<failure message="x"/>'
@@ -531,6 +532,112 @@ grep -q 'KIT_E2E_MAP' "$here/kit/.claude/skills/plan-feature/SKILL.md" && ok || 
 # Back to main without the map, for the sections below.
 git checkout -q main
 git reset -q --hard "$main_before_map"
+
+# --- the stack stage (specs/stack-stage.md) -------------------------------------------
+
+git checkout -q main
+main_before_stage=$(git rev-parse HEAD)
+git checkout -qb stage
+printf 'export const total = 9;\n' >src/total.ts
+printf 'test("SHOP-AC1: the total updates in the browser", () => {});\n' >>e2e/shop.spec.ts
+g commit -qam "stage change"
+sed -i 's/^KIT_STACK_CHECKS=.*/KIT_STACK_CHECKS="ci"/' .claude/kit.conf
+: >"$E2E_LOG"
+expect_code 0 "STAGE-AC2: data defers the e2e run to the stage" .claude/bin/evidence data
+grep -q "^e2e${tab}n/a${tab}0${tab}n/a: deferred: stack stage" .work/stage/evidence/data-runs.tsv && ok || fail "STAGE-AC2: the e2e row reads deferred: $(cat .work/stage/evidence/data-runs.tsv)"
+expect_code 0 "STAGE-AC1: screenshots wait for the stage" .claude/bin/evidence screenshots
+[ ! -s "$E2E_LOG" ] && ok || fail "STAGE-AC1: no e2e or screenshot command runs at verify: $(cat "$E2E_LOG")"
+.claude/bin/evidence gates >/dev/null 2>&1
+cat >.work/stage/evidence/edge-cases.md <<'EOF'
+| Criterion | Case | Input | Expected | Test | Result |
+|-----------|------|-------|----------|------|--------|
+| SHOP-AC1 | in the browser | add an item | the total updates | SHOP-AC1: the total updates in the browser | |
+EOF
+expect_code 0 "STAGE-AC43: an e2e case that has not run waits for the stage" .claude/bin/evidence matrix
+expect_out "deferred: stack stage" "STAGE-AC43: the case reads deferred"
+
+stage_dir=$work/stage-run
+expect_code 0 "the stage's e2e run passes" .claude/bin/evidence stage-e2e --dir "$stage_dir"
+[ -f "$stage_dir/screenshots/SHOP-AC1-1-desktop.png" ] && ok || fail "STAGE-AC15: the e2e run's screenshots are in the stage folder: $(ls "$stage_dir/screenshots" 2>&1)"
+[ "$(grep -c . "$E2E_LOG")" -eq 1 ] && ok || fail "STAGE-AC16: one run took the tests and the screenshots: $(cat "$E2E_LOG")"
+grep -q "^e2e${tab}pass" "$stage_dir/data-runs.tsv" && ok || fail "the stage records its e2e run: $(cat "$stage_dir/data-runs.tsv")"
+[ ! -s "$stage_dir/red.txt" ] && ok || fail "a green run has no red files: $(cat "$stage_dir/red.txt")"
+expect_code 0 "the stage's results go into the pack" .claude/bin/evidence stage-results --dir "$stage_dir"
+[ -f .work/stage/evidence/screenshots/SHOP-AC1-1-desktop.png ] && ok || fail "the screenshots join the pack"
+expect_code 0 "STAGE-AC44: with the stage's results the case passes" .claude/bin/evidence matrix
+expect_out "pass" "STAGE-AC44: the case reads pass"
+E2E_FAIL=1 expect_code 1 "a red stage run fails" .claude/bin/evidence stage-e2e --dir "$work/stage-red"
+[ "$(cat "$work/stage-red/red.txt")" = "e2e/shop.spec.ts" ] && ok || fail "STAGE-AC17: the red file is named: $(cat "$work/stage-red/red.txt" 2>&1)"
+: >"$E2E_LOG"
+expect_code 0 "STAGE-AC17: a rerun runs only the red files" .claude/bin/evidence stage-e2e --dir "$work/stage-rerun" --tests "e2e/shop.spec.ts"
+[ "$(head -n 1 "$E2E_LOG")" = "e2e/shop.spec.ts" ] && ok || fail "STAGE-AC17: KIT_E2E_RELATED gets only the red files: $(cat "$E2E_LOG")"
+
+# Mutation tests on the changed lines.
+git checkout -q main
+seq 1 20 | sed 's/^/export const m/;s/$/ = 1;/' >src/m.ts
+g add -A; g commit -qm "m"
+git checkout -qb mutate
+awk 'NR >= 10 && NR <= 14 { sub(/= 1;/, "= 2;") } { print }' src/m.ts >src/m.new && mv src/m.new src/m.ts
+printf 'it("x", () => {});\n' >>src/total.test.ts
+g commit -qam "mutate"
+out=$(.claude/bin/evidence mutation-scope 2>&1)
+[ "$out" = "src/m.ts:10-14" ] && ok || fail "STAGE-AC22: the scope is the changed lines of source files: $out"
+cat >bin/fake-mutation <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MUTATION_LOG"
+EOF
+chmod +x bin/fake-mutation
+mutants() { printf '%s\n' "$@" | tr '|' '\t' >"$work/mutants.tsv"; }
+printf 'KIT_MUTATION="%s"\nKIT_MUTATION_FILES="cat %s"\n' "'$project/bin/fake-mutation'" "'$work/mutants.tsv'" >>.claude/kit.conf
+export MUTATION_LOG="$work/mutation.log"
+mutants 'src/m.ts|10|A|Killed' 'src/m.ts|11|A|Killed' 'src/m.ts|11|B|Killed' 'src/m.ts|12|A|Killed' 'src/m.ts|12|B|Killed' \
+  'src/m.ts|13|A|Killed' 'src/m.ts|13|B|Killed' 'src/m.ts|14|A|Timeout' 'src/m.ts|14|B|Survived' 'src/m.ts|10|C|NoCoverage' 'src/m.ts|2|A|Survived'
+expect_code 0 "STAGE-AC23: 8 of 10 mutants on the changed lines pass the threshold" .claude/bin/evidence mutation --dir "$work/mut"
+[ "$(cat "$work/mut/mutation.txt")" = "score 80 threshold 60 killed 8 survived 2 mutants 10" ] && ok || fail "STAGE-AC23: the score is 80: $(cat "$work/mut/mutation.txt")"
+[ "$(cat "$MUTATION_LOG")" = "src/m.ts:10-14" ] && ok || fail "STAGE-AC22: KIT_MUTATION gets the changed ranges: $(cat "$MUTATION_LOG")"
+grep -q "^src/m.ts${tab}14${tab}B${tab}Survived" "$work/mut/survivors.tsv" && ok || fail "the survivors are listed: $(cat "$work/mut/survivors.tsv")"
+grep -q "${tab}2${tab}" "$work/mut/mutation.tsv" && fail "a mutant outside the changed lines does not count" || ok
+mutants 'src/m.ts|10|A|Killed' 'src/m.ts|10|B|Killed' 'src/m.ts|11|A|Killed' 'src/m.ts|11|B|Killed' 'src/m.ts|12|A|Killed' \
+  'src/m.ts|12|B|Survived' 'src/m.ts|13|A|Survived' 'src/m.ts|13|B|Survived' 'src/m.ts|14|A|Survived' 'src/m.ts|14|B|Survived'
+expect_code 1 "STAGE-AC25: a score of 50 fails the threshold of 60" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "Survivors" "STAGE-AC25: the survivors are printed for the test-writer"
+mkdir -p .kit
+printf '# equivalent mutants\nsrc/m.ts\t14\tA\tequivalent\nsrc/m.ts\t14\tB\tequivalent\n' >.kit/mutation-exceptions.tsv
+expect_code 0 "STAGE-AC24: listed exceptions do not count" .claude/bin/evidence mutation --dir "$work/mut"
+[ "$(cut -d' ' -f2 "$work/mut/mutation.txt")" = 62 ] && ok || fail "STAGE-AC24: the score is 62: $(cat "$work/mut/mutation.txt")"
+rm .kit/mutation-exceptions.tsv
+sed -i 's|^KIT_MUTATION=.*|KIT_MUTATION="n/a: a library without tests worth mutating"|' .claude/kit.conf
+expect_code 0 "STAGE-AC27: n/a passes" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "n/a: a library" "STAGE-AC27: with its reason"
+sed -i 's|^KIT_MUTATION=.*|KIT_MUTATION=""|' .claude/kit.conf
+expect_code 1 "STAGE-AC28: an empty KIT_MUTATION fails" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "KIT_MUTATION" "STAGE-AC28: and names it"
+git checkout -q .claude/kit.conf
+git checkout -q main
+git checkout -qb mutate-none
+printf 'it("y", () => {});\n' >>src/total.test.ts
+g commit -qam "tests only"
+printf 'KIT_MUTATION="%s"\nKIT_MUTATION_FILES="cat %s"\n' "'$project/bin/fake-mutation'" "'$work/mutants.tsv'" >>.claude/kit.conf
+expect_code 0 "STAGE-AC39: no changed source line passes" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "mutants 0" "STAGE-AC39: with no mutant"
+git checkout -q .claude/kit.conf
+
+# The statuses on every layer head.
+cat >"$work/fakebin/gh" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$GH_LOG"
+EOF
+chmod +x "$work/fakebin/gh"
+export GH_LOG="$work/gh.log"
+: >"$GH_LOG"
+printf 'score 59 threshold 60 killed 59 survived 41 mutants 100\n' >"$work/mut/mutation.txt"
+PATH=$work/fakebin:$PATH expect_code 0 "stage-status posts the statuses" .claude/bin/evidence stage-status --dir "$work/mut" --repo o/r --url https://ci/run --e2e success --mutation failure aaa111 bbb222
+grep -q "repos/o/r/statuses/aaa111 -f state=success -f context=kit/e2e" "$GH_LOG" && ok || fail "STAGE-AC10: kit/e2e success on the first layer: $(cat "$GH_LOG")"
+grep -q "repos/o/r/statuses/bbb222 -f state=success -f context=kit/e2e" "$GH_LOG" && ok || fail "STAGE-AC10: and on the second"
+grep -q "repos/o/r/statuses/bbb222 -f state=failure -f context=kit/mutation -f description=score 59 threshold 60" "$GH_LOG" && ok || fail "STAGE-AC11: kit/mutation failure with the score: $(cat "$GH_LOG")"
+rm -f "$work/fakebin/gh" bin/fake-mutation
+git checkout -q main
+git reset -q --hard "$main_before_stage"
 
 # --- red: criterion tests must fail without the change -----------------------------
 

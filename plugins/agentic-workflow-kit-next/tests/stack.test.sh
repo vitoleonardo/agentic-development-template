@@ -40,6 +40,7 @@ case "$1 $2" in
     exit 0 ;;
   "pr view")
     line=$(grep "^$3 " "$prs" 2>/dev/null) || exit 1
+    case "$*" in *body*) cat "$FAKE_BODIES/$(printf '%s' "$3" | tr '/' '_')" 2>/dev/null; exit 0 ;; esac
     printf 'https://github.com/o/r/pull/%s\n' "$(grep -n "^$3 " "$prs" | cut -d: -f1)"
     exit 0 ;;
   "pr create")
@@ -47,13 +48,29 @@ case "$1 $2" in
     while [ $# -gt 0 ]; do case $1 in --base) base=$2; shift 2 ;; --head) head=$2; shift 2 ;; *) shift ;; esac; done
     printf '%s %s\n' "$head" "$base" >>"$prs"
     exit 0 ;;
-  "pr edit") exit 0 ;;
+  "pr edit")
+    b=$3
+    shift 3
+    while [ $# -gt 0 ]; do case $1 in --body-file) cp "$2" "$FAKE_BODIES/$(printf '%s' "$b" | tr '/' '_')"; shift 2 ;; *) shift ;; esac; done
+    exit 0 ;;
+  "repo view") echo o/r; exit 0 ;;
+  "workflow view") [ -z "${FAKE_NO_WORKFLOW:-}" ]; exit ;;
+  "workflow run") exit 0 ;;
+  "run list") echo 77; exit 0 ;;
+  "run watch") exit 0 ;;
+  "run download")
+    shift 2
+    while [ $# -gt 0 ]; do case $1 in --dir) d=$2; shift 2 ;; *) shift ;; esac; done
+    cp -R "$FAKE_ARTIFACTS/." "$d/"
+    exit 0 ;;
+  "api"*) exit 0 ;;
 esac
 exit 0
 EOF
 chmod +x "$work/bin/gh"
 PATH=$work/bin:$PATH
-export PATH GH_LOG="$work/gh.log" GH_PRS="$work/prs" REMOTE_GIT="$work/remote.git"
+export PATH GH_LOG="$work/gh.log" GH_PRS="$work/prs" REMOTE_GIT="$work/remote.git" FAKE_BODIES="$work/bodies" FAKE_ARTIFACTS="$work/artifacts"
+mkdir -p "$work/bodies" "$work/artifacts"
 
 git init -q -b main
 git init -q --bare "$work/remote.git"
@@ -243,6 +260,79 @@ descriptions 20-nopack A
 out=$(.claude/bin/stack submit 2>&1)
 same "$?" 0 "STACK-AC34: submit without an evidence pack still opens the pull request"
 contains "$out" "until /verify-feature pushes it" "STACK-AC34: and says CI's evidence job fails until then"
+
+# --- the stack stage (specs/stack-stage.md) ----------------------------------------
+
+git checkout -q 12-invite
+# artifacts <e2e result> <red files> <mutation line>: what the CI run leaves for download.
+artifacts() {
+  rm -rf "$work/artifacts"
+  mkdir -p "$work/artifacts/kit-stack-e2e/screenshots" "$work/artifacts/kit-stack-mutation"
+  printf 'seed\tn/a\t0\t\ne2e\t%s\t60\trelated: 2 e2e test files\n' "$1" >"$work/artifacts/kit-stack-e2e/data-runs.tsv"
+  printf '%s' "$2" >"$work/artifacts/kit-stack-e2e/red.txt"
+  : >"$work/artifacts/kit-stack-e2e/screenshots/INVITE-AC1-form-desktop.png"
+  printf '%s\n' "$3" >"$work/artifacts/kit-stack-mutation/mutation.txt"
+}
+artifacts fail 'e2e/invite.spec.ts
+' 'score 80 threshold 60 killed 8 survived 2 mutants 10'
+: >"$GH_LOG"
+out=$(STACK_POLL_SECONDS=0 .claude/bin/stack checks 2>&1)
+same "$?" 1 "a red e2e run makes the stage red"
+contains "$(cat "$GH_LOG")" "workflow run stack-checks.yml --ref 12-invite -f base=main -f layers=$end_a $(git rev-parse HEAD)" "STAGE-AC6: one dispatch on the stack top with the base and every layer head"
+contains "$(cat "$GH_LOG")" "-f kit_run=" "STAGE-AC6: with the kit's run id"
+contains "$(cat "$GH_LOG")" "run list --workflow stack-checks.yml --branch 12-invite --event workflow_dispatch" "STAGE-AC7: the build looks for its own run"
+contains "$out" "red: e2e/invite.spec.ts" "the red test file is reported"
+[ -f .work/12-invite/stack/screenshots/INVITE-AC1-form-desktop.png ] && ok || fail "STAGE-AC9: the run's screenshots are downloaded"
+: >"$GH_LOG"
+artifacts pass '' 'score 80 threshold 60 killed 8 survived 2 mutants 10'
+STACK_POLL_SECONDS=0 .claude/bin/stack checks --tests "e2e/invite.spec.ts" >"$work/out" 2>&1
+same "$?" 0 "STAGE-AC18: a green rerun of the red tests makes the stage green"
+contains "$(cat "$GH_LOG")" "-f tests=e2e/invite.spec.ts" "STAGE-AC17: the rerun names only the red files"
+artifacts pass '' 'score 59 threshold 60 killed 59 survived 41 mutants 100'
+out=$(STACK_POLL_SECONDS=0 .claude/bin/stack checks 2>&1)
+same "$?" 1 "a mutation score below the threshold makes the stage red"
+contains "$out" "mutation: score 59 threshold 60" "the score is reported"
+out=$(FAKE_NO_WORKFLOW=1 .claude/bin/stack checks 2>&1)
+same "$?" 2 "STAGE-AC40: without the workflow on the default branch the stage cannot run"
+contains "$out" "stack-checks.yml is not on the default branch" "STAGE-AC40: and says so"
+printf 'KIT_STACK_CHECKS="off"\n' >>.claude/kit.conf
+out=$(.claude/bin/stack checks 2>&1)
+same "$?" 0 "KIT_STACK_CHECKS=off has no stage"
+git checkout -q .claude/kit.conf
+
+# Locally: the e2e command and the mutation tests run in the checkout.
+cat >"$work/bin/fake-e2e" <<'EOF'
+#!/bin/sh
+printf 'local e2e %s\n' "$*" >>"$GH_LOG"
+mkdir -p .work
+printf '<testsuites><testcase classname="e2e/invite.spec.ts" name="INVITE-AC1: form"/></testsuites>\n' >.work/e2e-junit.xml
+[ -n "${KIT_SCREENSHOT_DIR:-}" ] && : >"$KIT_SCREENSHOT_DIR/INVITE-AC1-form-desktop.png"
+exit 0
+EOF
+chmod +x "$work/bin/fake-e2e"
+printf 'KIT_STACK_CHECKS="local"\nKIT_E2E="%s"\nKIT_E2E_REPORT=".work/e2e-junit.xml"\nKIT_MUTATION="n/a: no mutation tool in this fixture"\n' "'$work/bin/fake-e2e'" >>.claude/kit.conf
+: >"$GH_LOG"
+out=$(.claude/bin/stack checks 2>&1)
+same "$?" 0 "STAGE-AC13: a green local stage"
+same "$(grep -c '^local e2e' "$GH_LOG")" 1 "STAGE-AC12: the e2e command runs once in the checkout"
+lacks "$(cat "$GH_LOG")" "workflow run" "STAGE-AC12: no dispatch"
+contains "$(cat "$GH_LOG")" "statuses/$end_a -f state=success -f context=kit/e2e" "STAGE-AC13: kit/e2e on the lower layer"
+contains "$(cat "$GH_LOG")" "-f context=kit/mutation" "STAGE-AC13: and kit/mutation"
+git checkout -q .claude/kit.conf
+
+# Into the pull requests.
+mkdir -p .work/12-invite/evidence/screenshots
+: >.work/12-invite/evidence/screenshots/INVITE-AC1-form-desktop.png
+printf 'Invite (A)\n\n## What\n- layer\n' >"$work/bodies/12-invite-gA"
+artifacts pass '' 'score 80 threshold 60 killed 8 survived 2 mutants 10'
+STACK_POLL_SECONDS=0 .claude/bin/stack checks >/dev/null 2>&1
+.claude/bin/stack bodies >"$work/out" 2>&1 || fail "bodies exits 0: $(cat "$work/out")"
+contains "$(cat "$work/bodies/12-invite-gA")" "kit-evidence/12-invite/$(git rev-parse HEAD)/screenshots/INVITE-AC1-form-desktop.png" "STAGE-AC30: the layer's criterion screenshot is in its body"
+contains "$(cat "$work/bodies/12-invite-gA")" "## What" "the description itself stays"
+lacks "$(cat "$work/bodies/12-invite")" "### Screenshots" "STAGE-AC31: a layer whose criteria have no screenshot gets none"
+contains "$(cat "$work/bodies/12-invite")" "**Mutation:** score 80 threshold 60 killed 8 survived 2" "STAGE-AC33: every layer shows the mutation score"
+.claude/bin/stack bodies >/dev/null 2>&1
+same "$(grep -c '^<!-- kit-stage -->$' "$work/bodies/12-invite-gA")" 1 "STAGE-AC32: a second update keeps one stage block"
 
 # --- the skills -------------------------------------------------------------------
 

@@ -1,0 +1,133 @@
+# The stack stage (specs/stack-stage.md): the slow checks, once per stack, on its top layer, as the last check before
+# the stack merges. .claude/bin/stack checks dispatches this workflow and waits for it; nothing else starts it.
+# - e2e: the e2e tests the stack's changes select (.claude/bin/evidence e2e-select against the stack base), with the
+#   screenshots the tests write into $KIT_SCREENSHOT_DIR, or only the files in `tests` for a rerun of red tests.
+# - mutation: KIT_MUTATION on the stack's changed lines, scored against KIT_MUTATION_THRESHOLD.
+# - report: posts the statuses kit/e2e and kit/mutation on every layer head, so each pull request of the stack shows
+#   them. Make both required status checks next to "Quality gates", "Evidence" and "Risk".
+# The workflow must be on the default branch before workflow_dispatch can start it.
+name: Stack checks
+run-name: stack ${{ inputs.kit_run }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: The stack's base branch
+        type: string
+        required: true
+      layers:
+        description: Every layer head of the stack, space-separated
+        type: string
+        required: true
+      tests:
+        description: Only these e2e test files, space-separated (a rerun of red tests)
+        type: string
+        default: ''
+      kit_run:
+        description: The kit's id for this run, so the build finds it
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  statuses: write
+
+env:
+  NO_COLOR: "1"
+  KIT_BASE: origin/${{ inputs.base }}
+
+jobs:
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
+            npm install --global "pnpm@$version"
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+          if [ -f playwright.config.ts ] || [ -f playwright.config.js ]; then
+            npx --no-install playwright install --with-deps chromium
+          fi
+      - name: Seed, the selected e2e tests and their screenshots
+        env:
+          STAGE_DIR: ${{ runner.temp }}/stage
+          TESTS: ${{ inputs.tests }}
+        run: |
+          printf '%s' "$TESTS" | grep -Eq '^[A-Za-z0-9_./ -]*$' || { echo "::error::Invalid tests input"; exit 1; }
+          # shellcheck disable=SC2086
+          .claude/bin/evidence stage-e2e --dir "$STAGE_DIR" ${TESTS:+--tests "$TESTS"}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: kit-stack-e2e
+          path: ${{ runner.temp }}/stage
+
+  mutation:
+    name: mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
+            npm install --global "pnpm@$version"
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+      - name: Mutation tests on the changed lines
+        env:
+          STAGE_DIR: ${{ runner.temp }}/stage
+        run: .claude/bin/evidence mutation --dir "$STAGE_DIR"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: kit-stack-mutation
+          path: ${{ runner.temp }}/stage
+
+  report:
+    name: report
+    needs: [e2e, mutation]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          path: ${{ runner.temp }}/stage
+          merge-multiple: true
+      - name: Statuses on every layer head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          LAYERS: ${{ inputs.layers }}
+          E2E: ${{ needs.e2e.result }}
+          MUTATION: ${{ needs.mutation.result }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s' "$LAYERS" | grep -Eq '^[0-9a-f ]+$' || { echo "::error::Invalid layers input"; exit 1; }
+          # shellcheck disable=SC2086
+          .claude/bin/evidence stage-status --dir "$RUNNER_TEMP/stage" --repo "$REPO" --url "$URL" \
+            --e2e "$E2E" --mutation "$MUTATION" $LAYERS

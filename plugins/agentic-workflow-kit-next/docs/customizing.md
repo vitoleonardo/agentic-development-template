@@ -284,6 +284,32 @@ Install the extension with `gh extension install github/gh-stack` (`gh` 2.0 and 
 
 The size limit applies per layer, because a reviewer reads one layer at a time: each layer is measured against the one below, and the plan's `Approved size` lifts the limit for every layer. The build stops as soon as a layer passes it, and names the group.
 
+## The stack stage
+
+The slow checks run once per stack, on its top layer, as the last check before it merges (`specs/stack-stage.md`), not on every pull request and push. A feature's verify defers the seed, the e2e tests and the screenshots (`deferred: stack stage` in its data runs, and on e2e cases in its matrix); its pull requests' CI runs only the fast gates and the evidence check. After the last feature of a build, autopilot runs `.claude/bin/stack checks` on the top layer:
+
+- **e2e**: the tests the stack's changes select (`evidence e2e-select` against the stack's base, with the map), in one Playwright run that also takes the screenshots.
+- **mutation**: `KIT_MUTATION` on the stack's changed lines; below `KIT_MUTATION_THRESHOLD` (default 60) the stage is red.
+
+`KIT_STACK_CHECKS` says where: `ci` (the default) dispatches `.github/workflows/stack-checks.yml` on the top branch, waits for it and downloads its results; the workflow posts the statuses `kit/e2e` and `kit/mutation` on every layer head itself. `local` runs both in this checkout and posts the statuses as the build's account. `off` has no stage: verify runs the seed and the e2e tests itself, as before. `workflow_dispatch` only works once the workflow is on the default branch, so merge it there first. Make `kit/e2e` and `kit/mutation` required status checks.
+
+A red stage starts a session on the top layer (`/ship-feature --stack`): red e2e tests are classified and fixed as in verify, and surviving mutants go to the `test-writer` as a worklist. Then only the red e2e files run again (and the mutation tests), at most twice. A green stage gets its screenshots reviewed (`/ship-feature --stack review`), and `.claude/bin/stack bodies` puts each layer's criteria's screenshots and the mutation score into its pull request, between `<!-- kit-stage -->` markers. The whole suite still runs after the merge on the default branch.
+
+The e2e tests write the screenshots themselves, into `$KIT_SCREENSHOT_DIR` when it is set, named `<AC-ID>-<step>-<project>.png`. With Playwright:
+
+```ts
+import type { Page, TestInfo } from '@playwright/test';
+
+export async function shot(page: Page, testInfo: TestInfo, criterion: string, step: string) {
+  const name = `${criterion}-${step}-${testInfo.project.name}.png`;
+  const path = process.env.KIT_SCREENSHOT_DIR ? `${process.env.KIT_SCREENSHOT_DIR}/${name}` : testInfo.outputPath(name);
+  await page.screenshot({ path });
+  await testInfo.attach(`${criterion}-${step}`, { path, contentType: 'image/png' });
+}
+```
+
+Mutation tests with the TypeScript adapter use Stryker: add `@stryker-mutator/core` and `@stryker-mutator/vitest-runner` as devDependencies, and the adapter sets `KIT_MUTATION` and `KIT_MUTATION_FILES`. Only the mutants on the stack's changed lines count. An equivalent mutant (one no test can tell from the code) goes into `.kit/mutation-exceptions.tsv` as `<file> TAB <line> TAB <mutator> TAB <reason>`; a person adds it, because the build may not lower its own bar. For Java, PIT's `scmMutationCoverage` goal fits the same two commands.
+
 ## Block more commands
 
 Add stack-specific destructive commands to `KIT_DANGEROUS_PATTERNS`, one extended regex per line. The guard removes quotes before matching, so `sh -c 'prisma migrate reset'` is caught as well.
@@ -310,7 +336,7 @@ Hook scripts receive JSON on stdin. `lib.sh` has helpers to read it without `jq`
 
 ## Run only the affected e2e tests
 
-A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), `/verify-feature` and the CI `evidence` job run only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
+A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), the e2e run (the stack stage, or `/verify-feature` and the CI `evidence` job with `KIT_STACK_CHECKS="off"`) runs only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
 
 - **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), the e2e tests the map names for the changed source files (below), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
 - **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), code changed that no e2e test maps to, or the map itself changed.

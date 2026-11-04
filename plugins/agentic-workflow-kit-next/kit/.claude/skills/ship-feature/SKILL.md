@@ -13,6 +13,7 @@ Three paths, chosen by the flags:
 - **Neither flag:** you run the spec and the plan, then start the build (steps 0 to 3).
 - **`--group <id> --tasks <n,n|none> --from <commit>`:** you are one group's session: "Group session" below.
 - **`--final`:** you are the session after the last group: "Final session" below.
+- **`--stack`** or **`--stack review`:** you are a session of the stack stage, after the last feature's PR: "Stack session" below.
 
 ## Approval gates
 
@@ -96,7 +97,7 @@ Run `.claude/bin/check duplicates` and `.claude/bin/check similar` and keep thei
 
 ### Independent review
 
-Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. If the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff. Wording, a missing item, and layout that hides content are found here, not at verify. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
+Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the spec and the rules. If the diff changes UI, `KIT_SCREENSHOTS` is set and `KIT_STACK_CHECKS` is `off`, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff; with a stack stage, the screenshots come from its e2e run and are reviewed there. Wording, a missing item, and layout that hides content are found here, not at verify. The reviewer never runs on a lower tier than the highest tier an implementer used on this branch; raise it if it would. Fix every high finding through the implementer, then review again. After two review rounds with open high findings, stop and ask the user.
 
 Round 1 reviews the full diff. A later round reviews only what changed, when `.claude/bin/evidence scope <the commit the previous round reviewed>` prints `delta <range>`: give the reviewer the previous round's findings and that commit range. It checks that each finding is closed and reviews those commits and the criteria they touch. When `scope` prints `full: <reason>` (the fixes are more than 20% of the diff, or touch a file in `KIT_CONTRACT_PATTERNS`: auth, migrations, public routes), the round reviews the full diff again. Record every round under `## Rounds` in the state file: `- review <n> | <full|delta> | <commit range> | <high findings, or pass>`.
 
@@ -109,6 +110,24 @@ Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, 
 Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`, and add the line from `.claude/bin/usage line` (tokens per tier, review rounds, escalations) to the top layer's description. A feature with several groups gets one description per layer (its "Stacked layers"). The descriptions are files in `.work/`, so write them without asking; they change no commit. The run record for `/improve-kit`, if any, was committed in step 6 before the pack; do not commit anything now. Opening the pull requests is gate push; with `auto`, run `.claude/bin/stack submit` yourself: it cuts one branch per group below the top, pushes them with their evidence packs, and opens one pull request per layer, stacked. With `ask` in a final session, do not run it: write a Stops line of class `push` and end the session; the developer approves it by running `/ship-feature` in a terminal. The feature stays `in-review` until the user has checked it and marks it `done` themselves.
 
 Finally, report in at most eight lines: the branch, the commits, the review verdict, the checks, the decisions you made at `auto` gates, and anything left open. Be faithful: a skipped check or an unmet criterion is stated plainly.
+
+## Stack session
+
+The stack stage (`specs/stack-stage.md`) ran the selected e2e tests, with their screenshots, and the mutation tests once on this branch, the stack's top layer. Its results are in `.work/<branch>/stack/`: `data-runs.tsv`, `red.txt` (the red e2e files), `e2e-junit.xml`, `mutation.txt`, `survivors.tsv` and `screenshots/`. Stay on this branch: every commit goes on the top layer, also a fix for a lower layer's code, because a commit on a lower layer would rebase every layer above it. Never edit `KIT_MUTATION_EXCEPTIONS`, the e2e map or a threshold to get past the stage.
+
+**`--stack`: the stage is red.** The prompt holds its output.
+
+1. Red e2e tests: classify each failure as in "Verify failures" below and fix it as its class says: `test` through the `test-writer`, `hotfix` through the `implementer` with a red test first, `kit` and `spec` stop and ask. Commit each fix.
+2. A mutation score below the threshold: dispatch the `test-writer` (`model` from `.claude/bin/route tests`, description `stack survivors`) with `survivors.tsv` as its worklist: for each surviving mutant, a test that fails with the mutant and passes without it. A mutant no test can tell from the code (an equivalent mutant) goes into Notes with its reason, for a person to list in `KIT_MUTATION_EXCEPTIONS`. Commit the tests.
+3. The pack must describe the new top commit: run `.claude/bin/evidence gates`, `.claude/bin/evidence matrix`, `.claude/bin/evidence json` and `.claude/bin/evidence push` (gate push), as in verify's rounds.
+4. Record `- stack <n> | fix | <commit range> | <classes, or survivors>` under Rounds and end the session. The build runs only the red e2e tests again, and the mutation tests.
+
+**`--stack review`: the stage is green.**
+
+1. Run `.claude/bin/evidence stage-results --dir .work/<branch>/stack`, then `.claude/bin/evidence matrix`: every e2e case of every feature in the stack now has its result. A failed case is a finding.
+2. Dispatch the `reviewer` (description `review screenshots`, `model` from `.claude/bin/route review`) with the specs of the stack's features, the screenshot folder `.work/<branch>/evidence/screenshots/` and the instruction to check them as its agent file describes. Save its report to `.work/<branch>/stack/screenshots-review.md`.
+3. No high finding: run `.claude/bin/evidence json` and `.claude/bin/evidence push` (gate push), so the screenshots are on `kit-evidence` for the pull requests, and record `- stack review <n> | full | <head> | pass`. The build then puts each layer's screenshots and the mutation score into its pull request (`.claude/bin/stack bodies`).
+4. A high finding: fix it as a `hotfix` on this branch, run step 3 of `--stack` for the pack, and record `- stack review <n> | full | <head> | <n> high open`. The build runs the stage again.
 
 ## When something does not work
 
