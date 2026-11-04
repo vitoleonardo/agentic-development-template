@@ -133,8 +133,7 @@ rank_diff() {
   # shellcheck disable=SC2086
   git diff --name-only "$1" "$2" -- . $_excludes >"$tmp/files" 2>/dev/null || { echo "risk: cannot diff $1..$2" >&2; return 2; }
   # shellcheck disable=SC2086
-  _lines=$(git diff --numstat "$1" "$2" -- . $_excludes 2>/dev/null | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
-    t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  _lines=$(git diff --numstat "$1" "$2" -- . $_excludes 2>/dev/null | numstat_total)
   files_check "$tmp/files"
   lines_check "$_lines"
   areas_check "$tmp/files"

@@ -87,12 +87,6 @@ check_gate() {
   esac
 }
 
-# numstat_total: the changed lines of a --numstat diff on stdin, without lockfiles and snapshots.
-numstat_total() {
-  awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
-    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }'
-}
-
 # size_numbers: sets $max, $approved (the plan's "Approved size: <n> lines", if it has one), $layer_count and, per
 # stacked layer (features.sh feature_layers), "<layer> TAB <changed lines>" in $tmp/layer-sizes. A layer is measured
 # against the layer below; the top one includes uncommitted and untracked files. $changed and $largest are the
@@ -804,10 +798,9 @@ scope() {
     echo "full: $contract is a contract file (KIT_CONTRACT_PATTERNS)"
     return 0
   fi
-  lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$'
-  total=$(diff_all --numstat | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  total=$(diff_all --numstat | numstat_total)
   # shellcheck disable=SC2046
-  fixes=$(git diff --numstat "$since" -- . $(excludes) | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
+  fixes=$(git diff --numstat "$since" -- . $(excludes) | numstat_total)
   pct=$(awk -v f="$fixes" -v t="$total" 'BEGIN { print (t == 0 ? 0 : int(f * 100 / t)) }')
   if [ "$pct" -gt 20 ]; then
     echo "full: the fixes are $pct% of the diff, more than 20%"

@@ -126,6 +126,8 @@ flat=$(printf '%s' "$cmd" | tr "\"'\`" '   ')
 # print file contents must exclude every protected path.
 if [ -n "$protected" ]; then
   named=$(printf '%s' "$flat" | sed -E 's/:(\([^)]*exclude[^)]*\)|!|\^)[^[:space:]]*//g')
+  # The kit's own data-run step names a subcommand, not a path, even when a project protects `data`.
+  named=$(printf '%s' "$named" | sed -E 's#(^|[[:space:];&|(])(\./)?\.claude/bin/evidence data([[:space:];&|)]|$)#\1\3#g')
   missing=""
   for p in $protected; do
     p=${p%/}

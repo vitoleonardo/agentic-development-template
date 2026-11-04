@@ -78,6 +78,10 @@ change big src/app/big.ts 150
 rank diff
 contains "$out" "150 changed lines, over KIT_MAX_CHANGED_LINES (100)" "RISK-AC10: the changed lines and the limit"
 
+change snapshots drizzle/meta/0001_snapshot.json 150
+rank diff
+same "$(first)" "risk 0 low" "drizzle's generated migration snapshots do not count toward the changed lines"
+
 git checkout -q main
 git checkout -qb deps
 printf '{\n  "dependencies": { "zod": "4.0.0" }\n}\n' >package.json
