@@ -101,6 +101,7 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Baseline | `.claude/bin/baseline`, `.claude/baseline.tsv` | `check --against-baseline` blocks only new failures: tests by ID, lint and type errors per file, coverage. `/onboard` records it for existing repositories |
 | Structure | `.claude/bin/structure`, `.claude/rules/structure.md` | Hard gate: every new source file sits in a home of the Map, and no file is named `utils`, `helpers`, `common` or `misc`. `/onboard` writes the Map from the repository |
 | Spec lint | `.claude/bin/spec-lint` | Hard gate for acceptance criteria: IDs, Given/when/then, one result per criterion, no vague words, required sections, no open questions once approved |
+| Plan lint | `.claude/bin/plan-lint` | Hard gate for the plan: every criterion in a task, no unknown IDs, named test cases, a reason per raised tier, dependency order, new files in the Map, no placeholder left |
 | CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, duplicates, structure, diff size warning, all against the baseline |
 | MCP example | `.mcp.example.json` | GitHub (read-only tools) and a database through a read-only user. Not active until you rename it |
 | Demo | `examples/demo-app/` | A small Next.js 16 app with a spec and tests to try everything on |

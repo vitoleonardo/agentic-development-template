@@ -113,6 +113,12 @@ A test that passes without the change proves nothing. `/verify-feature`'s red ga
 
 For now the gate only warns, so existing projects do not break; `/improve-kit` decides when it becomes a failure. A criterion that cannot fail on the base (a guard that already held, a refactor with the same behaviour) goes under `## Red exceptions` in `.work/<branch>.md` as `- <test title> | <reason>`. Without `KIT_SETUP` the base has no dependencies installed and every test fails there, so the gate proves nothing: set `KIT_SETUP` to the install command.
 
+## Lint the plan
+
+`/plan-feature` runs `.claude/bin/plan-lint .work/<branch>.md` before it asks for approval and fixes every finding first; `/fix-bug` does the same for a fix plan. The script reads the plan's title (`# Plan: <feature> (spec: specs/<feature>.md)`, or `# Plan: <slug> (fix)`), the spec and the `## Tasks` table, and prints one `<plan>:<line>: <message>` per problem. Exit codes: 0 pass, 1 findings, 2 no plan.
+
+It finds: a criterion without a task, or a task naming an ID the spec does not have (a `## Criteria` section in the plan replaces the spec's set, as in a fix); a fix criterion that does not read like a spec's, or whose prefix a spec owns; an empty Files cell or one still holding `<paths>`; test cases that are only `add tests`; a dependency on a later task; a tier that is not `fast`, `standard` or `deep`, or a raised tier without its `Task <n> <tier>: <reason>` line (the default tier is `.claude/bin/route tier implement`); a new file outside the Map, through `.claude/bin/structure` (without a Map it says so on stderr and checks no path); a Design line still holding its placeholder, or no `Side effects`, `Reused` or `Approved dependencies` line; a Progress section that does not list every task once. `Base:` is never checked; `/ship-feature` fills it.
+
 ## Route models by task
 
 Dispatched agents run on a tier, and `.claude/kit.conf` maps tiers to models:

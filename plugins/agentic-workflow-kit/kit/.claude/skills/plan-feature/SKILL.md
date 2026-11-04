@@ -70,7 +70,7 @@ Rules for the plan:
 - The design covers every criterion; it introduces nothing the spec does not ask for.
 - Every criterion appears in at least one task. List the coverage; if a criterion has no task, the plan is not done.
 - Every write and external call the feature adds is listed under Side effects. A write that must wait for a permission check or the final outcome says so, and a blocking call says where it runs instead of the request or event loop.
-- Every file in the Files column sits in its kind's home in `.claude/rules/structure.md`. Run `.claude/bin/structure <every new file the plan names>`; a failure means a different path, or a new home under Decisions whose task adds it to the Map.
+- Every file in the Files column sits in its kind's home in `.claude/rules/structure.md`. Run `.claude/bin/structure <every new file the plan names>`; a failure means a different path, or a new home under Decisions whose task adds it to the Map. Paths are relative to the root, also in a monorepo.
 - `Reused` names what you searched for, also when nothing fit (`searched src/lib for money formatting: none`).
 - Each task is one concern and fits a fresh context: at most about five files. Split anything bigger.
 - Each task is worth a fresh context. Fold a pure rename or a one-line change into the task whose files it touches.
@@ -78,7 +78,11 @@ Rules for the plan:
 - Order the tasks so nothing is built before what it depends on. Tasks run one after another, in this order.
 - Tier: the model tier the implementer runs on. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
 
-## 3. Ask for approval
+## 3. Check it
+
+Run `.claude/bin/plan-lint .work/<branch>.md` and fix every finding: a criterion without a task, an ID the spec does not have, test cases not named, a tier without its reason line, a dependency on a later task, a new file outside the Map, a Design line still holding its placeholder. Delete a Design line that does not apply (`Contract` without a contract) instead of leaving its placeholder. This is a hard gate: never ask for approval while it fails.
+
+## 4. Ask for approval
 
 Summarise: the design decisions, the tasks, the files touched, the risks, the human-only steps, and an estimate of the changed lines. If the estimate is over 400 lines, propose how to split it into several PRs.
 

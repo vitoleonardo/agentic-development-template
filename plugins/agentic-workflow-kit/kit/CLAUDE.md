@@ -18,7 +18,7 @@ Rules in `.claude/rules/` load automatically. Stack rules from the adapter load 
 Every feature goes through the same steps. Each step leaves a file behind, so a new session can pick up without the chat history.
 
 1. **Spec** (`/spec-feature`): `specs/<feature>.md` holds the user flow and what "done" means as numbered acceptance criteria (`<FEATURE>-AC<n>`). One feature, one spec; extend it instead of creating a second one. `.claude/bin/spec-lint` must pass, then it is approved (gate spec).
-2. **Plan** (`/plan-feature`): the technical design (data, contract, permissions, decisions), then tasks with files, tests and the criteria each covers. It is approved (gate plan) before any code is written.
+2. **Plan** (`/plan-feature`): the technical design (data, contract, permissions, decisions), then tasks with files, tests and the criteria each covers. `.claude/bin/plan-lint` must pass, then it is approved (gate plan) before any code is written.
 3. **Build**: implement against the plan. Every criterion gets a test that failed before the code made it pass. Progress and evidence go to `.work/<branch>.md`.
 4. **Simplify**: a fresh subagent removes duplication, dead code and needless abstraction in the changed code, without changing behaviour.
 5. **Review** (`/review-diff`): an independent reviewer that did not write the code checks the diff against the spec and these rules.

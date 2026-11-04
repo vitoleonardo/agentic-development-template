@@ -221,5 +221,13 @@ same "$code" 2 "PLANLINT-AC34 no plan: exit 2"
 same "$out" "plan-lint: no plan at .work/12-invite.md" "PLANLINT-AC34 no plan: the message"
 expect fail "PLANLINT-AC35 a fix plan without criteria" "$(replace "$fixgood" '/^## Criteria$/,/^$/d' 's/| LOGINFIX-AC1 |/| – |/')" "## Criteria"
 
+# --- wiring -----------------------------------------------------------------------------
+
+skill=.claude/skills/plan-feature/SKILL.md
+lint_line=$(grep -n 'plan-lint' "$skill" | head -n 1 | cut -d: -f1)
+gate_line=$(grep -n 'gate plan' "$skill" | head -n 1 | cut -d: -f1)
+if [ -n "$lint_line" ] && [ -n "$gate_line" ] && [ "$lint_line" -lt "$gate_line" ]; then ok; else fail "PLANLINT-AC32 /plan-feature runs plan-lint (line ${lint_line:-none}) before gate plan (line ${gate_line:-none})"; fi
+if grep -qF '"Bash(.claude/bin/plan-lint *)"' .claude/settings.json; then ok; else fail "PLANLINT-AC33 settings.json allows plan-lint"; fi
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
