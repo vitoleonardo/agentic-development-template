@@ -359,7 +359,7 @@ same "$(jx 'd["autopilot"]')" "null" "COCKPIT-AC42: no run log is null"
 
 run_log
 ap
-same "$(jx 'd["autopilot"]')" '{"active": false, "current": null, "features": [{"feature": "a", "branch": "a-branch", "result": "in-review"}]}' "COCKPIT-AC40: a run log without a transcript is not active"
+same "$(jx 'd["autopilot"]')" '{"active": false, "running": false, "stop_requested": false, "current": null, "features": [{"feature": "a", "branch": "a-branch", "result": "in-review"}], "sessions": [], "messages": [], "resume": null}' "COCKPIT-AC40: a run log without a transcript is not active"
 
 transcript b-build 5
 ap
@@ -459,6 +459,63 @@ cp "$autopilot_dir/run-$run.md" "$autopilot_dir/run-20260202-100000.md"
 printf '\nStopped at a: old\n' >"$autopilot_dir/run-20250101-100000.md"
 ap
 same "$(jx 'd["autopilot"]["features"][0]["feature"]')" '"a"' "COCKPIT-AC19: the newest run log by name is used"
+
+rm -rf "$autopilot_dir"
+run_log
+sh -c 'sleep 60; :' autopilot-holder &
+holder=$!
+printf '%s %s\n' "$holder" "$run" >"$autopilot_dir/lock"
+ap
+same "$(jx '[d["autopilot"]["running"], d["autopilot"]["active"], d["autopilot"]["stop_requested"]]')" "[true, true, false]" "STEER-AC20: a live lock is running and active"
+: >"$autopilot_dir/stop"
+ap
+same "$(jx 'd["autopilot"]["stop_requested"]')" "true" "STEER-AC21: a requested stop is shown"
+kill "$holder"
+wait "$holder" 2>/dev/null
+ap
+same "$(jx '[d["autopilot"]["running"], d["autopilot"]["stop_requested"]]')" "[false, false]" "STEER-AC20: a dead lock is not running"
+sleep 60 &
+reused=$!
+printf '%s %s\n' "$reused" "$run" >"$autopilot_dir/lock"
+ap
+same "$(jx 'd["autopilot"]["running"]')" "false" "STEER-AC20: a lock whose process is no autopilot is not running"
+kill "$reused"
+wait "$reused" 2>/dev/null
+rm -f "$autopilot_dir/lock" "$autopilot_dir/stop"
+ap
+same "$(jx 'd["autopilot"]["running"]')" "false" "STEER-AC20: no lock is not running"
+
+mkdir -p "$autopilot_dir/steer/delivered"
+printf 'keep the "CSV" columns\n' >"$autopilot_dir/steer/delivered/$run-1793600000-0001.md"
+printf 'skip dark mode\n' >"$autopilot_dir/steer/$run-1793600009-0002.md"
+printf 'from another run\n' >"$autopilot_dir/steer/20251231-090000-1793500000-0001.md"
+ap
+same "$(jx 'd["autopilot"]["messages"]')" '[{"text": "keep the \"CSV\" columns", "delivered": true}, {"text": "skip dark mode", "delivered": false}]' "STEER-AC22: the run's messages, oldest first, delivered or not"
+
+transcript a-plan 40
+transcript a-build 30
+transcript a-build-restart-1 20
+transcript a-answer-1 10
+transcript a-build-wait-1 5
+rm -f "$autopilot_dir/$run-a-build-wait-1.jsonl"
+: >"$autopilot_dir/20251231-090000-a-plan.jsonl"
+ap
+same "$(jx '[[s["feature"], s["phase"], s["kind"]] for s in d["autopilot"]["sessions"]]')" '[["a", "plan", "session"], ["a", "build", "session"], ["a", "build", "restart"], ["a", "answer", "answer"]]' "STEER-AC23: the run's sessions, oldest first, with their kinds"
+same "$(jx 'd["autopilot"]["sessions"][0]["file"]')" "\".work/autopilot/$run-a-plan.jsonl\"" "STEER-AC23: the file is relative to the project"
+transcript a-build-2 1
+transcript a-build-wait-1 0
+ap
+same "$(jx '[s["kind"] for s in d["autopilot"]["sessions"]][-2:]')" '["resumed", "wait"]' "STEER-AC23: resumed and wait sessions"
+same "$(jx 'd["autopilot"]["resume"]')" "null" "STEER-AC24: a run without a stop has nothing to resume"
+
+cat >>"$autopilot_dir/run-$run.md" <<'EOF'
+| b | b | stopped: user | stopped by the user | s1 s3 |
+
+Stopped at b: stopped by the user
+EOF
+ap
+same "$(jx 'd["autopilot"]["resume"]')" '"s3"' "STEER-AC24: the stopped row's last session is resumed"
+rm -rf "$autopilot_dir"
 
 
 reset b1
