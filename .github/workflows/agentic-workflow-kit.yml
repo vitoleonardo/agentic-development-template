@@ -53,8 +53,10 @@ jobs:
         run: sh tests/structure.test.sh
       - name: Status
         run: sh tests/status.test.sh
+      - name: Fix bug skill
+        run: sh tests/fix-bug.test.sh
       - name: All suites under dash
-        run: for t in hooks check evidence usage leadtime runs structure autopilot status plan-lint; do dash "tests/$t.test.sh" || exit 1; done
+        run: for t in hooks check evidence usage leadtime runs structure autopilot status plan-lint fix-bug; do dash "tests/$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates

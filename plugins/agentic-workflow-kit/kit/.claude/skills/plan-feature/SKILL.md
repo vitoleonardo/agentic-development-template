@@ -12,7 +12,7 @@ Do not edit source files in this step. The only files you write are the state fi
 
 ## 1. Read
 
-- The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. For a small fix without a spec, write two or three acceptance criteria into the plan instead and have them approved with it.
+- The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. For a fix without a spec, title the plan `# Plan: <slug> (fix)` and write one to three criteria under `## Criteria` (`- **<PREFIX>-ACn**: Given …, when …, then …`, a prefix no spec uses); they are approved with the plan. `/fix-bug` does this from a bug report.
 - The code the feature touches. For a large codebase, explore the affected areas with parallel `Explore` subagents, passing `model` from `.claude/bin/route explore`, so you read their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
 
 ## 2. Write the plan

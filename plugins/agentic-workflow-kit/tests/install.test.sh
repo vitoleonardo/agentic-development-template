@@ -25,7 +25,7 @@ expect() {
 "$here/install.sh" "$full" --adapter typescript --preset nextjs >/dev/null || echo "FAIL: full install exited $?"
 "$here/install.sh" "$plugin" --adapter typescript --plugin >/dev/null || echo "FAIL: plugin install exited $?"
 
-expect "full: hooks, skills and agents installed" test -x "$full/.claude/hooks/guard" -a -f "$full/.claude/skills/ship-feature/SKILL.md" -a -f "$full/.claude/agents/reviewer.md"
+expect "full: hooks, skills and agents installed" test -x "$full/.claude/hooks/guard" -a -f "$full/.claude/skills/ship-feature/SKILL.md" -a -f "$full/.claude/skills/fix-bug/SKILL.md" -a -f "$full/.claude/agents/reviewer.md"
 expect "full: settings.json registers the hooks" grep -q '"PreToolUse"' "$full/.claude/settings.json"
 expect "full: skills use plain agent names" grep -qx 'agent: reviewer' "$full/.claude/skills/review-diff/SKILL.md"
 expect "full: no plugin-scoped agent names left" sh -c "! grep -rq 'agent: agentic-workflow-kit:' '$full/.claude/skills'"
