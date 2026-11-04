@@ -79,7 +79,7 @@ case $out in *"Run records are off"*) ok ;; *) fail "record says it is off: $out
 sed -i 's/^KIT_IMPROVE=""/KIT_IMPROVE="1"/' .claude/kit.conf
 .claude/bin/runs record >/dev/null 2>"$project/err"
 r=reports/runs/12-export.tsv
-same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400" "the run row"
+same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400	2" "the run row"
 same "$(grep -c '^stop' "$r")" 2 "one stop row per Stops line, without the template line"
 same "$(grep '^stop' "$r" | tail -n 1)" "stop${tab}task 2${tab}kit${tab}guard blocked \`npm run gen\`${tab}ran it by hand${tab}guard pattern too wide, proposed fix" "a stop row keeps its fields"
 same "$(cat "$project/err")" "" "known classes give no warning"

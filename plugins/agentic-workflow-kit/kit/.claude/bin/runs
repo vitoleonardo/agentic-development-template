@@ -5,7 +5,9 @@
 #   .claude/bin/runs record   write reports/runs/<branch>.tsv from the usage record and the state file's Stops
 #   .claude/bin/runs report   write reports/runs.md over all reports/runs/*.tsv
 # A record has kind-prefixed, TAB-separated rows:
-#   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main>
+#   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main> <dispatched>
+#        tasks: numbered items ticked under "## Progress", at least dispatched; dispatched: "task <n>" subagents.
+#   setup <text>   (one per line under "## Run setup": how this run differed from the normal flow)
 #   stop <step> <class> <trigger> <what was tried> <resolution>   (one per line under "## Stops" in .work/<branch>.md)
 #   round <review|verify> <n> <full|delta> <commit range> <result>   (one per line under "## Rounds")
 #   review <n> <tokens>   (the reviewer's tokens per review round, from .claude/bin/usage reviews)
@@ -38,14 +40,16 @@ case ${1:-} in
     feature=$(plan_feature "$state")
     usage=$(.claude/bin/usage tsv) || exit 2
     file=reports/runs/$(printf '%s' "$branch" | tr '/' '-').tsv
+    ticked=$(awk '/^## / { p = ($0 ~ /^## Progress[ \t]*$/); next } p && /^- \[[xX]\] [0-9]/ { n++ } END { print n + 0 }' "$state" 2>/dev/null)
     mkdir -p reports/runs
     {
-      printf '%s\n' "$usage" | awk -F '\t' -v d="${RUNS_TODAY:-$(date -u +%Y-%m-%d)}" -v f="${feature:-–}" -v b="$branch" \
-        '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", d, f, b, $9, $8, $7, $1, $2, $3, $4, $5 }'
+      printf '%s\n' "$usage" | awk -F '\t' -v d="${RUNS_TODAY:-$(date -u +%Y-%m-%d)}" -v f="${feature:-–}" -v b="$branch" -v ticked="${ticked:-0}" \
+        '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", d, f, b, (ticked > $9 ? ticked : $9), $8, $7, $1, $2, $3, $4, $5, $9 }'
       .claude/bin/usage reviews | sed 's/^/review	/'
       [ -f "$state" ] && awk -v classes="$classes" '
         BEGIN { n = split(classes, c, " "); for (i = 1; i <= n; i++) known[c[i]] = 1 }
-        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); next }
+        /^## / { in_stops = ($0 ~ /^## Stops[ \t]*$/); in_rounds = ($0 ~ /^## Rounds[ \t]*$/); in_setup = ($0 ~ /^## Run setup[ \t]*$/); next }
+        in_setup && /^- / { line = substr($0, 3); gsub(/\t/, " ", line); printf "setup\t%s\n", line; next }
         in_rounds && /^- / && !/^- </ {
           line = substr($0, 3); gsub(/\t/, " ", line)
           n = split(line, p, "|")
@@ -74,13 +78,13 @@ case ${1:-} in
       function p75(arr, n,    p) { sortv(arr, n); p = int(0.75 * n); if (p < 0.75 * n) p++; return arr[p] }
       $1 == "run" {
         r = ++runs; date[r] = $2; feat[r] = $3; tasks[r] = $5; esc[r] = $6; rounds[r] = $7; tok[r] = $8; mainr[r] = $12
+        disp[r] = ($13 == "" ? $5 : $13)
         stopsr[r] = 0; interv[r] = 0; cur = r
         all_tasks += $5; all_esc += $6
-        tokv[r] = $8; roundv[r] = $7; escv[r] = $6
-        if ($5 > 0) pertask[++npt] = $8 / $5
-        if ($8 > 0) share[++nsh] = $12 * 100 / $8
+        roundv[r] = $7; escv[r] = $6
         next
       }
+      $1 == "setup" { setupr[cur] = 1; setups = setups sprintf("- %s: %s\n", feat[cur], $2); next }
       $1 == "review" { if ($2 == 1) first[++nfirst] = $3; else later[++nlater] = $3; next }
       $1 == "round" && $2 == "verify" {
         if (!(cur in vrounds)) nvr++
@@ -95,13 +99,21 @@ case ${1:-} in
         list[$3] = list[$3] sprintf("- %s, %s: %s. Tried: %s. Resolution: %s.\n", feat[cur], $2, $4, ($5 == "" ? "–" : $5), ($6 == "" ? "–" : $6))
       }
       END {
+        # Token metrics compare like with like: a run with a different setup is left out, and the main-session
+        # share only means something when every task ran in a subagent.
+        for (r = 1; r <= runs; r++) {
+          if (setupr[r]) continue
+          tokv[++ntok] = tok[r]
+          if (tasks[r] > 0) pertask[++npt] = tok[r] / tasks[r]
+          if (tok[r] > 0 && disp[r] >= tasks[r]) share[++nsh] = mainr[r] * 100 / tok[r]
+        }
         print "# Runs"
         print ""
         if (runs < 5) printf "**Too few runs for reliable numbers** (%d).\n\n", runs
         printf "Runs: %d. Tasks: %d. Escalations: %d (%.0f%% of tasks).\n\n", runs, all_tasks, all_esc, (all_tasks ? all_esc * 100 / all_tasks : 0)
         print "| Metric | Median | p75 | Runs |"
         print "|--------|--------|-----|------|"
-        printf "| Tokens per run | %d | %d | %d |\n", med(tokv, runs), p75(tokv, runs), runs
+        if (ntok) printf "| Tokens per run | %d | %d | %d |\n", med(tokv, ntok), p75(tokv, ntok), ntok
         if (npt) printf "| Tokens per task | %d | %d | %d |\n", med(pertask, npt), p75(pertask, npt), npt
         if (nsh) printf "| Main-session share of tokens (%%) | %.0f | %.0f | %d |\n", med(share, nsh), p75(share, nsh), nsh
         printf "| Review rounds | %s | %s | %d |\n", med(roundv, runs), p75(roundv, runs), runs
@@ -113,10 +125,11 @@ case ${1:-} in
           printf "| Verify rounds | %s | %s | %d |\n", med(vrv, nvr), p75(vrv, nvr), nvr
         }
         print ""
-        print "| Date | Feature | Tasks | Escalations | Review rounds | Tokens | Main session | Stops | Interventions |"
-        print "|------|---------|-------|-------------|---------------|--------|--------------|-------|---------------|"
-        for (r = 1; r <= runs; r++) printf "| %s | %s | %d | %d | %d | %d | %d | %d | %d |\n", date[r], feat[r], tasks[r], esc[r], rounds[r], tok[r], mainr[r], stopsr[r], interv[r]
+        print "| Date | Feature | Tasks | Escalations | Review rounds | Tokens | Main session | Stops | Interventions | Dispatched |"
+        print "|------|---------|-------|-------------|---------------|--------|--------------|-------|---------------|------------|"
+        for (r = 1; r <= runs; r++) printf "| %s | %s | %d | %d | %d | %d | %d | %d | %d | %d |\n", date[r], feat[r], tasks[r], esc[r], rounds[r], tok[r], mainr[r], stopsr[r], interv[r], disp[r]
         print ""
+        if (setups != "") printf "Runs with a different setup, left out of the token metrics above:\n\n%s\n", setups
         if (nvr) {
           printf "Verify rounds: %d in %d runs (mean %.1f). Failed by a kit false positive: %d. Failed on the screenshot review: %d.\n\n", all_vr, nvr, all_vr / nvr, vr_kit, vr_shots
         }

@@ -236,7 +236,7 @@ gates() {
 
   max=$(conf_value . KIT_MAX_CHANGED_LINES)
   max=${max:-400}
-  changed=$(diff_all --numstat | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
+  changed=$(diff_all --numstat | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$|^drizzle\/meta\/[0-9]+_snapshot\.json$/ {
     total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
   if [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines, more than twice the limit of $max; split the change"
   elif [ "$changed" -gt "$max" ]; then gate size pass 0 "warning: $changed changed lines, above the limit of $max"
@@ -603,7 +603,7 @@ scope() {
     echo "full: $contract is a contract file (KIT_CONTRACT_PATTERNS)"
     return 0
   fi
-  lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$'
+  lockfiles='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$|^drizzle/meta/[0-9]+_snapshot\.json$'
   total=$(diff_all --numstat | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
   # shellcheck disable=SC2046
   fixes=$(git diff --numstat "$since" -- . $(excludes) | awk -v skip="$lockfiles" '$3 !~ skip { t += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print t + 0 }')
