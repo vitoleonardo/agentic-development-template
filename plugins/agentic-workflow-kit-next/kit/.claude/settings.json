@@ -13,6 +13,8 @@
       "Bash(.claude/bin/check *)",
       "Bash(.claude/bin/spec-lint *)",
       "Bash(.claude/bin/plan-lint *)",
+      "Bash(.claude/bin/stack layers)",
+      "Bash(.claude/bin/stack chain)",
       "Bash(.claude/bin/route *)",
       "Bash(.claude/bin/usage *)",
       "Bash(.claude/bin/gate *)",

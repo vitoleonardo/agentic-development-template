@@ -1,0 +1,152 @@
+#!/bin/sh
+# Stacked layers: one pull request per group of a feature, each based on the one below (specs/stacked-groups.md).
+# Usage:
+#   .claude/bin/stack layers    this feature's layers, bottom to top: "<layer branch> TAB <commit> TAB <group>"
+#   .claude/bin/stack chain     the layers of the features this one builds on, then this one's, bottom to top
+#   .claude/bin/stack submit    cut the layer branches, push them with their evidence packs, and open or update one
+#                               pull request per layer, linked as a GitHub stack (gh stack) or, without it, as a chain
+# The feature is the current branch; its plan is .work/<branch>.md. Exit codes: 0 done, 1 refused, 2 not set up.
+set -u
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
+cd "$root" || exit 2
+KIT_ROOT=$root
+export KIT_ROOT
+# shellcheck source=conf.sh
+. "$root/.claude/bin/conf.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
+
+tab=$(printf '\t')
+branch=$(git branch --show-current 2>/dev/null)
+[ -n "$branch" ] || { echo "stack: not on a branch." >&2; exit 2; }
+state=.work/$branch.md
+[ -f "$state" ] || { echo "stack: no plan at $state." >&2; exit 2; }
+remote=${KIT_EVIDENCE_REMOTE:-origin}
+tmp=$(mktemp -d) || exit 2
+trap 'rm -rf "$tmp"' EXIT
+
+# layers: this feature's layers, bottom to top (features.sh feature_layers).
+layers() {
+  feature_layers "$branch" 2>"$tmp/notes" || return 1
+  if [ -s "$tmp/notes" ]; then sed 's/^/stack: /' "$tmp/notes" >&2; fi
+}
+
+# chain: the layers of every feature below this one, from their layers files, then this feature's.
+chain() {
+  _base=$(base_ref)
+  _seen=" $branch "
+  _below=""
+  while [ -f ".work/$_base/layers.tsv" ]; do
+    case $_seen in *" $_base "*) break ;; esac
+    _seen="$_seen$_base "
+    _below="$(cat ".work/$_base/layers.tsv")
+$_below"
+    _base=$(sed -n 's/^Base:[[:space:]]*`\{0,1\}\([^`[:space:]]*\).*/\1/p' ".work/$_base.md" 2>/dev/null | head -n 1)
+    [ -n "$_base" ] || break
+  done
+  printf '%s' "$_below" | grep .
+  layers
+}
+
+# stack_base: the base of the bottom layer of the chain.
+stack_base() {
+  _base=$(base_ref)
+  while [ -f ".work/$_base/layers.tsv" ] && [ -f ".work/$_base.md" ]; do
+    _next=$(sed -n 's/^Base:[[:space:]]*`\{0,1\}\([^`[:space:]]*\).*/\1/p' ".work/$_base.md" | head -n 1)
+    [ -n "$_next" ] && [ "$_next" != "$_base" ] || break
+    _base=$_next
+  done
+  printf '%s' "$_base"
+}
+
+# description <layer branch>: the description file of a layer.
+description() {
+  if [ "$1" = "$branch" ]; then printf '.work/%s-pr.md' "$branch"; else printf '.work/%s/pr/%s.md' "$branch" "${1##*-g}"; fi
+}
+
+has_stack() { gh extension list 2>/dev/null | grep -q 'gh-stack'; }
+
+# pr_create <layer> <base>: a plain pull request of a layer, title from its description's first line.
+pr_create() {
+  _file=$(description "$1")
+  _title=$(head -n 1 "$_file" | sed 's/^#* *//')
+  tail -n +2 "$_file" >"$tmp/body"
+  gh pr create --base "$2" --head "$1" --title "$_title" --body-file "$tmp/body" >/dev/null
+}
+
+# pr_edit <layer>: the title and body from the layer's description.
+pr_edit() {
+  _file=$(description "$1")
+  _title=$(head -n 1 "$_file" | sed 's/^#* *//')
+  tail -n +2 "$_file" >"$tmp/body"
+  gh pr edit "$1" --title "$_title" --body-file "$tmp/body" >/dev/null
+}
+
+submit() {
+  layers >"$tmp/layers" || return 1
+  # Every layer needs its description, and the pack must describe the top.
+  while IFS="$tab" read -r _layer _commit _group; do
+    [ -f "$(description "$_layer")" ] || { echo "stack: no description for $_layer at $(description "$_layer"); write it with /pr-description." >&2; return 1; }
+  done <"$tmp/layers"
+  # A layer that was pushed never moves: fixes go on the top layer.
+  git fetch -q "$remote" 2>/dev/null
+  _evidence_layers=""
+  while IFS="$tab" read -r _layer _commit _group; do
+    [ "$_layer" != "$branch" ] || continue
+    _pushed=$(git rev-parse -q --verify "refs/remotes/$remote/$_layer" 2>/dev/null)
+    if [ -n "$_pushed" ] && [ "$_pushed" != "$_commit" ]; then
+      echo "stack: $_layer was pushed at $(git rev-parse --short "$_pushed"), the plan now puts it at $(git rev-parse --short "$_commit"); a pushed layer never moves, so fixes go on the top layer." >&2
+      return 1
+    fi
+    git branch -f "$_layer" "$_commit" >/dev/null || return 1
+    _evidence_layers="$_evidence_layers --layer $_layer=$_commit"
+  done <"$tmp/layers"
+  # The packs go up before any pull request exists, so CI's evidence job finds each layer's pack when it opens.
+  if [ -f "${EVIDENCE_DIR:-.work/$branch/evidence}/evidence.json" ]; then
+    # shellcheck disable=SC2086
+    .claude/bin/evidence push $_evidence_layers || return 1
+  else
+    echo "stack: no evidence pack for $branch; the pull requests open without one, and CI's evidence job fails until /verify-feature pushes it."
+  fi
+  # shellcheck disable=SC2046
+  git push -q "$remote" $(cut -f1 "$tmp/layers") || { echo "stack: could not push the layers." >&2; return 1; }
+
+  chain >"$tmp/chain"
+  _linked=""
+  if has_stack; then
+    # shellcheck disable=SC2046
+    gh stack link --base "$(stack_base)" $(cut -f1 "$tmp/chain") >"$tmp/link" 2>&1
+    case $? in
+      0) _linked=1 ;;
+      9) echo "stack: stacked pull requests are turned off for this repository; opening the layers as a chain of pull requests." ;;
+      *) cat "$tmp/link" >&2; echo "stack: gh stack link failed." >&2; return 1 ;;
+    esac
+  else
+    echo "stack: gh stack is not installed (gh extension install github/gh-stack); opening the layers as a chain of pull requests."
+  fi
+  _below=$(base_ref)
+  while IFS="$tab" read -r _layer _commit _group; do
+    if gh pr view "$_layer" --json url >/dev/null 2>&1; then
+      pr_edit "$_layer" || return 1
+    elif [ -n "$_linked" ]; then
+      echo "stack: gh stack link opened no pull request for $_layer." >&2
+      return 1
+    else
+      pr_create "$_layer" "$_below" || return 1
+    fi
+    _below=$_layer
+  done <"$tmp/layers"
+  mkdir -p ".work/$branch"
+  cp "$tmp/layers" ".work/$branch/layers.tsv"
+  while IFS="$tab" read -r _layer _commit _group; do
+    printf '%s %s\n' "$_layer" "$(gh pr view "$_layer" --json url --jq .url 2>/dev/null)"
+  done <"$tmp/layers"
+}
+
+case ${1:-} in
+  layers) layers ;;
+  chain) chain ;;
+  submit) submit ;;
+  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

@@ -233,7 +233,7 @@ Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the 
 3. Start `claude` interactively in the project once and accept the trust dialog. Headless sessions ignore the allowlist in `.claude/settings.json` in a folder that was never trusted, so every check is denied. Trust is per folder: a new clone or worktree needs it again. Autopilot checks this first with a one-turn haiku session and refuses to start without it.
 4. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
 
-For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session, one session per group and the final session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. Each feature's groups add their own layers to that stack (see "Stacked pull requests per group"). The first one starts from `KIT_BASE` or `main`. Then it runs the plan session, one session per group and the final session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
 
 After each group the build runs the typecheck and the related tests itself; a failing related test counts only if the whole suite's comparison with the baseline also fails, where a baseline exists. On a failure it resumes that session once, a tier higher, or at effort `max` when it already runs on deep. A second failure stops the build. It also stops when the budget is reached (reaching it is enough) or a group takes the branch over its size limit: the plan's `Approved size: <n> lines` if it has one, else twice `KIT_MAX_CHANGED_LINES`.
 
@@ -270,6 +270,19 @@ It keeps the project's `KIT_APPROVAL` and `KIT_IMPROVE`. The approved plan cover
 
 Implementation tokens now show under `main` in `.claude/bin/usage`, not per tier, because the sessions themselves implement.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
+
+## Stacked pull requests per group
+
+A feature with several groups reaches review as one pull request per group, stacked on each other with GitHub's stacked pull requests (`specs/stacked-groups.md`). The build itself is unchanged: one branch, one state file and one usage record per feature. At the PR step the final session runs `.claude/bin/stack submit`:
+
+1. `.claude/bin/stack layers` cuts the layers from the branch's history: every group but the last ends at the commit before the next group's first task commit, as branch `<branch>-g<group>`; the last group and the final session's review fixes stay on `<branch>`. A plan with one group, without a Group column, or whose history does not show where a group starts, is one layer.
+2. The evidence pack is pushed once more per layer, under `<layer>/<layer sha>/` on `kit-evidence`, with `stack_top` naming the commit it was verified on. CI's `Evidence` job then finds a pack for every layer's head.
+3. The layers are pushed and linked bottom to top: `gh stack link --base <stack base> <layers>`. An autopilot run continues the stack of the feature below, so the next feature's first pull request sits on the previous feature's top one.
+4. Each layer's pull request gets its own description (`/pr-description`, "Stacked layers"): the criteria of that group, `(n/N)` in the title, and the top layer for the whole feature.
+
+Install the extension with `gh extension install github/gh-stack` (`gh` 2.0 and git 2.36 or newer). Without it, or with stacked pull requests turned off for the repository, the same pull requests open as a chain, each based on the one below; `.claude/bin/autopilot --ready` and the run log say so. A pushed layer never moves: a fix after the submit goes on the top layer, because a commit on a lower one would rebase every layer above it.
+
+The size limit applies per layer, because a reviewer reads one layer at a time: each layer is measured against the one below, and the plan's `Approved size` lifts the limit for every layer. The build stops as soon as a layer passes it, and names the group.
 
 ## Block more commands
 

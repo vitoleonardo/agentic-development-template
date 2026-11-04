@@ -11,3 +11,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | Plan lint | `plan-lint.md` | in-review | kit-plan-lint-fix-bug | 0 |
 | Fix bug | `fix-bug.md` | in-review | kit-plan-lint-fix-bug | 0 |
 | E2e map | `e2e-map.md` | in-review | next-e2e-map | 0 |
+| Stacked groups | `stacked-groups.md` | in-review | next-stacked-groups | 0 |

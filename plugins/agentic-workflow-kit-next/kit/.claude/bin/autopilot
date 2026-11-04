@@ -155,6 +155,11 @@ valid_budget() {
   case ${KIT_BUDGET_TOKENS:-} in '' | *[!0-9]*) return 1 ;; esac
   [ "$KIT_BUDGET_TOKENS" -gt 0 ]
 }
+# stack_note: why layered features open a plain chain of pull requests, when gh stack is missing.
+stack_note() {
+  gh extension list 2>/dev/null | grep -q 'gh-stack' && return 0
+  echo "gh stack is not installed (gh extension install github/gh-stack); a feature with several groups opens a chain of pull requests instead of a stack."
+}
 budget_message="autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, before a build: a whole number above 0, in .claude/kit.conf or the environment."
 
 case $mode in
@@ -166,6 +171,8 @@ case $mode in
       exit 1
     fi
     valid_budget || { echo "$budget_message"; exit 2; }
+    _note=$(stack_note)
+    [ -z "$_note" ] || echo "autopilot: warning: $_note" >&2
     exit 0
     ;;
 esac
@@ -367,8 +374,6 @@ never approve skipping a test, a check or a security rule. Reply with exactly on
 
 # --- groups -----------------------------------------------------------------------
 
-group_list() { plan_rows "$state" | cut -d '|' -f 2 | awk '!seen[$0]++'; }
-group_rows() { plan_rows "$state" | awk -F '|' -v g="$1" '$2 == g'; }
 group_open_tasks() { group_rows "$1" | awk -F '|' '$4 == 1 { printf "%s%s", (n++ ? "," : ""), $1 }'; }
 group_tier() {
   group_rows "$1" | awk -F '|' -v fallback="$(.claude/bin/route tier implement)" '
@@ -400,20 +405,6 @@ last_done_group() {
     printf '%s' "$_last"
   }
 }
-# group_from <group>: the commit before the group's work. If a ticked task has no commit naming it, the base.
-group_from() {
-  _ticked=$(group_rows "$1" | awk -F '|' '$4 == 0 { print $1 }')
-  if [ -z "$_ticked" ]; then git rev-parse HEAD; return; fi
-  _mb=$(merge_base)
-  _first=""
-  for _t in $_ticked; do
-    _c=$(git log --format=%H -E -i --grep="task $_t([^0-9]|\$)" "$_mb..HEAD" | tail -n 1)
-    if [ -z "$_c" ]; then printf '%s' "$_mb"; return; fi
-    if [ -z "$_first" ] || git merge-base --is-ancestor "$_c" "$_first"; then _first=$_c; fi
-  done
-  git rev-parse -q --verify "$_first^" 2>/dev/null || printf '%s' "$_mb"
-}
-
 dirty_tree() { [ -n "$(git status --porcelain --untracked-files=no)" ]; }
 approved_size_line() { grep '^Approved size:' "$state" 2>/dev/null | head -n 1; }
 over_budget() { [ "$(.claude/bin/usage total)" -ge "$KIT_BUDGET_TOKENS" ]; }
@@ -423,11 +414,16 @@ stop_if_over_budget() {
     halt budget "budget reached: $(.claude/bin/usage total) tokens of KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS"
   fi
 }
+# check_size: every stacked layer so far stays within the size limit (specs/stacked-groups.md).
 check_size() {
   # shellcheck disable=SC2046
   set -- $(.claude/bin/evidence size 2>/dev/null)
-  [ $# -eq 2 ] || return 0
-  [ "$1" -le "$2" ] || halt plan "the branch has $1 changed lines, over its size limit of $2. Split the feature, or approve a higher limit in the plan's Approved size line."
+  [ $# -ge 2 ] || return 0
+  [ "$1" -gt "$2" ] || return 0
+  if [ $# -ge 3 ]; then
+    halt plan "layer $3 (group ${4:-?}) has $1 changed lines, over its size limit of $2. Split the group, or approve a higher limit in the plan's Approved size line."
+  fi
+  halt plan "the branch has $1 changed lines, over its size limit of $2. Split the feature, or approve a higher limit in the plan's Approved size line."
 }
 
 # run_limited <command...>: runs a check under the session time limit, with its output in $check_output.
@@ -838,6 +834,8 @@ if [ -n "$stash_changes" ]; then
   log "- $stash_changes: stashed uncommitted changes as '$_stash_name'; the next session redoes the task"
 fi
 rm -f "$unfinished_fix"
+_note=$(stack_note)
+[ -z "$_note" ] || log "- $_note"
 
 for slug in "$@"; do
   if [ "$mode" = queue ]; then branch=$(feature_branch "$slug"); else branch=$(git branch --show-current); fi

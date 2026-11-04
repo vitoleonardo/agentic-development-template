@@ -820,6 +820,15 @@ contains "$(log_of)" "over its size limit of 800" "AC155: the closing line names
 
 setup alpha:planned
 stub_check
+plan alpha 1:A:standard 2:B:standard 3:C:standard
+script 'finish alpha A 1' 'finish alpha B 2; seq 1 900 >big.txt; git add big.txt; git commit -qm "task 2: big"'
+autopilot
+same "$(calls | wc -l | tr -d ' ')" 2 "STACK-AC24: a group over the limit starts nothing more"
+contains "$(log_of)" "(group B) has 9" "STACK-AC24: the closing line names the group"
+contains "$(log_of)" "over its size limit of 800" "STACK-AC24: and the limit"
+
+setup alpha:planned
+stub_check
 plan alpha 1:A:standard
 printf 'Approved size: 2000 lines\n' >>.work/alpha.md
 script 'finish alpha A 1; seq 1 900 >big.txt; git add big.txt; git commit -qm big' 'open_pr'
@@ -890,7 +899,11 @@ script 'finish alpha A 1' 'open_pr'
 autopilot
 same "$?" 0 "AC61, AC63: a new build runs after a stopped one"
 same "$(.claude/bin/autopilot --stop)" "autopilot: no build is running." "AC62: --stop with no build"
-same "$(.claude/bin/autopilot --ready >/dev/null; echo $?)" 0 "--ready says it can start"
+same "$(.claude/bin/autopilot --ready >/dev/null 2>&1; echo $?)" 0 "--ready says it can start"
+ready_err=$(.claude/bin/autopilot --ready 2>&1 >/dev/null)
+contains "$ready_err" "gh extension install github/gh-stack" "STACK-AC28: --ready warns that gh stack is missing"
+same "$(.claude/bin/autopilot --ready >/dev/null 2>&1; echo $?)" 0 "STACK-AC28: and still says it can start"
+contains "$(log_of)" "gh stack is not installed" "STACK-AC9: the run log names the missing gh stack"
 
 setup alpha:planned
 stub_check

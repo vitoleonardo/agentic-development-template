@@ -595,5 +595,24 @@ expect_out "| size | pass | 0s | 2 changed lines" "the size counts only this bra
 grep -q "base m4" .work/m5/evidence/gates.md && ok || fail "gates.md names the base: $(head -n 3 .work/m5/evidence/gates.md)"
 KIT_BASE=main expect_code 1 "KIT_BASE wins over the state file" .claude/bin/evidence gates
 
+# --- the size limit per stacked layer (specs/stacked-groups.md) -------------------
+
+git checkout -q main
+git checkout -qb layers-size
+lines() { seq 1 "$2" | sed "s/^/export const $1/;s/\$/ = 1;/"; }
+printf '# Plan: Total (spec: specs/total.md)\nBase: main\n\n## Tasks\n| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |\n|---|---|---|---|---|---|---|---|\n| 1 | a | f | c | c | - | standard | A |\n| 2 | b | f | c | c | - | standard | B |\n\n## Progress\n- [x] 1 a\n- [x] 2 b\n' >.work/layers-size.md
+lines a 30 >src/layer-a.ts; g add -A; g commit -qm "task 1: a"
+lines b 30 >src/layer-b.ts; g add -A; g commit -qm "task 2: b"
+expect_code 0 "STACK-AC21: two layers each under twice the limit pass" .claude/bin/evidence gates --only size
+expect_out "layers: layers-size-gA 30, layers-size 30" "STACK-AC21: the gate lists each layer"
+[ "$(.claude/bin/evidence size)" = "30 40 layers-size B" ] && ok || fail "evidence size names the largest layer and its group: $(.claude/bin/evidence size)"
+lines b 45 >src/layer-b.ts; g commit -qam "task 2: more"
+expect_code 1 "STACK-AC22: a layer over twice the limit fails" .claude/bin/evidence gates --only size
+expect_out "in layer layers-size " "STACK-AC22: the failure names the layer"
+printf 'Approved size: 50 lines\n' >>.work/layers-size.md
+expect_code 0 "STACK-AC23: an approved size lifts the limit per layer" .claude/bin/evidence gates --only size
+mkdir -p vendor/ee && lines z 100 >vendor/ee/big.ts && g add -A && g commit -qm "task 2: vendor"
+expect_code 0 "STACK-AC31: protected paths stay out of a layer's size" .claude/bin/evidence gates --only size
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

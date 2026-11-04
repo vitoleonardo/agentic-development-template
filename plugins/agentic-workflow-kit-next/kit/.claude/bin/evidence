@@ -9,10 +9,13 @@
 #   .claude/bin/evidence screenshots [--no-base] [--all]   screenshots of the affected tests, on the branch and the base
 #   .claude/bin/evidence e2e-select [--all]    print which e2e tests the change needs: all, related (with files) or none
 #   .claude/bin/evidence json                  assemble evidence.json from the parts
-#   .claude/bin/evidence push [--pr N]         push the pack to the kit-evidence branch under <pr-N|branch>/<head sha>/
+#   .claude/bin/evidence push [--pr N] [--layer <branch>=<sha>]...   push the pack to the kit-evidence branch under
+#                                              <pr-N|branch>/<head sha>/, and a copy per stacked layer under
+#                                              <layer>/<sha>/ whose evidence.json names that sha and the top
 #   .claude/bin/evidence ci-check --head SHA --key KEY...   CI: the pushed pack exists for SHA and names it
 #   .claude/bin/evidence comment --dir DIR --repo OWNER/NAME --key KEY   print the PR comment for a pack
-#   .claude/bin/evidence size                  print the branch's changed lines and its size limit
+#   .claude/bin/evidence size                  print the changed lines of the largest stacked layer and the size limit,
+#                                              then that layer and its group when the feature has several layers
 # The pack lives in .work/<branch>/evidence/ (EVIDENCE_DIR overrides it). See docs/SPEC-v1.1.md, section 4.
 # --all runs the whole e2e suite; CI does that after every merge to catch what the selection missed.
 set -u
@@ -23,9 +26,12 @@ KIT_ROOT=$root
 export KIT_ROOT NO_COLOR=1 FORCE_COLOR=0 CI=${CI:-1}
 # shellcheck source=conf.sh
 . "$root/.claude/bin/conf.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
 [ -f .claude/kit.conf ] || { echo "evidence: .claude/kit.conf is missing." >&2; exit 2; }
 
 branch=$(git branch --show-current 2>/dev/null)
+state=.work/${branch:-detached}.md
 dir=${EVIDENCE_DIR:-.work/${branch:-detached}/evidence}
 tab=$(printf '\t')
 tmp=$(mktemp -d)
@@ -73,19 +79,49 @@ check_gate() {
   esac
 }
 
-# diff_all [git diff options]: the diff since the merge base including untracked files, without protected paths.
-# size_numbers: sets $changed, $max and $approved, the plan's "Approved size: <n> lines", if it has one.
+# numstat_total: the changed lines of a --numstat diff on stdin, without lockfiles and snapshots.
+numstat_total() {
+  awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
+    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }'
+}
+
+# size_numbers: sets $max, $approved (the plan's "Approved size: <n> lines", if it has one), $layer_count and, per
+# stacked layer (features.sh feature_layers), "<layer> TAB <changed lines>" in $tmp/layer-sizes. A layer is measured
+# against the layer below; the top one includes uncommitted and untracked files. $changed and $largest are the
+# largest layer's lines and name.
 size_numbers() {
   max=$(conf_value . KIT_MAX_CHANGED_LINES)
   max=${max:-400}
-  approved=$(sed -n 's/^Approved size:[[:space:]]*\([0-9][0-9]*\).*/\1/p' ".work/$branch.md" 2>/dev/null | head -n 1)
-  changed=$(diff_all --numstat | awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$/ {
-    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }')
+  approved=$(sed -n 's/^Approved size:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state" 2>/dev/null | head -n 1)
+  : >"$tmp/layer-sizes"
+  from=$(merge_base)
+  { feature_layers "${branch:-detached}" 2>/dev/null || printf '%s\t%s\t\n' "${branch:-detached}" "$(git rev-parse HEAD)"; } >"$tmp/layers"
+  layer_count=$(grep -c . "$tmp/layers")
+  while IFS="$tab" read -r layer commit _group; do
+    if [ "$layer" = "${branch:-detached}" ]; then
+      lines=$(diff_from "$from" --numstat | numstat_total)
+    else
+      # shellcheck disable=SC2046
+      lines=$(git diff --numstat "$from" "$commit" -- . $(excludes) 2>/dev/null | numstat_total)
+      from=$commit
+    fi
+    printf '%s\t%s\t%s\n' "$layer" "$lines" "$_group" >>"$tmp/layer-sizes"
+  done <"$tmp/layers"
+  # The largest layer; on a tie the upper one.
+  changed=$(awk -F '\t' 'NR == 1 || $2 + 0 >= m { m = $2 + 0 } END { print m + 0 }' "$tmp/layer-sizes")
+  largest=$(awk -F '\t' 'NR == 1 || $2 + 0 >= m { m = $2 + 0; n = $1 } END { print n }' "$tmp/layer-sizes")
+  largest_group=$(awk -F '\t' 'NR == 1 || $2 + 0 >= m { m = $2 + 0; n = $3 } END { print n }' "$tmp/layer-sizes")
 }
 
-diff_all() {
+# diff_all [git diff options]: the diff since the merge base including untracked files, without protected paths.
+diff_all() { diff_from "$(merge_base)" "$@"; }
+
+# diff_from <commit> [git diff options]: the same diff since a given commit.
+diff_from() {
+  _from=$1
+  shift
   # shellcheck disable=SC2046
-  git diff "$@" "$(merge_base)" -- . $(excludes) 2>/dev/null
+  git diff "$@" "$_from" -- . $(excludes) 2>/dev/null
   # shellcheck disable=SC2046
   git ls-files --others --exclude-standard -- . $(excludes) 2>/dev/null | while IFS= read -r f; do
     git diff --no-index "$@" -- /dev/null "$f" 2>/dev/null
@@ -245,12 +281,14 @@ gates() {
   fi
 
   size_numbers
+  where=""
+  [ "$layer_count" -le 1 ] || where=" in layer $largest (layers: $(awk -F '\t' '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $1, $2 }' "$tmp/layer-sizes"))"
   if [ -n "$approved" ]; then
-    if [ "$changed" -gt "$approved" ]; then gate size fail 0 "$changed changed lines, more than the plan's approved size of $approved; split the change"
-    else gate size pass 0 "$changed changed lines (approved size $approved)"; fi
-  elif [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines, more than twice the limit of $max; split the change"
-  elif [ "$changed" -gt "$max" ]; then gate size pass 0 "warning: $changed changed lines, above the limit of $max"
-  else gate size pass 0 "$changed changed lines (limit $max)"; fi
+    if [ "$changed" -gt "$approved" ]; then gate size fail 0 "$changed changed lines$where, more than the plan's approved size of $approved; split the change"
+    else gate size pass 0 "$changed changed lines$where (approved size $approved)"; fi
+  elif [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines$where, more than twice the limit of $max; split the change"
+  elif [ "$changed" -gt "$max" ]; then gate size pass 0 "warning: $changed changed lines$where, above the limit of $max"
+  else gate size pass 0 "$changed changed lines$where (limit $max)"; fi
   e2e_map_gate
 
   {
@@ -799,8 +837,14 @@ json() {
 # --- push to kit-evidence ------------------------------------------------------
 
 push() {
-  pr=""
-  [ "${1:-}" = --pr ] && pr=${2:?--pr needs a number}
+  pr="" layer_args=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --pr) pr=${2:?--pr needs a number}; shift 2 ;;
+      --layer) layer_args="$layer_args ${2:?--layer needs <branch>=<sha>}"; shift 2 ;;
+      *) echo "evidence push: unknown option $1" >&2; return 2 ;;
+    esac
+  done
   [ -f "$dir/evidence.json" ] || { echo "evidence: run 'evidence json' first." >&2; return 2; }
   head=$(git rev-parse HEAD)
   grep -q "\"head\": \"$head\"" "$dir/evidence.json" || { echo "evidence: evidence.json is not for HEAD ($head); verify again." >&2; return 1; }
@@ -818,11 +862,33 @@ push() {
     blob=$(git hash-object -w "$dir/$f")
     git update-index --add --cacheinfo "100644,$blob,$key/$head/$f"
   done
+  # A stacked layer gets the same pack under its own key; its evidence.json names the layer's head and the top it
+  # was verified on (specs/stacked-groups.md).
+  for pair in $layer_args; do
+    layer=${pair%%=*} lsha=${pair#*=}
+    lkey=$(printf '%s' "$layer" | tr -c 'A-Za-z0-9._-' '-')
+    git rm -q -r --cached --ignore-unmatch "$lkey/$lsha" >/dev/null
+    (cd "$dir" && find . -type f | sed 's|^\./||') | while IFS= read -r f; do
+      if [ "$f" = evidence.json ]; then
+        awk -v top="$head" -v sha="$lsha" '
+          !done && index($0, "\"head\": \"" top "\"") {
+            pad = $0; sub(/[^ ].*$/, "", pad)
+            print pad "\"head\": \"" sha "\","; print pad "\"stack_top\": \"" top "\","; done = 1; next
+          }
+          { print }' "$dir/$f" >"$tmp/layer.json"
+        blob=$(git hash-object -w "$tmp/layer.json")
+      else
+        blob=$(git hash-object -w "$dir/$f")
+      fi
+      git update-index --add --cacheinfo "100644,$blob,$lkey/$lsha/$f"
+    done
+  done
   tree=$(git write-tree)
   unset GIT_INDEX_FILE
   commit=$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "Evidence for $key at $head")
   git push -q "$remote" "$commit:refs/heads/kit-evidence" || return 1
   echo "Pushed the pack to $remote kit-evidence:$key/$head/"
+  for pair in $layer_args; do echo "Pushed the layer pack to $remote kit-evidence:$(printf '%s' "${pair%%=*}" | tr -c 'A-Za-z0-9._-' '-')/${pair#*=}/"; done
 }
 
 # --- CI ------------------------------------------------------------------------
@@ -906,7 +972,11 @@ comment() {
 command=${1:-}
 [ $# -gt 0 ] && shift
 case $command in
-  size) size_numbers; printf '%s %s\n' "$changed" "${approved:-$((max * 2))}" ;;
+  size)
+    size_numbers
+    if [ "$layer_count" -gt 1 ]; then printf '%s %s %s %s\n' "$changed" "${approved:-$((max * 2))}" "$largest" "$largest_group"
+    else printf '%s %s\n' "$changed" "${approved:-$((max * 2))}"; fi
+    ;;
   gates) gates "$@" ;;
   scope) scope "$@" ;;
   matrix) matrix ;;

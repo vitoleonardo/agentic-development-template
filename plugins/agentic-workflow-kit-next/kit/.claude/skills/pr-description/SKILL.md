@@ -46,4 +46,18 @@ Rules:
 
 If the state file has a Decisions to review section, copy it into the description under that heading, so the reviewer sees every decision no human approved.
 
-Save it to `.work/<branch>-pr.md` and show it. Then run `.claude/bin/gate push`. With `ask`, do not push or create the PR yourself: offer the command `gh pr create --base <base> --title "<title>" --body-file .work/<branch>-pr.md` for the user to approve. With `auto`, push the branch and run that command.
+## Stacked layers
+
+Run `.claude/bin/stack layers`. It prints one line per layer, bottom to top: `<layer branch> TAB <commit> TAB <group>`. With one line, write the description above. With several, a feature built in groups becomes one pull request per group, stacked on each other (`specs/stacked-groups.md`); write one description per layer, bottom to top:
+
+- Read the layer's own diff: `git diff <the layer below>..<its commit>`, where the first layer's below is the base.
+- Title: the feature's title with `(<n>/<N>)`, n counted from the bottom.
+- Evidence: only the criteria of that layer's group's tasks.
+- Every layer but the top one adds under Review: `Reviewed and verified on the stack top, <branch>. Review the stack from the bottom up.`
+- The top layer, the branch itself, also carries what belongs to the whole feature: Why, Risks, Decisions to review and Cost.
+
+Save a lower layer's description to `.work/<branch>/pr/<group>.md` and the top layer's to `.work/<branch>-pr.md`.
+
+## Open the pull requests
+
+Show the descriptions. Then run `.claude/bin/gate push`. With `ask`, do not push or open anything yourself: offer the command `.claude/bin/stack submit` for the user to approve. With `auto`, run it. It cuts the layer branches, pushes them with their evidence packs, and opens or updates one pull request per layer: linked as a GitHub stack with `gh stack`, or as a chain of pull requests, each based on the one below, when `gh stack` is missing or stacks are off. A feature with one layer gets one pull request, as with `gh pr create --base <base>`. Report the lines it prints.

@@ -126,3 +126,58 @@ plan_criteria() {
     inside && /^- \*\*[A-Z][A-Za-z0-9_-]*-AC[0-9]+\*\*/ { id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id); print id }
   ' "$1"
 }
+
+# The group helpers read the plan in $state, the caller's state file (.work/<branch>.md).
+
+# group_list: the plan's groups in plan order.
+# shellcheck disable=SC2154
+group_list() { plan_rows "$state" | cut -d '|' -f 2 | awk '!seen[$0]++'; }
+# group_rows <group>: the plan_rows lines of one group.
+# shellcheck disable=SC2154
+group_rows() { plan_rows "$state" | awk -F '|' -v g="$1" '$2 == g'; }
+# group_from <group>: the commit before the group's work. If a ticked task has no commit naming it, the base.
+group_from() {
+  _ticked=$(group_rows "$1" | awk -F '|' '$4 == 0 { print $1 }')
+  if [ -z "$_ticked" ]; then git rev-parse HEAD; return; fi
+  _mb=$(merge_base)
+  _first=""
+  for _t in $_ticked; do
+    _c=$(git log --format=%H -E -i --grep="task $_t([^0-9]|\$)" "$_mb..HEAD" | tail -n 1)
+    if [ -z "$_c" ]; then printf '%s' "$_mb"; return; fi
+    if [ -z "$_first" ] || git merge-base --is-ancestor "$_c" "$_first"; then _first=$_c; fi
+  done
+  git rev-parse -q --verify "$_first^" 2>/dev/null || printf '%s' "$_mb"
+}
+
+# feature_layers <branch>: the stacked layers of the feature on <branch> (the current HEAD), bottom to top, as
+# "<layer branch> TAB <commit> TAB <group>" (specs/stacked-groups.md). Every group of a plan with several groups
+# whose next group has started ends a layer, "<branch>-g<group>", at the commit before the next group's first task
+# commit; the rest, up to HEAD, is the layer "<branch>" itself. A plan with one group or without a Group column is
+# one layer, and so is a plan whose history does not show where a group starts (a note goes to stderr).
+# shellcheck disable=SC2154
+feature_layers() {
+  _fl_top=$(git rev-parse HEAD)
+  _fl_groups=$(group_list)
+  if ! plan_has_groups "$state" || [ "$(printf '%s\n' "$_fl_groups" | grep -c .)" -le 1 ]; then
+    printf '%s\t%s\t%s\n' "$1" "$_fl_top" "$(printf '%s\n' "$_fl_groups" | tail -n 1)"
+    return 0
+  fi
+  _fl_mb=$(merge_base)
+  _fl_previous=$_fl_mb _fl_out="" _fl_last=""
+  for _fl_group in $_fl_groups; do
+    if [ -n "$_fl_last" ]; then
+      [ -n "$(group_rows "$_fl_group" | awk -F '|' '$4 == 0')" ] || break
+      _fl_end=$(group_from "$_fl_group")
+      if [ "$_fl_end" = "$_fl_mb" ] || [ "$_fl_end" = "$_fl_previous" ] || ! git merge-base --is-ancestor "$_fl_previous" "$_fl_end" 2>/dev/null; then
+        echo "no commit shows where group $_fl_group starts; the feature is one layer." >&2
+        printf '%s\t%s\t%s\n' "$1" "$_fl_top" "$(printf '%s\n' "$_fl_groups" | tail -n 1)"
+        return 0
+      fi
+      _fl_out=$(printf '%s%s-g%s\t%s\t%s\n_' "$_fl_out" "$1" "$_fl_last" "$_fl_end" "$_fl_last")
+      _fl_out=${_fl_out%_}
+      _fl_previous=$_fl_end
+    fi
+    _fl_last=$_fl_group
+  done
+  printf '%s%s\t%s\t%s\n' "$_fl_out" "$1" "$_fl_top" "$_fl_last"
+}
