@@ -8,3 +8,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 |---|---|---|---|---|
 | Kit cockpit | `kit-cockpit.md` | building | kit-mod | 0 |
 | Plan lint | `plan-lint.md` | approved | kit-plan-lint-fix-bug | 0 |
+| Fix bug | `fix-bug.md` | approved | kit-plan-lint-fix-bug | 0 |
