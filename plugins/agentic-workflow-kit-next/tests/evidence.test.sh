@@ -416,6 +416,122 @@ out=$(.claude/bin/evidence e2e-select 2>&1)
 expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
 git checkout -q .claude/kit.conf
 
+# --- e2e map (specs/e2e-map.md) ------------------------------------------------------
+
+# The full patterns hold the e2e folder too; a changed e2e test still runs alone.
+branch_with sel-full-e2e "printf 'test(\"CART-AC3: x\", () => {});\n' >>e2e/cart.spec.ts"
+sed -i 's|^KIT_E2E_FULL_PATTERNS=.*|KIT_E2E_FULL_PATTERNS="package.json e2e/*.ts"|' .claude/kit.conf
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "related: 1 e2e test files" "E2EMAP-AC9: a changed e2e test runs alone though a full pattern matches it"
+case $out in *shop.spec.ts*) fail "E2EMAP-AC9: only the changed e2e test: $out" ;; *) ok ;; esac
+git checkout -q .claude/kit.conf
+
+# On main: areas, their e2e tests, and the map.
+git checkout -q main
+main_before_map=$(git rev-parse HEAD)
+mkdir -p src/invoices/pdf src/time src/db src/layout "src/my area" .kit
+for f in src/invoices/total.ts src/invoices/pdf/render.ts src/time/entry.ts src/db/schema.ts src/layout/nav.tsx "src/my area/x.ts"; do
+  printf 'export const v = 1;\n' >"$f"
+done
+for f in invoice-list invoice-edit pdf-render time-entry; do printf 'test("%s", () => {});\n' "$f" >"e2e/$f.spec.ts"; done
+printf '# areas\nsrc/invoices/pdf/*\te2e/pdf-*\nsrc/invoices/*\te2e/invoice-*\nsrc/time/*\te2e/time-*\n\nsrc/db/schema.ts\t-\nsrc/layout/*\tall\nsrc/my area/*\te2e/time-*\npackage.json\t-\n' >.kit/e2e-map.tsv
+printf 'KIT_E2E_MAP=".kit/e2e-map.tsv"\n' >>.claude/kit.conf
+g add -A
+g commit -qm "e2e map"
+# A second base whose map has CRLF line endings: the same rows.
+git checkout -qb main-crlf
+sed 's/$/\r/' .kit/e2e-map.tsv >.kit/crlf && mv .kit/crlf .kit/e2e-map.tsv
+g commit -qam "crlf map"
+git checkout -q main
+
+branch_with map-one "printf 'export const v = 2;\n' >src/invoices/total.ts"
+expect_out "related: 2 e2e test files" "E2EMAP-AC1: the map row's e2e tests run"
+expect_out "e2e/invoice-edit.spec.ts" "E2EMAP-AC1: every e2e test of the row"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC1: every e2e test of the row"
+case $out in *pdf-render*|*time-entry*|*shop.spec*) fail "E2EMAP-AC1: no other e2e test: $out" ;; *) ok ;; esac
+
+branch_with map-two "printf 'export const v = 2;\n' >src/invoices/total.ts; printf 'export const v = 2;\n' >src/time/entry.ts"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC2: the first row's tests"
+expect_out "e2e/time-entry.spec.ts" "E2EMAP-AC2: the second row's tests"
+
+branch_with map-none "printf 'export const v = 2;\n' >src/db/schema.ts"
+expect_out "none:" "E2EMAP-AC3: a row with - runs no e2e test"
+expect_out "src/db/schema.ts" "E2EMAP-AC3: the reason names the file"
+
+branch_with map-all "printf 'export const v = 2;\n' >src/layout/nav.tsx"
+expect_out "all:" "E2EMAP-AC4: a row with all runs the whole suite"
+expect_out "src/layout/nav.tsx" "E2EMAP-AC4: the reason names the file"
+
+branch_with map-unknown "printf 'export const other = 3;\n' >src/other.ts"
+expect_out "all:" "E2EMAP-AC5: a file without a row runs the whole suite"
+expect_out "src/other.ts" "E2EMAP-AC5: the reason names the file"
+expect_out ".kit/e2e-map.tsv" "E2EMAP-AC5: the reason names the map"
+
+branch_with map-first "printf 'export const v = 2;\n' >src/invoices/pdf/render.ts"
+expect_out "e2e/pdf-render.spec.ts" "E2EMAP-AC6: the first matching row wins"
+case $out in *invoice-*) fail "E2EMAP-AC6: no test of a later row: $out" ;; *) ok ;; esac
+
+branch_with map-criteria "printf 'export const v = 2;\n' >src/invoices/total.ts; printf 'it(\"SHOP-AC4: rounds\", () => {});\n' >>src/total.test.ts"
+expect_out "e2e/shop.spec.ts" "E2EMAP-AC7: the e2e tests of the criteria the diff names still run"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC7: and the map row's tests"
+
+branch_with map-full "printf '{\"name\": \"shop2\"}\n' >package.json"
+expect_out "all: package.json changed" "E2EMAP-AC8: KIT_E2E_FULL_PATTERNS wins over a map row"
+
+git checkout -q main-crlf
+git checkout -qb map-crlf
+printf 'export const v = 2;\n' >src/invoices/total.ts
+g commit -qam "crlf change"
+out=$(KIT_BASE=main-crlf .claude/bin/evidence e2e-select 2>&1)
+expect_out "related: 2 e2e test files" "E2EMAP-AC10: CRLF, comments and empty lines select the same tests"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC10: the row's tests"
+
+branch_with map-space "printf 'export const v = 2;\n' >'src/my area/x.ts'"
+expect_out "e2e/time-entry.spec.ts" "E2EMAP-AC19: a source pattern with a space is read up to the TAB"
+
+branch_with map-changed "printf 'src/new/*\te2e/time-*\n' >>.kit/e2e-map.tsv"
+expect_out "all: the e2e map .kit/e2e-map.tsv changed" "E2EMAP-AC20: a change to the map runs the whole suite"
+
+git checkout -q map-one
+sed -i 's|^KIT_E2E_MAP=.*|KIT_E2E_MAP=".kit/missing.tsv"|' .claude/kit.conf
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "all: KIT_E2E_MAP names .kit/missing.tsv, which does not exist" "E2EMAP-AC12: a missing map runs the whole suite"
+git checkout -q .claude/kit.conf
+
+# The e2e-map gate.
+map_gate() {
+  .claude/bin/evidence gates --only e2e-map >/dev/null 2>&1
+  out=$(grep "^e2e-map${tab}" ".work/$(git branch --show-current)/evidence/gates.tsv")
+}
+map_gate
+expect_out "e2e-map${tab}pass" "E2EMAP-AC13: a map whose rows all match passes"
+printf 'src/time/*\te2e/billing-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC14: a target that matches no e2e test fails"
+expect_out "e2e/billing-*" "E2EMAP-AC14: the gate names the target"
+expect_out ".kit/e2e-map.tsv:10:" "E2EMAP-AC14: and the row's line"
+git checkout -q .kit/e2e-map.tsv
+printf 'src/billing/*\te2e/time-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC15: a source pattern that matches no file fails"
+expect_out "src/billing/*" "E2EMAP-AC15: the gate names the pattern"
+git checkout -q .kit/e2e-map.tsv
+printf 'src/time/* e2e/time-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC16: a row without a TAB fails"
+expect_out ".kit/e2e-map.tsv:10:" "E2EMAP-AC16: the gate names the row's line"
+git checkout -q .kit/e2e-map.tsv
+sed -i 's|^KIT_E2E_MAP=.*|KIT_E2E_MAP=""|' .claude/kit.conf
+map_gate
+expect_out "e2e-map${tab}n/a" "E2EMAP-AC17: without a map the gate is n/a"
+git checkout -q .claude/kit.conf
+
+grep -q 'KIT_E2E_MAP' "$here/kit/.claude/skills/plan-feature/SKILL.md" && ok || fail "E2EMAP-AC18: /plan-feature adds a map row for a new area"
+
+# Back to main without the map, for the sections below.
+git checkout -q main
+git reset -q --hard "$main_before_map"
+
 # --- red: criterion tests must fail without the change -----------------------------
 
 git checkout -q main

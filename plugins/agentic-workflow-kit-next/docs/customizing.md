@@ -299,9 +299,29 @@ Hook scripts receive JSON on stdin. `lib.sh` has helpers to read it without `jq`
 
 A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), `/verify-feature` and the CI `evidence` job run only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
 
-- **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
-- **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), or code changed that no e2e test maps to.
-- **none**: only tests and docs changed.
+- **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), the e2e tests the map names for the changed source files (below), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
+- **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), code changed that no e2e test maps to, or the map itself changed.
+- **none**: only tests and docs changed, or the map says no e2e test covers the changed files.
+
+A changed e2e file is checked first, so it runs alone even when a full pattern also matches it.
+
+### Select e2e tests with a map
+
+Criterion IDs only help when the diff names them; a refactor or a fix in shared code names none, and then the whole suite runs. A map says which e2e tests cover which source paths. Write it outside `.claude/`, so a plan's task can add a row, and name it in `kit.conf` (the TypeScript adapter picks up `.kit/e2e-map.tsv` when it exists):
+
+```text
+# <source pattern> TAB <e2e test patterns | all | ->
+src/invoices/pdf/*	e2e/pdf-*
+src/invoices/*	e2e/invoice-* e2e/import*
+src/db/schema.ts	-
+src/layout/*	all
+```
+
+- The first row whose source pattern matches a changed file wins, so put narrower rows first. Patterns are shell patterns; `*` also matches `/`.
+- `-` means no e2e test covers the path (integration tests do); `all` runs the whole suite.
+- A changed source file without a row runs the whole suite, so a gap in the map costs time, never a test. `KIT_E2E_FULL_PATTERNS` wins over the map.
+- The verify gate `e2e-map` fails while a row's source pattern matches no file or one of its e2e patterns matches no e2e test, so a renamed folder or test is found at the next verify.
+- `/plan-feature` adds a row in the task that adds an e2e test for a new area.
 
 The selection can miss a feature whose code a change breaks without naming it. The `Full e2e` job in `evidence.yml` covers that: it runs `evidence data --all` after every merge to `main`, one run per merge, so a failure points at the merge that caused it. Add files your e2e tests share (helpers, page objects, global setup) to `KIT_E2E_FULL_PATTERNS`. For other runners, set `KIT_E2E_RELATED` to a command that takes test files as arguments (`uv run pytest`, `cypress run --spec` needs a comma list, so wrap it in a script).
 

@@ -137,7 +137,7 @@ gitleaks_config() {
 
 regex_escape() { printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|]/\\&/g'; }
 
-all_gates="typecheck lint build test coverage duplicates structure focus red dependencies protected secrets size"
+all_gates="typecheck lint build test coverage duplicates structure focus red dependencies protected secrets size e2e-map"
 
 # want <gate>: true unless gates --only leaves the gate out.
 want() {
@@ -251,6 +251,7 @@ gates() {
   elif [ "$changed" -gt $((max * 2)) ]; then gate size fail 0 "$changed changed lines, more than twice the limit of $max; split the change"
   elif [ "$changed" -gt "$max" ]; then gate size pass 0 "warning: $changed changed lines, above the limit of $max"
   else gate size pass 0 "$changed changed lines (limit $max)"; fi
+  e2e_map_gate
 
   {
     printf '# Hard gates\n\nHead %s, base %s (%s).\n\n' "$(git rev-parse --short HEAD)" "$(base_ref)" "$(git rev-parse --short "$mb")"
@@ -400,10 +401,43 @@ changed_files() {
 # quoted <file>: the lines of a file as single-quoted shell words, for appending to a command.
 quoted() { sed "s/'/'\\\\''/g; s/^/'/; s/\$/'/" "$1" | tr '\n' ' '; }
 
+# e2e_files: every e2e test file of the checkout, tracked or not, without protected paths.
+e2e_files() {
+  # shellcheck disable=SC2046
+  git ls-files --cached --others --exclude-standard -- . $(excludes) 2>/dev/null | while IFS= read -r _f; do
+    matches_any "$_f" "$e2e_patterns" && [ -f "$_f" ] && printf '%s\n' "$_f"
+  done
+}
+
+# map_rows <map>: the rows of KIT_E2E_MAP as "<line> TAB <source pattern> TAB <targets>"; a line without a TAB
+# becomes "<line> TAB <text> TAB" with an empty third field. Empty lines and "#" comments are no rows.
+map_rows() {
+  awk -v tab="$tab" '
+    { sub(/\r$/, "") }
+    /^[[:space:]]*(#|$)/ { next }
+    {
+      i = index($0, tab)
+      if (!i) { print NR tab $0 tab; next }
+      targets = substr($0, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", targets)
+      print NR tab substr($0, 1, i - 1) tab targets
+    }' "$1"
+}
+
+# map_targets <file>: the targets of the first map row whose source pattern matches the file; exit 1 for none.
+map_targets() {
+  while IFS="$tab" read -r _line _pattern _targets; do
+    # shellcheck disable=SC2254
+    case $1 in $_pattern) printf '%s' "$_targets"; return 0 ;; esac
+  done <"$tmp/map"
+  return 1
+}
+
 # e2e_select [--all]: which e2e tests the change since the merge base needs. Prints "<mode>: <reason>" and, for
 # "related", one test file per line. all runs KIT_E2E, related runs KIT_E2E_RELATED with the files, none runs nothing.
-# Related tests are the changed e2e files plus the e2e files that name a feature (SHOP in SHOP-AC1) whose criterion
-# IDs the diff adds. Whatever the selection cannot vouch for runs everything.
+# Changed e2e files run. A file in KIT_E2E_FULL_PATTERNS runs everything. With KIT_E2E_MAP, every other changed source
+# file runs the e2e tests of its map row, and a file without a row runs everything. The e2e files that name a
+# feature (SHOP in SHOP-AC1) whose criterion IDs the diff adds run too. Whatever the selection cannot vouch for runs
+# everything.
 e2e_select() {
   [ "${1:-}" = --all ] && { echo "all: --all"; return; }
   [ -n "$(conf_value . KIT_E2E_RELATED)" ] || { echo "all: KIT_E2E_RELATED is not set"; return; }
@@ -411,37 +445,107 @@ e2e_select() {
   [ -n "$e2e_patterns" ] || { echo "all: KIT_E2E_PATTERNS is not set"; return; }
   full=$(conf_value . KIT_E2E_FULL_PATTERNS)
   test_patterns=$(conf_value . KIT_TEST_PATTERNS)
+  map=$(conf_value . KIT_E2E_MAP)
+  if [ -n "$map" ]; then
+    [ -f "$map" ] || { echo "all: KIT_E2E_MAP names $map, which does not exist"; return; }
+    map_rows "$map" >"$tmp/map"
+  fi
   changed_files >"$tmp/changed"
   : >"$tmp/selected"
-  other=""
+  : >"$tmp/targets"
+  other="" unmapped="" no_e2e=""
   while IFS= read -r f; do
-    if [ -n "$full" ] && matches_any "$f" "$full"; then echo "all: $f changed"; return; fi
     if matches_any "$f" "$e2e_patterns"; then
       [ -f "$f" ] && printf '%s\n' "$f" >>"$tmp/selected"
-    elif ! matches_any "$f" "$test_patterns"; then
-      case $f in *.md) ;; *) other=$f ;; esac
+      continue
     fi
+    if [ -n "$full" ] && matches_any "$f" "$full"; then echo "all: $f changed"; return; fi
+    matches_any "$f" "$test_patterns" && continue
+    case $f in *.md) continue ;; esac
+    other=$f
+    [ -n "$map" ] || continue
+    [ "$f" != "$map" ] || { echo "all: the e2e map $map changed"; return; }
+    if ! targets=$(map_targets "$f"); then unmapped=$f; continue; fi
+    case $targets in
+      all) echo "all: $f maps to all in $map"; return ;;
+      - | '') no_e2e="$no_e2e $f" ;;
+      *) printf '%s\t%s\n' "$f" "$targets" >>"$tmp/targets" ;;
+    esac
   done <"$tmp/changed"
+  [ -z "$unmapped" ] || { echo "all: $unmapped has no row in $map"; return; }
+  if [ -s "$tmp/targets" ]; then
+    e2e_files >"$tmp/e2e-files"
+    while IFS="$tab" read -r f targets; do
+      _found=""
+      while IFS= read -r e; do
+        if matches_any "$e" "$targets"; then printf '%s\n' "$e" >>"$tmp/selected"; _found=1; fi
+      done <"$tmp/e2e-files"
+      [ -n "$_found" ] || { echo "all: the map row of $f names $targets, which matches no e2e test"; return; }
+    done <"$tmp/targets"
+  fi
   features=""
   if [ -n "$other" ]; then
     # Only tests and docs changed: their own e2e files are enough. Otherwise add the features the diff names.
     features=$(diff_all -U0 | grep '^+' | grep -v '^+++' | grep -oE '[A-Z][A-Z0-9]*-AC[0-9]+' | sed 's/-AC[0-9]*$//' | sort -u | tr '\n' ' ')
     if [ -n "$features" ]; then
-      # shellcheck disable=SC2046
-      git ls-files --cached --others --exclude-standard -- . $(excludes) | while IFS= read -r f; do
-        matches_any "$f" "$e2e_patterns" && [ -f "$f" ] &&
-          grep -qE "(^|[^A-Z0-9])($(printf '%s' "$features" | sed 's/ *$//; s/ /|/g'))-AC[0-9]" "$f" && printf '%s\n' "$f"
+      e2e_files | while IFS= read -r f; do
+        grep -qE "(^|[^A-Z0-9])($(printf '%s' "$features" | sed 's/ *$//; s/ /|/g'))-AC[0-9]" "$f" && printf '%s\n' "$f"
       done >>"$tmp/selected"
     fi
   fi
   sort -u "$tmp/selected" -o "$tmp/selected"
   if [ -s "$tmp/selected" ]; then
-    echo "related: $(wc -l <"$tmp/selected" | tr -d ' ') e2e test files (changed e2e files${features:+, features ${features% }})"
+    echo "related: $(wc -l <"$tmp/selected" | tr -d ' ') e2e test files (changed e2e files${map:+, $map}${features:+, features ${features% }})"
     cat "$tmp/selected"
+  elif [ -n "$map" ] && [ -n "$no_e2e" ]; then
+    echo "none: no e2e test covers${no_e2e} ($map)"
   elif [ -n "$other" ]; then
     echo "all: $other changed and no e2e test names a criterion of this change"
   else
     echo "none: only tests and docs changed"
+  fi
+}
+
+# e2e_map_gate: every row of KIT_E2E_MAP has a TAB, a source pattern that matches a file of the checkout, and
+# targets that are all, - or patterns that each match an e2e test file.
+e2e_map_gate() {
+  want e2e-map || return 0
+  map=$(conf_value . KIT_E2E_MAP)
+  [ -n "$map" ] || { gate e2e-map n/a 0 "n/a: KIT_E2E_MAP is not set"; return; }
+  [ -f "$map" ] || { gate e2e-map fail 0 "KIT_E2E_MAP names $map, which does not exist"; return; }
+  e2e_patterns=$(conf_value . KIT_E2E_PATTERNS)
+  map_rows "$map" >"$tmp/map"
+  # shellcheck disable=SC2046
+  git ls-files --cached --others --exclude-standard -- . $(excludes) >"$tmp/all-files" 2>/dev/null
+  e2e_files >"$tmp/e2e-files"
+  : >"$tmp/log-e2e-map"
+  set -f
+  while IFS="$tab" read -r line pattern targets; do
+    if [ -z "$targets" ]; then
+      printf '%s:%s: a row is "<source pattern> TAB <e2e tests | all | ->"\n' "$map" "$line" >>"$tmp/log-e2e-map"
+      continue
+    fi
+    _hit=""
+    while IFS= read -r f; do
+      # shellcheck disable=SC2254
+      case $f in $pattern) _hit=1; break ;; esac
+    done <"$tmp/all-files"
+    [ -n "$_hit" ] || printf '%s:%s: %s matches no file\n' "$map" "$line" "$pattern" >>"$tmp/log-e2e-map"
+    case $targets in all | -) continue ;; esac
+    for target in $targets; do
+      _hit=""
+      while IFS= read -r e; do
+        # shellcheck disable=SC2254
+        case $e in $target) _hit=1; break ;; esac
+      done <"$tmp/e2e-files"
+      [ -n "$_hit" ] || printf '%s:%s: %s matches no e2e test\n' "$map" "$line" "$target" >>"$tmp/log-e2e-map"
+    done
+  done <"$tmp/map"
+  set +f
+  if [ -s "$tmp/log-e2e-map" ]; then
+    gate e2e-map fail 0 "$(tr '\n' ';' <"$tmp/log-e2e-map")"
+  else
+    gate e2e-map pass 0 "$(wc -l <"$tmp/map" | tr -d ' ') rows, each matches a file and its e2e tests"
   fi
 }
 

@@ -10,3 +10,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | Group sessions | `group-sessions.md` | approved | feat/group-sessions | 0 |
 | Plan lint | `plan-lint.md` | in-review | kit-plan-lint-fix-bug | 0 |
 | Fix bug | `fix-bug.md` | in-review | kit-plan-lint-fix-bug | 0 |
+| E2e map | `e2e-map.md` | in-review | next-e2e-map | 0 |
