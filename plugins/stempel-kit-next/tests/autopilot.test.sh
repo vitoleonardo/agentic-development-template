@@ -447,6 +447,59 @@ autopilot
 contains "$(call 2)" "--model opus" "AC25: a deep group stays on deep"
 contains "$(call 2)" "--effort max" "AC25: at effort max"
 
+# --- effort per tier and the sessions' cost (specs/cost-visibility.md)
+
+efforts() { printf 'KIT_EFFORT_FAST="%s"\nKIT_EFFORT_STANDARD="%s"\nKIT_EFFORT_DEEP="%s"\n' "$1" "$2" "$3" >>.claude/kit.conf; git add -A; git commit -qm efforts; }
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:deep
+efforts "" medium high
+script 'finish alpha A 1' 'finish alpha B 2' 'open_pr'
+autopilot
+same "$?" 0 "COST-AC15: a build with tier efforts runs through"
+contains "$(call 1)" "--effort medium" "COST-AC15: a standard group starts with the standard tier's effort"
+contains "$(call 2)" "--effort high" "COST-AC16: a deep group starts with the deep tier's effort"
+case $(call 3) in *"--effort"*) fail "the final session takes no tier effort: $(call 3)" ;; *) ok ;; esac
+contains "$(log_of)" "1.50 USD" "COST-AC14: the run log row holds the feature's session cost"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard
+script 'finish alpha A 1' 'open_pr'
+autopilot
+case $(call 1) in *"--effort"*) fail "COST-AC17: no tier effort, no --effort: $(call 1)" ;; *) ok ;; esac
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:deep 2:B:standard
+efforts "" medium high
+codes typecheck 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 1)" "--effort high" "COST-AC18: the deep group starts at the deep tier's effort"
+contains "$(call 2)" "--effort max" "COST-AC18: its check repair runs at max, whatever KIT_EFFORT_DEEP says"
+contains "$(call 3)" "--effort medium" "the next group is back on its own tier's effort"
+
+setup alpha:planned
+stub_check
+plan alpha 1:A:standard 2:B:standard
+efforts "" medium high
+codes typecheck 1 0
+script 'finish alpha A 1' 'RESULT=fixed' 'finish alpha B 2' 'open_pr'
+autopilot
+contains "$(call 2)" "--model opus" "COST-AC19: a standard group's check repair runs on the deep tier"
+contains "$(call 2)" "--effort high" "COST-AC19: with the deep tier's effort"
+
+setup alpha:planned
+efforts "" turbo ""
+same "$(.claude/bin/autopilot --ready >"$work/out" 2>&1; echo $?)" 2 "COST-AC20: --ready refuses an effort outside the five"
+contains "$(cat "$work/out")" "KIT_EFFORT_STANDARD" "COST-AC20: it names the variable"
+contains "$(cat "$work/out")" "turbo" "COST-AC20: and the value"
+autopilot
+same "$?" 2 "a build refuses the same effort"
+same "$(calls)" "" "no session starts with an invalid effort"
+
 setup alpha:planned
 stub_check
 plan alpha 1:A:standard 2:B:standard

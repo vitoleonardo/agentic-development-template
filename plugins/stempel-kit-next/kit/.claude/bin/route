@@ -5,6 +5,8 @@
 #   .claude/bin/route <fast|standard|deep>                      the model alias for a tier
 #   .claude/bin/route tier <role>                               the tier of a role
 #   .claude/bin/route up <tier>                                 the tier one above (deep stays deep)
+#   .claude/bin/route effort <tier>                             the reasoning effort of autopilot's group sessions on
+#                                                               that tier (KIT_EFFORT_<TIER>), empty for the default
 #   .claude/bin/route check                                     exit 1 with a warning when routing is disabled
 # The orchestrator passes the alias as the Agent tool's model parameter, which takes aliases only
 # (sonnet, opus, haiku, fable), so KIT_MODEL_* must be aliases. Spec, plan and PR run on the session model.
@@ -44,10 +46,24 @@ tier_of() {
   esac
 }
 
+effort_of() {
+  case $1 in
+    fast) effort=${KIT_EFFORT_FAST:-} ;;
+    standard) effort=${KIT_EFFORT_STANDARD:-} ;;
+    deep) effort=${KIT_EFFORT_DEEP:-} ;;
+    *) echo "route: unknown tier '$1' (fast, standard, deep)" >&2; exit 2 ;;
+  esac
+  case $effort in
+    '' | low | medium | high | xhigh | max) printf '%s\n' "$effort" ;;
+    *) echo "route: KIT_EFFORT_$(printf '%s' "$1" | tr a-z A-Z)='$effort' is not an effort (low, medium, high, xhigh, max)." >&2; exit 2 ;;
+  esac
+}
+
 case ${1:-} in
   fast | standard | deep) model_of "$1" ;;
   explore | implement | tests | review | verify) model_of "$(tier_of "$1")" ;;
   tier) tier_of "${2:?usage: route tier <role>}" ;;
+  effort) effort_of "${2:?usage: route effort <fast|standard|deep>}" ;;
   up)
     case ${2:-} in
       fast) echo standard ;;
@@ -60,7 +76,11 @@ case ${1:-} in
       echo "Warning: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set, so every subagent runs on ${CLAUDE_CODE_SUBAGENT_MODEL:-the forced model} and the tiers in .claude/kit.conf are ignored. Unset it to route by tier."
       exit 1
     fi
+    if [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ] && [ -n "${KIT_EFFORT_FAST:-}${KIT_EFFORT_STANDARD:-}${KIT_EFFORT_DEEP:-}" ]; then
+      echo "Warning: CLAUDE_CODE_EFFORT_LEVEL=$CLAUDE_CODE_EFFORT_LEVEL is set, so every session runs at that effort and the tier efforts KIT_EFFORT_FAST, KIT_EFFORT_STANDARD and KIT_EFFORT_DEEP in .claude/kit.conf are ignored. Unset it to set the effort per tier."
+      exit 1
+    fi
     echo "Routing by tier: fast=$(model_of fast) standard=$(model_of standard) deep=$(model_of deep)"
     ;;
-  *) sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

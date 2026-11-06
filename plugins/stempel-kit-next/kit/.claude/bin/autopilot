@@ -197,6 +197,12 @@ stack_note() {
   echo "gh stack is not installed (gh extension install github/gh-stack); a feature with several groups opens a chain of pull requests instead of a stack."
 }
 budget_message="autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, before a build: a whole number above 0, in .claude/kit.conf or the environment."
+# valid_efforts: every KIT_EFFORT_<TIER> in kit.conf is empty or one of the five efforts; the message goes to $effort_message.
+valid_efforts() {
+  for _tier in fast standard deep; do
+    _effort_error=$(.claude/bin/route effort "$_tier" 2>&1 >/dev/null) || { effort_message="autopilot: ${_effort_error#route: }"; return 1; }
+  done
+}
 
 case $mode in
   stop) stop_build ;;
@@ -208,6 +214,7 @@ case $mode in
       exit 1
     fi
     valid_budget || { echo "$budget_message"; exit 2; }
+    valid_efforts || { echo "$effort_message"; exit 2; }
     _note=$(stack_note)
     [ -z "$_note" ] || echo "autopilot: warning: $_note" >&2
     if [ -z "${KIT_BOT_GH_CONFIG:-}" ] && [ "$(.claude/bin/gate level 2>/dev/null)" = autonomous ]; then
@@ -577,10 +584,13 @@ after_group() {
   check_size
   if ! group_checks "$1"; then
     [ -n "$session" ] || halt env "group $1 failed the build's checks and its session left no id to resume; see $check_output"
+    # One tier up, with that tier's effort; a deep group keeps its model and goes to the highest effort.
     if [ "$2" = deep ]; then
       session_effort=max
     else
-      session_model=$(.claude/bin/route "$(.claude/bin/route up "$2")")
+      _up=$(.claude/bin/route up "$2")
+      session_model=$(.claude/bin/route "$_up")
+      session_effort=$(.claude/bin/route effort "$_up") || halt env "no effort for tier $_up"
     fi
     log "- $slug, group $1: the build's checks failed; resuming the session once on a stronger model or effort"
     _stops_before=$(section_rows "$state" Stops)
@@ -616,7 +626,7 @@ run_group() {
   _group=$1
   _group_tier=$(group_tier "$_group")
   session_model=$(.claude/bin/route "$_group_tier") || halt env "no model for tier $_group_tier"
-  session_effort=""
+  session_effort=$(.claude/bin/route effort "$_group_tier") || halt env "no effort for tier $_group_tier"
   session=""
   current_group=$_group
   _group_from=$(group_from "$_group")
@@ -868,6 +878,7 @@ decide_stash() {
 
 preflight() {
   valid_budget || { echo "$budget_message" >&2; exit 2; }
+  valid_efforts || { echo "$effort_message" >&2; exit 2; }
   decide_stash "$@"
   command -v claude >/dev/null 2>&1 || { echo "autopilot: claude is not on PATH." >&2; exit 2; }
   gh auth status >/dev/null 2>&1 || { echo "autopilot: gh is not logged in; the sessions open the PRs." >&2; exit 2; }
@@ -1021,7 +1032,8 @@ for slug in "$@"; do
   minutes=$((($(date +%s) - started + 59) / 60))
   pr=$(pr_of "$branch")
   decisions=$(section_rows "$state" "Decisions to review")
-  log "| $slug | $branch | in-review | $pr; ${minutes} min; $(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
+  cost=$(.claude/bin/usage cost "$slug" 2>/dev/null | sed -n 's/^total //p')
+  log "| $slug | $branch | in-review | $pr; ${minutes} min; ${cost:+$cost; }$(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
   base=$branch
 done
 
