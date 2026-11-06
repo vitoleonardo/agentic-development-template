@@ -123,7 +123,7 @@ Dispatch the `reviewer` agent with the Agent tool (description `review round <n>
 
 ## 7. Verify
 
-Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. It reads the criteria from the plan's `## Criteria`, and it leaves `specs/README.md` alone because no row names this branch. If verify fails, classify every failure as in "Verify failures" of `/ship-feature`; the product being wrong is `hotfix`, and `.claude/bin/gate round hotfix <n>` (n counts this branch's failed verify rounds of that class) says whether to ask or to fix and verify again. Pushing the pack is gate push.
+Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. It reads the criteria from the plan's `## Criteria`, and it leaves `specs/README.md` alone because no row names this branch. If verify fails, classify every failure as in "Rounds" of `/verify-feature`; the product being wrong is `hotfix`, and `.claude/bin/gate round hotfix <n>` (n counts this branch's failed verify rounds of that class) says whether to ask or to fix and verify again. Pushing the pack is gate push.
 
 ## 8. PR (gate: push)
 
