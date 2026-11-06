@@ -370,7 +370,7 @@ Every dispatch carries a model from `.claude/bin/route`, because the Agent tool'
 | `status [--json] [--session <id>]` | `invite-users · build · tasks 3/7 · 1 red · budget 42%`, or the same as JSON with criteria, Stops, Rounds, decisions, evidence and the autopilot run. Writes nothing; Stempel Kit Pro's cockpit draws it |
 | `leadtime [--baseline] [--split-by kit] [--with-titles]` | Lead time, PR cycle time, time to first review, review rounds, spec to merge, rework rate and PR size from GitHub, median and p75, before and after the kit, without names |
 | `runs record\|report` | With `KIT_IMPROVE`: the per-feature record and the report across runs, tokens as tokens, never money |
-| `autopilot [start] [slug …]`, `autopilot stop`, `autopilot steer "<text>"` | Builds every approved spec unattended, see [Run a backlog unattended](#run-a-backlog-unattended) |
+| `autopilot [start] [slug …]`, `autopilot stop`, `autopilot steer "<text>"` | Builds every approved spec unattended, see [Run a backlog unattended](#6-run-a-backlog-unattended) |
 | `onboard-apply [--accept-looser]` | Moves the staged onboarding files into the project; refuses a baseline looser than the current one unless you say so |
 
 ### Rules, project guide and CI
