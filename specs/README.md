@@ -15,3 +15,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | Stack stage | `stack-stage.md` | in-review | next-stack-stage | 0 |
 | Risk gates | `risk-gates.md` | in-review | next-risk-gates | 0 |
 | Independent acceptance tests | `independent-tests.md` | draft | – | 1 |
+| Kit greenfield MVP | `kit-greenfield-mvp.md` | draft | – | 5 |
