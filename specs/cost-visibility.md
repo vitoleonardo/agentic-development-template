@@ -77,8 +77,7 @@ Runs report:
 - Choosing the model by task kind, and any cache setting inside Claude Code.
 
 ## Open questions
-- Does resuming a failed group on the next tier cost more than a fresh session on that tier? This spec measures it (COST-AC10, COST-AC11) but does not change it. Vito can decide after three runs.
-- Does the installed `claude --effort` accept exactly `low`, `medium`, `high`, `xhigh` and `max`? Check `claude --help` for the version in use before approval.
+- none
 
 ## Decisions
 - 04.11.2026: Cost comes from the sessions' `total_cost_usd`, not from a price table in `kit.conf`, because `docs/SPEC-v1.1.md` keeps euro cost out for the reason that prices change, and autopilot already records the figure.
@@ -86,3 +85,5 @@ Runs report:
 - 04.11.2026: The default minimum is 90 percent, because the talk calls a rate below 90 percent work to do. It only names the rate; it never fails a build.
 - 04.11.2026: A failed group that resumes one tier up takes that tier's effort, and a deep group keeps `max`, because the resume rule in `docs/customizing.md` already raises tier or effort and this feature must not weaken it.
 - 04.11.2026: Effort is set per tier, not per task, because the Agent tool takes a model per dispatch but no effort, and the group already runs on its highest task tier.
+- 06.11.2026: Whether resuming a failed group one tier up costs more than a fresh session on that tier stays open as a measurement, not a question: `usage cost` (COST-AC10, COST-AC11) and the run log show it per phase, and Vito decides after three runs.
+- 06.11.2026: The effort values are `low`, `medium`, `high`, `xhigh` and `max`, because that is the list `claude --help` prints for `--effort` in Claude Code 2.1.318, the version in use.

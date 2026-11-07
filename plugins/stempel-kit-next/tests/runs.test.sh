@@ -66,7 +66,7 @@ cat >.work/12-export.md <<'EOF'
 EOF
 
 same "$(.claude/bin/usage reviews)" "1${tab}200" "usage reviews: tokens per review round, without the screenshot check"
-same "$(.claude/bin/usage tsv)" "1000${tab}0${tab}100${tab}500${tab}400${tab}0${tab}1${tab}1${tab}2" "usage tsv: tokens per tier, rounds, escalations, tasks"
+same "$(.claude/bin/usage tsv)" "1000${tab}0${tab}100${tab}500${tab}400${tab}0${tab}1${tab}1${tab}2${tab}92" "usage tsv: tokens per tier, rounds, escalations, tasks, cache hit rate (9999 of 10849 sent, COST-AC22)"
 
 # --- off by default -------------------------------------------------------------
 
@@ -80,7 +80,7 @@ case $out in *"Run records are off"*) ok ;; *) fail "record says it is off: $out
 sed -i 's/^KIT_IMPROVE=""/KIT_IMPROVE="1"/' .claude/kit.conf
 .claude/bin/runs record >/dev/null 2>"$project/err"
 r=reports/runs/12-export.tsv
-same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400	2" "the run row"
+same "$(grep '^run' "$r")" "run${tab}2026-10-27${tab}export${tab}12-export${tab}2${tab}1${tab}1${tab}1000${tab}0${tab}100${tab}500${tab}400	2${tab}92" "the run row, with the cache hit rate last"
 same "$(grep -c '^stop' "$r")" 2 "one stop row per Stops line, without the template line"
 same "$(grep '^stop' "$r" | tail -n 1)" "stop${tab}task 2${tab}kit${tab}guard blocked \`npm run gen\`${tab}ran it by hand${tab}guard pattern too wide, proposed fix" "a stop row keeps its fields"
 same "$(cat "$project/err")" "" "known classes give no warning"
@@ -137,6 +137,24 @@ done
 .claude/bin/runs report >/dev/null
 grep -q '| approval | 3 |' reports/runs.md && ok || fail "RISK-AC45: approval stops are counted: $(grep -i approval reports/runs.md)"
 rm reports/runs/appr-*.tsv
+
+# --- cache hit rate (specs/cost-visibility.md) --------------------------------------------
+
+mv reports/runs "$project/runs-kept" && mkdir reports/runs
+cache_run() { printf 'run\t2026-10-0%s\tcache-%s\tcache-%s\t1\t0\t0\t100\t0\t100\t0\t0\t1\t%s\n' "$1" "$2" "$2" "$3"; }
+cache_run 1 a 60 >reports/runs/cache-a.tsv
+cache_run 2 b 80 >reports/runs/cache-b.tsv
+cache_run 3 c 90 >reports/runs/cache-c.tsv
+.claude/bin/runs report >/dev/null
+grep -q '| Cache hit rate (percent) | 80 | 90 | 3 |' reports/runs.md && ok || fail "COST-AC23: the median hit rate over the runs: $(grep -i 'cache' reports/runs.md)"
+rm reports/runs/cache-c.tsv
+printf 'run\t2026-10-04\tcache-d\tcache-d\t1\t0\t0\t100\t0\t100\t0\t0\t1\t–\n' >reports/runs/cache-d.tsv
+.claude/bin/runs report >/dev/null
+grep -q '| Cache hit rate (percent) | 70 | 80 | 2 |' reports/runs.md && ok || fail "COST-AC24: a run without a rate is left out: $(grep -i 'cache' reports/runs.md)"
+{ cache_run 5 f 10; printf 'setup\tno subagents, every task in the main session\n'; } >reports/runs/cache-f.tsv
+.claude/bin/runs report >/dev/null
+grep -q '| Cache hit rate (percent) | 70 | 80 | 2 |' reports/runs.md && ok || fail "COST-AC25: a run with a different setup is left out: $(grep -i 'cache' reports/runs.md)"
+rm -rf reports/runs && mv "$project/runs-kept" reports/runs
 
 # --- a fix plan (specs/fix-bug.md) ------------------------------------------------------
 

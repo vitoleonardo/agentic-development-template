@@ -3,9 +3,11 @@
 # Usage:
 #   .claude/bin/usage total     tokens counted against KIT_BUDGET_TOKENS
 #   .claude/bin/usage report    per tier and per agent, escalations and review rounds
-#   .claude/bin/usage line      the one line for the PR description
+#   .claude/bin/usage line      the one line for the PR description, with the branch's cache hit rate
+#   .claude/bin/usage cache     the cache hit rate per agent and for the branch: cache reads over every token sent
+#   .claude/bin/usage cost <feature>   what the feature's autopilot sessions cost, per phase and in total
 #   .claude/bin/usage tsv       one line for .claude/bin/runs: total, fast, standard, deep, main, other tokens,
-#                               review rounds, escalations, tasks (TAB separated)
+#                               review rounds, escalations, tasks, cache hit rate (TAB separated)
 #   .claude/bin/usage tokens <transcript>       "<model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>" per model
 #   .claude/bin/usage add-killed <transcript>   count a session the runner killed, from its transcript
 #   .claude/bin/usage reviews   tokens per review round: "<round> TAB <tokens>", from the "review round <n>" dispatches
@@ -13,7 +15,9 @@
 # usage.tsv:  <agent id or main:<session id>> TAB <model> TAB <input> TAB <output> TAB <cache read> TAB <cache write>
 # agents.tsv: <agent id> TAB <description> TAB <agent type> TAB <requested model> TAB <resolved model>
 # The budget counts input, output and cache writes. Cache reads are left out: they are cheap and grow with
-# every turn of a long session, so counting them would make any budget meaningless.
+# every turn of a long session, so counting them would make any budget meaningless. The cache hit rate is cache
+# reads over input, cache reads and cache writes, rounded down; KIT_CACHE_MIN_PERCENT names a rate below it.
+# Session cost comes from .work/autopilot/sessions.tsv (total_cost_usd per session), never from a price table.
 set -u
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
@@ -78,12 +82,60 @@ case ${1:-} in
     [ -f "$usage" ] || { echo 0; exit 0; }
     awk -F '\t' '{ s += $3 + $4 + $6 } END { print s + 0 }' "$usage"
     ;;
-  report | line | tsv)
-    if [ ! -f "$usage" ]; then
-      [ "$1" = tsv ] && printf '0\t0\t0\t0\t0\t0\t0\t0\t%d\n' "$ticked" || echo "No usage recorded for ${branch:-this branch} yet."
+  cache)
+    [ -f "$usage" ] || { echo "No usage recorded for ${branch:-this branch} yet."; exit 0; }
+    awk -F '\t' '
+      function rate(reads, sent) { return sent > 0 ? int(reads * 100 / sent) "%" : "–" }
+      {
+        sent = $3 + $5 + $6
+        rows = rows sprintf("| %s | %s | %s |\n", ($1 ~ /^main(:|$)/ ? "main" : $1), $2, rate($5, sent))
+        all_reads += $5; all_sent += sent
+      }
+      END {
+        print "| Agent | Model | Cache hit rate |"
+        print "|-------|-------|----------------|"
+        printf "%s", rows
+        printf "| branch | – | %s |\n", rate(all_reads, all_sent)
+      }
+    ' "$usage"
+    ;;
+  cost)
+    feature=${2:?usage: usage cost <feature>}
+    sessions=.work/autopilot/sessions.tsv
+    if [ ! -f "$sessions" ] || ! awk -F '\t' -v f="$feature" 'NR > 1 && $2 == f { found = 1 } END { exit !found }' "$sessions"; then
+      echo "No session costs recorded for $feature."
       exit 0
     fi
-    awk -F '\t' -v tiers="$tiers" -v mode="$1" -v agents="$agents" -v ticked="$ticked" '
+    awk -F '\t' -v f="$feature" '
+      NR > 1 && $2 == f {
+        if ($7 ~ /^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/) {
+          if (!($3 in by)) order[++n] = $3
+          by[$3] += $7; total += $7
+        } else without++
+      }
+      END {
+        for (i = 1; i <= n; i++) printf "%s %.2f USD\n", order[i], by[order[i]]
+        if (without == 1) print "1 session without a cost"
+        else if (without > 1) printf "%d sessions without a cost\n", without
+        printf "total %.2f USD\n", total
+      }
+    ' "$sessions"
+    ;;
+  report | line | tsv)
+    if [ ! -f "$usage" ]; then
+      [ "$1" = tsv ] && printf '0\t0\t0\t0\t0\t0\t0\t0\t%d\t–\n' "$ticked" || echo "No usage recorded for ${branch:-this branch} yet."
+      exit 0
+    fi
+    min_percent=${KIT_CACHE_MIN_PERCENT:-}
+    case $min_percent in
+      '' | *[!0-9]*)
+        if [ -n "$min_percent" ] && [ "$1" != tsv ]; then
+          echo "usage: KIT_CACHE_MIN_PERCENT='$min_percent' is not a whole number; the cache hit rate is shown without a minimum." >&2
+        fi
+        min_percent=""
+        ;;
+    esac
+    awk -F '\t' -v tiers="$tiers" -v mode="$1" -v agents="$agents" -v ticked="$ticked" -v min_percent="$min_percent" '
       BEGIN {
         n = split(tiers, t, " ")
         for (i = 1; i <= n; i++) { split(t[i], kv, "="); alias[kv[1]] = kv[2]; order[i] = kv[1] }
@@ -102,11 +154,13 @@ case ${1:-} in
       {
         tk = $3 + $4 + $6; tr = tier($2, $1)
         by[tr] += tk; total += tk
+        reads += $5; sent += $3 + $5 + $6
         if ($1 !~ /^main(:|$)/) rows = rows sprintf("| %s | %s | %s | %d | %d | %d | %d |\n", $1, (desc[$1] == "" ? "–" : desc[$1]), $2, $3, $4, $5, $6)
       }
       END {
+        hit = (sent > 0) ? int(reads * 100 / sent) : -1
         if (mode == "tsv") {
-          printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", total, by["fast"], by["standard"], by["deep"], by["main"], by["other"], rounds, esc, (ticked ? ticked : tasks)
+          printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", total, by["fast"], by["standard"], by["deep"], by["main"], by["other"], rounds, esc, (ticked ? ticked : tasks), (hit >= 0 ? hit : "–")
           exit
         }
         line = "Tokens (input + output + cache writes): " total + 0
@@ -114,6 +168,11 @@ case ${1:-} in
         if (by["main"] > 0) line = line ", main session " by["main"]
         if (by["other"] > 0) line = line ", other " by["other"]
         line = line ". Review rounds: " rounds + 0 ". Escalations: " esc + 0 "."
+        if (hit >= 0) {
+          line = line " Cache hit rate: " hit "%"
+          if (min_percent != "" && hit < min_percent + 0) line = line ", below " min_percent "%"
+          line = line "."
+        }
         if (mode == "line") { print line; exit }
         print line
         print ""
@@ -147,5 +206,5 @@ case ${1:-} in
     done
     echo "Moved the usage record of ${2} to ${branch}."
     ;;
-  *) sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
