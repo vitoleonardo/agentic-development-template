@@ -1,14 +1,20 @@
 #!/bin/sh
 # Tests for model routing (.claude/bin/route) and the usage record (hooks/usage, .claude/bin/usage).
-# Run: sh plugins/stempel-kit/tests/usage.test.sh
+# Run: sh plugins/stempel-kit-routing/tests/usage.test.sh
 # The transcripts are fixtures in the format Claude Code 2.1.311 writes: one JSON object per line, an
 # assistant message repeated while it streams, its usage on every copy.
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
+ext=$(CDPATH='' cd -- "$(dirname -- "$0")/../plugin" && pwd)
 project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
+cp "$ext"/bin/* "$project/.claude/bin/"
+cp "$ext/hooks/usage" "$project/.claude/hooks/"
+# As install.sh --extension routing writes it.
+printf '\n# extension: routing bin/route\n' >>"$project/.claude/kit.conf"
+cat "$ext/kit.conf.part" >>"$project/.claude/kit.conf"
 cd "$project" || exit 1
 export CLAUDE_PROJECT_DIR="$project"
 git init -q -b 7-routing

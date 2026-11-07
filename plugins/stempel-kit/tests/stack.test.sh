@@ -10,7 +10,7 @@ project=$work/project
 mkdir -p "$project" "$work/bin"
 cp -R "$here/kit/." "$project/"
 # The extensions these scripts call.
-cp "$here"/../stempel-kit-onboard/plugin/bin/* "$here"/../stempel-kit-evidence/plugin/bin/* "$project/.claude/bin/"
+cp "$here"/../stempel-kit-*/plugin/bin/* "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

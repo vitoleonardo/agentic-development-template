@@ -6,6 +6,8 @@ cd "$KIT_ROOT" || exit 1
 
 # shellcheck source=../bin/conf.sh
 . "$(dirname -- "$0")/../bin/conf.sh"
+# shellcheck source=../bin/json.sh
+. "$(dirname -- "$0")/../bin/json.sh"
 kit_from_environment=$(export -p | grep -E '^(export|declare -x) KIT_(APPROVAL|GATE_[A-Z]+|BUDGET_TOKENS|IMPROVE)=')
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
@@ -20,31 +22,8 @@ file_value() {
 }
 
 # Hook input arrives as one JSON document on stdin.
+# shellcheck disable=SC2034 # read by json_string and json_bool in .claude/bin/json.sh
 HOOK_INPUT=$(cat)
-
-# Print the string value of a JSON key from the hook input (last occurrence),
-# with the common escapes undone. Good enough for paths and commands; not a
-# general JSON parser.
-json_string() {
-  printf '%s' "$HOOK_INPUT" | tr '\n' ' ' |
-    sed -nE 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' |
-    sed -e 's/\\"/"/g' -e 's/\\\//\//g' -e 's/\\[nt]/ /g' -e 's/\\\\/\\/g'
-}
-
-json_bool() {
-  printf '%s' "$HOOK_INPUT" | grep -Eq '"'"$1"'"[[:space:]]*:[[:space:]]*true'
-}
-
-# Encode stdin as the body of a JSON string (without the surrounding quotes).
-json_escape() {
-  esc=$(printf '\033')
-  sed "s/${esc}\[[0-9;]*[A-Za-z]//g" | tr -d '\000-\010\013\014\016-\037' |
-    awk 'BEGIN { ORS = "" } {
-      gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t"); gsub(/\r/, "")
-      if (NR > 1) print "\\n"
-      print
-    }'
-}
 
 # Per-session state files under .work/ (gitignored).
 state_file() {

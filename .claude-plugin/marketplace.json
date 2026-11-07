@@ -21,6 +21,11 @@
       "description": "Extension: /verify-feature and the evidence pack with hard gates, data runs, the edge-case matrix and screenshots. Needs stempel-kit-onboard"
     },
     {
+      "name": "stempel-kit-routing",
+      "source": "./plugins/stempel-kit-routing/plugin",
+      "description": "Extension: model routing per dispatched agent, the token usage record and a token budget per branch"
+    },
+    {
       "name": "stempel-kit-onboard",
       "source": "./plugins/stempel-kit-onboard/plugin",
       "description": "Extension: /onboard for existing repositories and a baseline so legacy failures never block a pull request"

@@ -16,7 +16,7 @@ owns() {
   shift
   for f in "$@"; do
     [ -e "$ext/$f" ] && ok || fail "stempel-kit-${ext##*-} has no $f"
-    case $f in plugin/*) [ ! -e "$core/${f#plugin/}" ] && ok || fail "the core still holds ${f#plugin/}" ;; esac
+    case $f in plugin/hooks/hooks.json) ;; plugin/*) [ ! -e "$core/${f#plugin/}" ] && ok || fail "the core still holds ${f#plugin/}" ;; esac
   done
   [ -f "$ext/plugin/kit.conf.part" ] && ok || fail "stempel-kit-${ext##*-} has no kit.conf.part"
   [ -n "$(ls "$ext/plugin/bin" 2>/dev/null)" ] && ok || fail "stempel-kit-${ext##*-} has no script in plugin/bin"
@@ -24,6 +24,7 @@ owns() {
 }
 
 owns evidence plugin/bin/evidence plugin/skills/verify-feature/SKILL.md tests/evidence.test.sh
+owns routing plugin/bin/route plugin/bin/usage plugin/hooks/usage plugin/hooks/hooks.json tests/usage.test.sh
 owns onboard plugin/bin/baseline plugin/bin/onboard-apply plugin/skills/onboard/SKILL.md tests/baseline.test.sh
 
 echo "$passed passed, $failed failed"

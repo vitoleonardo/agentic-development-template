@@ -17,6 +17,8 @@ here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
+# runs reads the usage record of the routing extension.
+cp "$here"/../stempel-kit-routing/plugin/bin/* "$project/.claude/bin/"
 cd "$project" || exit 1
 git init -q -b 12-export
 export RUNS_TODAY=2026-10-27

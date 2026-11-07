@@ -93,7 +93,7 @@ setup() {
   mkdir -p "$project"
   cp -R "$here/kit/." "$project/"
 # The extensions these scripts call.
-cp "$here"/../stempel-kit-onboard/plugin/bin/* "$here"/../stempel-kit-evidence/plugin/bin/* "$project/.claude/bin/"
+cp "$here"/../stempel-kit-*/plugin/bin/* "$project/.claude/bin/"
   rm -f "$fake/calls" "$fake/n" "$fake/untrusted" "$fake/prs" "$fake/pr-after" "$fake/order" "$fake/run-env"
   : >"$fake/script"
   cd "$project" || exit 1

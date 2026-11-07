@@ -8,8 +8,21 @@
 # No hook input carries token counts, so they come from the transcripts. A message is written there several
 # times while it streams; the last line per message ID counts. Lines are replaced, never appended, because
 # the transcripts are cumulative.
-. "$(dirname -- "$0")/lib.sh"
-[ -x .claude/bin/usage ] || exit 0
+# The hook runs from the extension's plugin folder, so its helpers come from the project: the core's
+# .claude/bin/json.sh and the .claude/bin/usage that install.sh --extension routing copied there.
+KIT_ROOT=${CLAUDE_PROJECT_DIR:-$PWD}
+cd "$KIT_ROOT" || exit 0
+[ -x .claude/bin/usage ] && [ -f .claude/bin/json.sh ] || exit 0
+# shellcheck source=/dev/null
+. ./.claude/bin/json.sh
+budget_from_environment=${KIT_BUDGET_TOKENS-unset}
+if [ -f .claude/kit.conf ]; then
+  # shellcheck source=/dev/null
+  . ./.claude/kit.conf
+fi
+[ "$budget_from_environment" = unset ] || KIT_BUDGET_TOKENS=$budget_from_environment
+# shellcheck disable=SC2034 # read by json_string and json_bool in .claude/bin/json.sh
+HOOK_INPUT=$(cat)
 
 branch=$(git branch --show-current 2>/dev/null)
 dir=.work/${branch:-detached}
