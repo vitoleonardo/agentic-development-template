@@ -1,3 +1,5 @@
+> Historical: the specification of version 1.1, before the split into a core and extensions (specs/kit-core-split.md). Kept as the record of what was built; the specs under specs/ and the README are current.
+
 # Stempel Kit: Specification v1.1
 
 Status: implemented 27.10.2026 (decisions in section 11; what was built and proven in `docs/build-log.md`). There is no written v1 specification in this repository; v1 is the shipped kit (`kit/`, `adapters/typescript/`, `install.sh`, `tests/`) and its history in `docs/build-log.md`. Everything v1 does stays valid unless this file says otherwise.
