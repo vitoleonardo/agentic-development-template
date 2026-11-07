@@ -247,6 +247,8 @@ risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*
 printf 'alter table x;\n' >"$risk_repo/db/migrations/1.sql" && risk_git add -A && risk_git commit -qm migration
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
 risk_gate_is ask KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+# kit.conf's pattern (migrations/*) matches the change, the environment's does not: the environment wins.
+risk_gate_is auto KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="api/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="api/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*" KIT_GATE_PUSH=auto
 risk_gate_is ask KIT_APPROVAL=standard
@@ -305,7 +307,7 @@ for h in guard record-edit check-edits; do
 done
 rm -rf "$empty"
 # The merge gate comes with stempel-kit-autopilot: .claude/bin/stack gate.
-cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$risk_repo/.claude/bin/"
+cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$here/../stempel-kit-autopilot/plugin/bin/plans.sh" "$risk_repo/.claude/bin/"
 merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/stack gate 2>&1); }
 case $(merge_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC29: strict asks at the merge gate" ;; esac
 out=$(merge_gate KIT_APPROVAL=autonomous)

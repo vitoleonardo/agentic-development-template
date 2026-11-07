@@ -25,57 +25,34 @@ patterns() {
     { while (match($0, /`[^`]+`/)) { print substr($0, RSTART + 1, RLENGTH - 2); $0 = substr($0, RSTART + RLENGTH) } }
   ' .claude/rules/*.md 2>/dev/null | sed -e 's/<[^>]*>/*/g' -e 's|/$|/*|'
 }
-
 # in_any <path> <patterns>: true if the path matches one of the newline-separated patterns.
 # A pattern without a slash matches the file name anywhere.
 in_any() {
-  set -f
-  old_ifs=$IFS
-  IFS='
+  set -f; old_ifs=$IFS; IFS='
 '
   for p in $2; do
-    case $p in
-      */*) target=$1 ;;
-      *) target=${1##*/} ;;
-    esac
+    case $p in */*) target=$1 ;; *) target=${1##*/} ;; esac
     # shellcheck disable=SC2254
-    case $target in
-      $p) IFS=$old_ifs; set +f; return 0 ;;
-    esac
+    case $target in $p) IFS=$old_ifs; set +f; return 0 ;; esac
   done
-  IFS=$old_ifs
-  set +f
+  IFS=$old_ifs; set +f
   return 1
 }
-
 # grab_bag <path>: the first folder or file name that says nothing about what it holds.
-grab_bag() {
-  printf '%s\n' "$1" | tr '/' '\n' | sed 's/\..*//' | grep -m 1 -xiE 'utils?|helpers?|common|misc'
-}
+grab_bag() { printf '%s\n' "$1" | tr '/' '\n' | sed 's/\..*//' | grep -m 1 -xiE 'utils?|helpers?|common|misc'; }
 
 homes=$(patterns Map)
-if [ -z "$homes" ]; then
-  echo "structure: no Map in .claude/rules/structure.md; nothing to check against." >&2
-  exit 3
-fi
+[ -n "$homes" ] || { echo "structure: no Map in .claude/rules/structure.md; nothing to check against." >&2; exit 3; }
 legacy=$(patterns Legacy)
-
 if [ $# -gt 0 ]; then
   files=$(printf '%s\n' "$@")
 else
-  files=$({
-    git diff --name-only --diff-filter=AR "$(merge_base)" -- 2>/dev/null
-    git ls-files --others --exclude-standard 2>/dev/null
-  } | sort -u)
+  files=$({ git diff --name-only --diff-filter=AR "$(merge_base)" -- 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
 fi
 
-failed=0
-checked=0
+failed=0 checked=0
 while IFS= read -r file; do
-  case $file in
-    "$root"/*) file=${file#"$root"/} ;;
-    /*) continue ;;
-  esac
+  case $file in "$root"/*) file=${file#"$root"/} ;; /*) continue ;; esac
   file=${file#./}
   case $file in '' | .claude/* | .work/* | */.claude/*) continue ;; esac
   pkg=$(package_of "$file")
@@ -84,23 +61,19 @@ while IFS= read -r file; do
   # In a package with its own kit.conf, a home may also be written relative to the package.
   rel=$file
   [ "$pkg" = . ] || rel=${file#"$pkg"/}
-
   if [ -n "$legacy" ] && { in_any "$file" "$legacy" || in_any "$rel" "$legacy"; }; then
     echo "$file: in a legacy home (## Legacy in .claude/rules/); new code goes to the current home in the Map."
-    failed=$((failed + 1))
   elif ! in_any "$file" "$homes" && ! in_any "$rel" "$homes"; then
     echo "$file: no home in the Map (.claude/rules/structure.md). Put it in its kind's home, or propose a new home in the plan."
-    failed=$((failed + 1))
   elif name=$(grab_bag "$file") && ! printf '%s\n' "$homes" | grep -qxF -e "$file" -e "$rel"; then
     echo "$file: '$name' says nothing about what it holds. Name the file or folder after its topic."
-    failed=$((failed + 1))
+  else
+    continue
   fi
+  failed=$((failed + 1))
 done <<EOF
 $files
 EOF
 
-if [ "$failed" -gt 0 ]; then
-  echo "structure: $failed of $checked new source files misplaced."
-  exit 1
-fi
+[ "$failed" -eq 0 ] || { echo "structure: $failed of $checked new source files misplaced."; exit 1; }
 echo "structure: $checked new source files, all in their homes."

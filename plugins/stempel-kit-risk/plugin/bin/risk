@@ -3,6 +3,8 @@
 # diff always gets the same rank.
 # Usage:
 #   .claude/bin/risk plan [plan]                 the plan's predicted risk (default .work/<branch>.md)
+#   .claude/bin/risk push                        high when the branch changes a file in KIT_PUSH_ASK_PATTERNS
+#                                                (gate push at KIT_APPROVAL=standard); prints the file
 #   .claude/bin/risk diff [--from A] [--to B]    a diff's measured risk, plus the run's signals from the state file
 #                                                when the range is the branch's (default: merge base to HEAD)
 #   .claude/bin/risk stack                       every layer of the stack below this branch's top, and the highest
@@ -145,6 +147,11 @@ rank_diff() {
 
 case ${1:-} in
   plan) rank_plan "${2:-}" ;;
+  push)
+    risky=$(changed_file_matching "$(merge_base)" "${KIT_PUSH_ASK_PATTERNS:-$push_ask}") || exit 0
+    echo "the branch changes $risky (KIT_PUSH_ASK_PATTERNS)"
+    exit 1
+    ;;
   diff)
     shift
     from="" to=HEAD signals=""
@@ -184,5 +191,5 @@ case ${1:-} in
     cat "$tmp/layers"
     [ "$worst_class" != high ]
     ;;
-  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

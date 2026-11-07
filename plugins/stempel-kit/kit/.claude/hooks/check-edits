@@ -1,14 +1,13 @@
 #!/bin/sh
-# PostToolBatch: once per batch of tool calls, lint edited specs, then format the
-# edited source files, run the typecheck and the tests related to them, and look for code they duplicate.
-# Failures go back to Claude as context so it fixes them in the same turn.
+# PostToolBatch: once per batch of tool calls, lint edited specs, then format the edited source files, run the
+# typecheck and the tests related to them, and look for code they duplicate. Failures go back to Claude as
+# context so it fixes them in the same turn.
 . "$(dirname -- "$0")/lib.sh"
 
 pending=$(state_file pending)
 [ -s "$pending" ] || exit 0
 batch="$pending.$$"
 mv "$pending" "$batch" || exit 0
-
 files=$(sort -u "$batch" | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done)
 rm -f "$batch"
 [ -n "$files" ] || exit 0
@@ -16,61 +15,41 @@ rm -f "$batch"
 log=$(state_file checks)
 failures=""
 export NO_COLOR=1 FORCE_COLOR=0 CI=1
-
+# run <check> [files]: the check, its line in the checks log and, when it fails, its last 40 lines for Claude.
 run() {
   name=$1
   shift
   started=$(date +%s)
-  if [ "$name" = spec-lint ]; then
-    out=$(.claude/bin/spec-lint "$@" 2>&1)
-  else
-    out=$(kit_check "$name" "$@" 2>&1)
-  fi
+  if [ "$name" = spec-lint ]; then out=$(.claude/bin/spec-lint "$@" 2>&1); else out=$(kit_check "$name" "$@" 2>&1); fi
   code=$?
-  seconds=$(($(date +%s) - started))
-  case $code in
-    0) result=pass ;;
-    3) return 0 ;; # not configured for this stack
-    *) result=fail ;;
-  esac
-  printf '%s %s %ss\n' "$name" "$result" "$seconds" >>"$log"
-  if [ "$result" = fail ]; then
-    failures="$failures
+  case $code in 0) result=pass ;; 3) return 0 ;; *) result=fail ;; esac # 3: not configured for this stack
+  printf '%s %s %ss\n' "$name" "$result" "$(($(date +%s) - started))" >>"$log"
+  [ "$result" = fail ] || return 0
+  failures="$failures
 == $name failed (exit $code) ==
 $(printf '%s\n' "$out" | tail -n 40)"
-  fi
 }
 
 specs=$(printf '%s\n' "$files" | grep '^specs/.*\.md$')
 sources=$(printf '%s\n' "$files" | grep -v '^specs/.*\.md$')
-
 # Files are passed one per argument; names with spaces stay intact.
-set -f
-old_ifs=$IFS
-IFS='
+set -f; old_ifs=$IFS; IFS='
 '
-if [ -n "$specs" ]; then
-  # shellcheck disable=SC2086
-  run spec-lint $specs
-fi
-if [ -n "$sources" ]; then
-  # shellcheck disable=SC2086
-  set -- $sources
-  IFS=$old_ifs
+# shellcheck disable=SC2086
+[ -z "$specs" ] || run spec-lint $specs
+# shellcheck disable=SC2086
+set -- $sources
+IFS=$old_ifs; set +f
+if [ $# -gt 0 ]; then
   run format "$@"
   run typecheck
   run test-related "$@"
   run duplicates-related "$@"
 fi
-IFS=$old_ifs
-set +f
-
-[ -z "$failures" ] && exit 0
+[ -n "$failures" ] || exit 0
 
 message="Checks failed after editing: $(printf '%s\n' "$files" | tr '\n' ' ')
 If you just wrote a test that is meant to fail first (red before green), record the failure in the state file and continue. Otherwise fix the cause before moving on.
 $failures"
-
-printf '{"hookSpecificOutput":{"hookEventName":"PostToolBatch","additionalContext":"%s"}}\n' \
-  "$(printf '%s\n' "$message" | json_escape)"
+printf '{"hookSpecificOutput":{"hookEventName":"PostToolBatch","additionalContext":"%s"}}\n' "$(printf '%s\n' "$message" | json_escape)"
 exit 0

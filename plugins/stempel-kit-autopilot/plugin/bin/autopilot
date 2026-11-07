@@ -30,6 +30,8 @@ cd "$root" || exit 2
 . "$root/.claude/bin/conf.sh"
 # shellcheck source=features.sh
 . "$root/.claude/bin/features.sh"
+# shellcheck source=plans.sh
+. "$root/.claude/bin/plans.sh"
 budget_from_environment=${KIT_BUDGET_TOKENS:-}
 improve_from_environment=${KIT_IMPROVE:-}
 approval_from_environment=${KIT_APPROVAL:-}
@@ -59,7 +61,7 @@ kill_grace_seconds=${AUTOPILOT_KILL_GRACE_SECONDS:-10}
 answerable_classes="question plan test"
 log_dir=.work/autopilot
 mkdir -p "$log_dir"
-# shellcheck disable=SC2154 # build_lock comes from features.sh
+# shellcheck disable=SC2154 # build_lock comes from plans.sh
 lock_dir=$build_lock
 stop_request=$log_dir/stop
 steer_dir=$log_dir/steer

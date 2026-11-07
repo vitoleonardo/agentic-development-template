@@ -73,7 +73,7 @@ run_fix() {
 common_checks() {
   check "on a fix branch, not the feature's (FIXBUG-AC10)" '[ "$branch" != main ] && [ "$branch" != expense-split ]'
   check "the plan's title names the spec" 'head -n 1 "$state" | grep -q "(spec: specs/expense-split.md)"'
-  check "## Criteria holds $1 and nothing else (FIXBUG-AC4)" '[ "$(.claude/bin/features.sh 2>/dev/null; . .claude/bin/features.sh; plan_criteria "$state")" = "'"$1"'" ]'
+  check "## Criteria holds $1 and nothing else (FIXBUG-AC4)" '[ "$(awk "/^## / { inside = (\$0 == \"## Criteria\"); next } inside && /^- \\*\\*/ { sub(/^- \\*\\*/, \"\"); sub(/\\*\\*.*\$/, \"\"); print }" "$state")" = "'"$1"'" ]'
   check "## Bug has Source, Reproduce, Expected and Observed (FIXBUG-AC1)" 'for k in Source Reproduce Expected Observed; do grep -q "^- $k:" "$state" || exit 1; done'
   check "task 1 went to the test-writer as reproduce (FIXBUG-AC12)" 'grep -i "task 1: reproduce" "$agents" | grep -q test-writer'
   check "task 2 went to the implementer as fix (FIXBUG-AC14)" 'grep -i "task 2: fix" "$agents" | grep -q implementer'

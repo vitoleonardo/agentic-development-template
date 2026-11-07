@@ -1,0 +1,2 @@
+# Test fixture (CORE-AC21).
+KIT_EXT_NODE_SCAN="node .claude/bin/scan.mts"

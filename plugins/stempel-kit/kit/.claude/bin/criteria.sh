@@ -1,18 +1,13 @@
 # shellcheck shell=sh
-# The acceptance-criterion check that spec-lint and plan-lint share, as awk source to concatenate
-# into their programs. It defines problem-free helpers only; the program supplies problem(line, message).
+# The acceptance-criterion check that spec-lint and plan-lint share, as awk source to concatenate into their
+# programs; the program supplies problem(line, message) and calls criterion_check_init() in its BEGIN block.
 #   check_criterion(line, id, text): text must read "Given <state>, when <action>, then <one result>"
 #   and hold no word of the untestable list; each violation is reported through problem().
-# nvague and vague[] are set by criterion_check_init(), which the program calls in its BEGIN block.
 
 # shellcheck disable=SC2034
 CRITERION_CHECK='
   # Lowercase words separated by single spaces, padded so " word " always matches whole words.
-  function words(text,    t) {
-    t = tolower(text)
-    gsub(/[^a-z0-9-]+/, " ", t)
-    return " " t " "
-  }
+  function words(text,    t) { t = tolower(text); gsub(/[^a-z0-9-]+/, " ", t); return " " t " " }
 
   function count(haystack, needle,    n, i) {
     n = 0

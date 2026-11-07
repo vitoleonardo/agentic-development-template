@@ -1,7 +1,7 @@
 {
   "name": "stempel-kit",
   "version": "0.4.2",
-  "description": "Spec-driven workflow for Claude Code: spec, plan, test-first build, independent review, verify with an evidence pack, and PR; onboarding for existing repos, model routing per task, and guard, check and usage hooks. Run install.sh --plugin in each project for the rules, permissions and check commands.",
+  "description": "The core of the Stempel Kit for Claude Code: guard and check hooks, a spec and a plan with their lints, a test-first build with three subagents, a review in a fresh context and the red and green runs in the pull request. Extensions: stempel-kit-evidence, stempel-kit-autopilot, stempel-kit-routing, stempel-kit-improve, stempel-kit-risk, stempel-kit-onboard. Run install.sh --plugin in each project for the rules, permissions and check commands.",
   "author": { "name": "Viktor Krawutschke" },
   "license": "MIT",
   "keywords": ["workflow", "spec-driven", "hooks", "subagents", "quality-gates"]
