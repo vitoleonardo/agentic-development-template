@@ -1,6 +1,6 @@
-# Stempel Kit for Claude Code (next)
+# Stempel Kit for Claude Code
 
-> **Version 0.4.2, under test.** This is the next version of [stempel-kit](../stempel-kit/), which stays the stable one. It builds a feature in one fresh headless session per planned group of tasks and opens one pull request per group, linked as a GitHub stack. The e2e and mutation tests run once per stack, as the last check before the merge, and the build merges a stack itself unless its risk rank says a person approves it ([build log](docs/build-log.md)). A project installs only one of the two plugins: with both, every hook runs twice. It replaces the stable plugin after two real runs, one small feature and one 13-point sprint.
+> **Version 1.0.0: the core.** The guard and check hooks, a spec and a plan with their lints, a test-first build with three subagents, a review in a fresh context and the red and green runs in the pull request. Everything else is an extension in the kit's marketplace: `stempel-kit-evidence`, `-autopilot`, `-routing`, `-improve`, `-risk`, `-onboard` (see the [README](../../README.md)). Each one installs with `/plugin install stempel-kit-<name>@stempel-kit` and `install.sh <project> --extension <name>`.
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
