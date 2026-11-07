@@ -171,7 +171,7 @@ sequenceDiagram
   end
 ```
 
-What you see at each gate depends on `KIT_APPROVAL`: `strict` (the default) asks at every gate; `standard` asks for the spec and the plan and does the rest alone; `autonomous` does everything alone. Every decision taken at an `auto` gate lands under "Decisions to review" in the state file and in the PR body, so a reviewer sees what nobody approved. Three things never change with the level: the guard still blocks secrets, protected paths and destructive git; `gh pr merge` and edits to `.claude/` still ask; and a failure that comes back after two fixes stops and asks.
+What you see at each gate depends on `KIT_APPROVAL`: `strict` (the level when the variable is unset; the shipped `kit.conf` sets `autonomous`) asks at every gate; `standard` asks for the spec and the plan and does the rest alone; `autonomous` does everything alone. Every decision taken at an `auto` gate lands under "Decisions to review" in the state file and in the PR body, so a reviewer sees what nobody approved. Three things never change with the level: the guard still blocks secrets, protected paths and destructive git; `gh pr merge` and edits to `.claude/` still ask; and a failure that comes back after two fixes stops and asks.
 
 Each phase leaves a file, and those files are the whole memory of the run:
 
@@ -191,7 +191,7 @@ Each phase leaves a file, and those files are the whole memory of the run:
 
 ## Features in detail
 
-The kit, `plugins/stempel-kit`, as it is installed into a project. The parts under [Group sessions, stacks and risk](#group-sessions-stacks-and-risk) came with version 0.4.
+The kit as it is installed into a project. A row marked with an extension name needs that extension; the core has the rest. [Group sessions, stacks and risk](#group-sessions-stacks-and-risk) come with stempel-kit-autopilot and stempel-kit-risk.
 
 ### Skills
 
@@ -203,10 +203,10 @@ The kit, `plugins/stempel-kit`, as it is installed into a project. The parts und
 | `/fix-bug <issue, report or failing test>` | A feature with a smaller plan. The report becomes one to three criteria: a spec's own criterion, one new criterion added to the spec (gate `spec`), or plan-only criteria when no spec covers the area. The test-writer writes the red test, the implementer the fix, one commit, then the same review, verify and PR. Never sets a feature's status | A PR whose Why links the report, not a spec |
 | `/write-tests` | The test-writer on its own: tests named by criterion, red first, edge cases, mocks only at the boundaries | A list of which tests failed first and which passed without ever failing |
 | `/review-diff [base]` | The reviewer on its own, against the spec and the rules | Verdict per criterion, findings by severity, ready for PR yes or no |
-| `/verify-feature [base]` | Hard gates, data runs, the edge-case matrix, screenshots on the branch and the base, the reviewer's screenshot verdict, the pack | Gate `push`: the pack on the `kit-evidence` branch |
+| `/verify-feature [base]` (stempel-kit-evidence) | Hard gates, data runs, the edge-case matrix, screenshots on the branch and the base, the reviewer's screenshot verdict, the pack | Gate `push`: the pack on the `kit-evidence` branch |
 | `/pr-description [base]` | Title, what, why, an evidence table per criterion, how to review it in five minutes, risks, the cost line, Decisions to review. Refuses a stale pack | Gate `push`: the `gh pr create` command, or the PR |
-| `/onboard [--refresh]` | Four passes for an existing repository: scan, baseline, proposal, apply. Writes nothing outside `.work/onboard/` until you approve; `.claude/bin/onboard-apply` puts the files in place and refuses a looser baseline | `kit.conf` per package, project facts, the Map, rules from the repository's own conventions, protected paths, `.claude/baseline.tsv`, the lead-time baseline |
-| `/improve-kit [focus]` | Optional, human-started. Reads the run records, token usage and lead time, checks whether earlier kit changes moved their metric, applies fixed rules with minimum samples | Proposals in `.work/improve/<date>.md`; nothing changes before you pick |
+| `/onboard [--refresh]` (stempel-kit-onboard) | Four passes for an existing repository: scan, baseline, proposal, apply. Writes nothing outside `.work/onboard/` until you approve; `.claude/bin/onboard-apply` puts the files in place and refuses a looser baseline | `kit.conf` per package, project facts, the Map, rules from the repository's own conventions, protected paths, `.claude/baseline.tsv`, the lead-time baseline |
+| `/improve-kit [focus]` (stempel-kit-improve) | Optional, human-started. Reads the run records, token usage and lead time, checks whether earlier kit changes moved their metric, applies fixed rules with minimum samples | Proposals in `.work/improve/<date>.md`; nothing changes before you pick |
 
 ### Subagents
 
@@ -222,7 +222,7 @@ Every dispatch carries a model from `.claude/bin/route`, because the Agent tool'
 
 `.claude/bin/gate <name>` answers `ask` or `auto` from `KIT_APPROVAL` in `.claude/kit.conf` or the environment (`KIT_APPROVAL=autonomous claude` for one session). `KIT_GATE_<NAME>` overrides one gate.
 
-| Gate | Covers | `strict` (default) | `standard` | `autonomous` |
+| Gate | Covers | `strict` | `standard` | `autonomous` |
 |---|---|---|---|---|
 | `spec` | approving the spec, and again after an amendment | ask | ask | auto |
 | `plan` | approving the plan | ask | ask | auto |
@@ -243,15 +243,15 @@ Every dispatch carries a model from `.claude/bin/route`, because the Agent tool'
 | `plan-lint <plan>` | Every criterion in a task, no unknown IDs, named test cases, a reason per raised tier, dependency order, new files in the Map, no placeholder left |
 | `structure <files>` | Every new source file sits in a home of the Map in `.claude/rules/structure.md`; no file named `utils`, `helpers`, `common` or `misc` |
 | `gate <name>`, `gate level`, `gate round` | The approval decisions above |
-| `route <role\|tier>`, `route up`, `route check` | The model for a dispatch; one tier up; a warning when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides routing |
-| `usage report\|line\|adopt\|tsv` | Tokens per agent, the PR's cost line, moving a branch's record, the raw table. The next kit adds `cache` and `cost` |
-| `baseline record` | Every configured test, lint, typecheck and coverage command per package; test IDs from the JUnit report, errors per file |
-| `evidence gates\|data\|matrix\|screenshots\|scope\|json\|push` | The verify steps, each one a script decision; `scope` says whether a later review round can be a delta |
-| `status [--json] [--session <id>]` | `invite-users · build · tasks 3/7 · 1 red · budget 42%`, or the same as JSON with criteria, Stops, Rounds, decisions, evidence and the autopilot run. Writes nothing; Stempel Kit Pro's cockpit draws it |
-| `leadtime [--baseline] [--split-by kit] [--with-titles]` | Lead time, PR cycle time, time to first review, review rounds, spec to merge, rework rate and PR size from GitHub, median and p75, before and after the kit, without names |
-| `runs record\|report` | With `KIT_IMPROVE`: the per-feature record and the report across runs, tokens as tokens, never money |
-| `autopilot [start] [slug …]`, `autopilot stop`, `autopilot steer "<text>"` | Builds every approved spec unattended, see [Run a backlog unattended](#6-run-a-backlog-unattended) |
-| `onboard-apply [--accept-looser]` | Moves the staged onboarding files into the project; refuses a baseline looser than the current one unless you say so |
+| `route <role\|tier>`, `route up`, `route check` (stempel-kit-routing) | The model for a dispatch; one tier up; a warning when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides routing |
+| `usage report\|line\|adopt\|tsv`, `usage cache\|cost` (stempel-kit-routing) | Tokens per agent, the PR's cost line, moving a branch's record, the raw table |
+| `baseline record` (stempel-kit-onboard) | Every configured test, lint, typecheck and coverage command per package; test IDs from the JUnit report, errors per file |
+| `evidence gates\|data\|matrix\|screenshots\|scope\|json\|push` (stempel-kit-evidence) | The verify steps, each one a script decision; `scope` says whether a later review round can be a delta |
+| `status [--json] [--session <id>]` (stempel-kit-autopilot) | `invite-users · build · tasks 3/7 · 1 red · budget 42%`, or the same as JSON with criteria, Stops, Rounds, decisions, evidence and the autopilot run. Writes nothing; Stempel Kit Pro's cockpit draws it |
+| `leadtime [--baseline] [--split-by kit] [--with-titles]` (stempel-kit-improve) | Lead time, PR cycle time, time to first review, review rounds, spec to merge, rework rate and PR size from GitHub, median and p75, before and after the kit, without names |
+| `runs record\|report` (stempel-kit-improve) | With `KIT_IMPROVE`: the per-feature record and the report across runs, tokens as tokens, never money |
+| `autopilot [start] [slug …]`, `autopilot stop`, `autopilot steer "<text>"` (stempel-kit-autopilot) | Builds every approved spec unattended, see [Run a backlog unattended](#6-run-a-backlog-unattended) |
+| `onboard-apply [--accept-looser]` (stempel-kit-onboard) | Moves the staged onboarding files into the project; refuses a baseline looser than the current one unless you say so |
 
 ### Rules, project guide and CI
 
@@ -317,7 +317,7 @@ Requirements: Claude Code 2.1.309 or later, git, a POSIX shell. The TypeScript a
 cd ~/code/legacy-app && claude
 ```
 
-Then `/onboard`. It scans the repository, records the baseline of every check so tests that already fail never block a PR, and proposes `kit.conf` per package, the project facts, the Map, rules from your own conventions and protected paths. It writes only to `.work/onboard/` and waits for you after each pass; `.claude/bin/onboard-apply` puts the files in place. Commit them, accept the trust prompt, make CI required. Later, `/onboard --refresh` picks up new adapter keys.
+Then `/onboard` (stempel-kit-onboard). It scans the repository, records the baseline of every check so tests that already fail never block a PR, and proposes `kit.conf` per package, the project facts, the Map, rules from your own conventions and protected paths. It writes only to `.work/onboard/` and waits for you after each pass; `.claude/bin/onboard-apply` puts the files in place. Commit them, accept the trust prompt, make CI required. Later, `/onboard --refresh` picks up new adapter keys.
 
 ### 3. Ship a feature
 
@@ -330,10 +330,10 @@ At the default level this is what happens on your side:
 1. It asks at most five questions, writes `specs/invite.md`, lints it, has the reviewer check it, and shows you the spec. You approve, or answer the open questions.
 2. It writes `.work/<branch>.md` with the design and the tasks and shows you the summary. You approve. It suggests `/clear` and `/ship-feature Invite …` again, which resumes at the build with a small context.
 3. The build runs alone: one implementer per task, test first, hooks after every edit, a commit per task, then simplify and the review rounds. You are asked only when a task fails twice, a review does not converge, the budget is used up, or the spec turns out to be wrong.
-4. Verify shows you the gate table, the edge-case matrix, the data runs and the screenshot verdict, and asks before pushing the pack.
+4. With stempel-kit-evidence, verify shows you the gate table, the edge-case matrix, the data runs and the screenshot verdict, and asks before pushing the pack.
 5. It shows the PR description and offers the `gh pr create` command. You run it, read the PR (start with "Decisions to review" and the evidence table), merge, and set the row in `specs/README.md` to `done`.
 
-The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`. A new session on an existing branch reads `specs/README.md` and the state file first and continues.
+The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`, and `/verify-feature` with stempel-kit-evidence. A new session on an existing branch reads `specs/README.md` and the state file first and continues.
 
 ### 4. Fix a bug
 
@@ -350,13 +350,15 @@ An issue number, a pasted report or a failing test. It writes the plan with one 
 In `.claude/kit.conf`, or per session in the environment:
 
 ```sh
-KIT_APPROVAL="standard"      # strict (default), standard or autonomous
+KIT_APPROVAL="standard"      # strict, standard or autonomous (the shipped kit.conf: autonomous)
 KIT_GATE_PUSH="ask"          # override one gate
 KIT_PUSH_ASK_PATTERNS="auth/* *auth.* migrations/*"   # pushes that always ask
 KIT_BUDGET_TOKENS="2000000"  # per branch; the usage hook blocks past it
 ```
 
 ### 6. Run a backlog unattended
+
+With stempel-kit-autopilot (and stempel-kit-routing, which it extends):
 
 1. Approve every spec yourself; rows must be `approved`. Autopilot refuses to start on a draft.
 2. Set `KIT_BUDGET_TOKENS`.
@@ -374,6 +376,8 @@ KIT_BUDGET_TOKENS="2000000"  # per branch; the usage hook blocks past it
 Each feature gets a fresh plan session and a fresh build session at `KIT_APPROVAL=autonomous`, on a branch stacked on the previous feature's branch, so the PRs form a stack. A question a session cannot answer goes to a separate read-only session that answers from the approved spec (at most two per feature); a denied command, a `spec`, `hotfix`, `kit`, `env` or `budget` stop, or an escalation stops the run, and the printed `claude --resume <session id>` continues it. A watchdog ends a session after four hours, twenty idle minutes or six identical tool calls in a row and restarts the phase once; a usage limit is waited out. Review the run in this order: `.work/autopilot/run-<time>.md`, each PR's "Decisions to review" from the bottom of the stack up, then `reports/runs.md`.
 
 ### 7. See where things stand, and measure
+
+`status` comes with stempel-kit-autopilot, `leadtime`, `runs` and `/improve-kit` with stempel-kit-improve, `usage` with stempel-kit-routing.
 
 ```sh
 .claude/bin/status            # invite-users · build · tasks 3/7 · 1 red · budget 42%
@@ -393,6 +397,8 @@ git -C stempel-kit pull
 
 Files you have not changed are replaced; files both sides changed are kept, with the kit's version in `.work/kit-update/` and a `diff` command per file. Commit `.claude/kit.manifest` with the update.
 
+A project installed before 1.0.0 keeps every `KIT_*` variable in the core part of `.claude/kit.conf`. `install.sh --extension <name>` then stops, because the extension's section would define a variable the file already has: delete the extension's variables from the core part first (the adapter's `extensions/<name>.conf` lists them), then run the extension install.
+
 ### 9. Try it first
 
 [examples/demo-app](../plugins/stempel-kit/examples/demo-app/README.md) is a small Next.js app with a spec and tests. Install the kit into a copy, run `/ship-feature`, break a test on purpose and watch the hook catch it, ask for `rm -rf src` and watch the guard block it. About five minutes.
@@ -411,7 +417,7 @@ plugins/
 
 Every product has its own CI workflow that runs on each pull request and on `main`; the badges at the top show the current state:
 
-- **stempel-kit:** shellcheck over every script, sixteen test suites (hooks, spec lint, plan lint, installer, checks and baseline, evidence pack, routing and usage, lead time, run records, autopilot, structure map, status, steering, fix-bug skill, stacked layers, risk rank), and fourteen of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
+- **stempel-kit:** shellcheck over every script, the core's suites always (`tests/run.sh --core`) and each extension's suites when its folder or a dependency changed (`tests/run.sh --select`), all again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
 - **repo-check:** shellcheck, the read-only hook, the scanner, and a drift test that fails when the single-file prompt or the bundled `leadtime` differs from its source. All under `dash` as well.
 
 What the tests and real end-to-end runs caught while building each product is in its build log: [kit](../plugins/stempel-kit/docs/build-log.md), [repo-check](../plugins/repo-check/docs/build-log.md). The specifications behind them are next to the logs. Every change to the kit after a real run is in its [improvements log](../plugins/stempel-kit/reports/improvements.md), with the metric it should move and the value before, and `/improve-kit` checks each one after three more runs. What the tools cannot do is under the kit's [limits](../plugins/stempel-kit/README.md#limits).

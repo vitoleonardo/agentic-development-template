@@ -46,11 +46,11 @@ Adapters: `typescript` (presets `nextjs`, `nestjs`, `node`) and `python`. Withou
 /ship-feature invite
 ```
 
-The spec names what "done" means, the plan names a test per criterion, the build writes each test red before the code and ends with a pull request whose body lists the red and green run per criterion. At the default `KIT_APPROVAL=strict` every gate asks you; `standard` and `autonomous` ask less and list every decision under "Decisions to review" in the PR.
+The spec names what "done" means, the plan names a test per criterion, the build writes each test red before the code and ends with a pull request whose body lists the red and green run per criterion. The shipped `kit.conf` sets `KIT_APPROVAL=autonomous`: the build decides alone and lists every decision under "Decisions to review" in the PR; `standard` asks for the spec and the plan, `strict` (the level when the variable is unset) asks at every gate.
 
 ## Extensions
 
-Each one is a plugin in the kit's marketplace: `/plugin install stempel-kit-<name>@stempel-kit`, then `sh plugins/stempel-kit/install.sh ~/code/my-app --extension <name>` copies its scripts and its `kit.conf` section into the project.
+Each one is a plugin in the kit's marketplace: `/plugin install stempel-kit-<name>@stempel-kit`, then `sh stempel-kit/plugins/stempel-kit/install.sh ~/code/my-app --extension <name>` copies its scripts and its `kit.conf` section into the project.
 
 | Extension | Adds |
 |---|---|

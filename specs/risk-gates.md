@@ -66,7 +66,7 @@ Merge gate:
 - **RISK-AC26**: Given a Stops line of class `approval`, when the build continues, then no answer session starts.
 - **RISK-AC27**: Given a high layer with an approval on its head and a green stage, when the build runs again, then the stack is merged.
 - **RISK-AC28**: Given a stack stage that is not green, when the merge gate runs, then it prints `ask`.
-- **RISK-AC29**: Given approval level `strict`, when `.claude/bin/gate merge` runs, then it prints `ask`.
+- **RISK-AC29**: Given approval level `strict`, when `.claude/bin/stack gate` runs, then it prints `ask`.
 - **RISK-AC30**: Given approval level `autonomous`, when `.claude/bin/gate push` runs on a branch that changes a file in `KIT_PUSH_ASK_PATTERNS`, then it prints `auto`.
 - **RISK-AC31**: Given the kit's `settings.json`, when it is read, then `permissions.ask` holds `Bash(gh pr merge *)` and `Bash(gh stack merge *)`, so only the build's script merges.
 - **RISK-AC32**: Given a stack is merged, when the build ends, then the run log's closing line starts with `Every feature has a PR, and the stack is merged`.
@@ -111,6 +111,7 @@ Release:
 ## Open questions
 
 ## Decisions
+- 07.11.2026: The merge gate is `.claude/bin/stack gate` of stempel-kit-autopilot since the kit core split (specs/kit-core-split.md); RISK-AC29 names that command. The behaviour is unchanged.
 - 04.11.2026: The default level is `autonomous`, gated by the rank, because the user asked to run on its own "EXCEPT it does changes on the architecture or other very complex tasks". `strict` stays for teams that want every gate.
 - 04.11.2026: The rank gates both the plan and the merge, so an architecture change gets a person's look before any code, and the measured diff gets one before it lands.
 - 04.11.2026: The build merges a stack below high itself. A high layer needs a review by someone other than its author, enforced by `risk.yml` on `pull_request_target`, so a pull request cannot change the rules it is judged by.

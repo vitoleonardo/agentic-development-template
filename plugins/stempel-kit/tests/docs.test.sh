@@ -1,6 +1,6 @@
 #!/bin/sh
 # The README fits on two screens and says how to start (CORE-AC26, CORE-AC27); SPEC-v1.1.md says it is historical
-# (CORE-AC28); the eight features in review on 07.11.2026 show done in specs/README.md once a person set them
+# (CORE-AC28); the nine features in review on 07.11.2026 (the spec counts eight) show done in specs/README.md once a person set them
 # (CORE-AC29, checked with --release; a note otherwise, because only a person sets done).
 # Run: sh plugins/stempel-kit/tests/docs.test.sh [--release]
 set -u
