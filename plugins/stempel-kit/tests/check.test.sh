@@ -354,5 +354,17 @@ KIT_BASE=main JSCPD_LOG=$project/jscpd.log FAKE_HEAD=$project/head.json FAKE_BAS
 grep -q '^head .* --changed src/a.ts' jscpd.log && ok || fail "the branch scan gets --changed and the edited file: $(cat jscpd.log)"
 grep '^base' jscpd.log | grep -q -e '--changed' -e 'src/a.ts' && fail "the base scan is whole: $(cat jscpd.log)" || ok
 
+# CORE-AC30, CORE-AC32: a kit.conf section of an extension whose script is missing gets a warning, not a failure.
+printf '\n# extension: foo bin/foo\nKIT_FOO=""\n' >>.claude/kit.conf
+expect_code 0 "CORE-AC30: check extensions warns and exits 0" .claude/bin/check extensions
+expect_out "extension foo" "CORE-AC30: the warning names the extension"
+expect_out "bin/foo" "CORE-AC30: the warning names the missing script"
+mkdir -p .claude/bin && printf '#!/bin/sh\n' >.claude/bin/foo && chmod +x .claude/bin/foo
+expect_code 0 "check extensions is quiet when the script is there" .claude/bin/check extensions
+case $out in *"extension foo"*) fail "check extensions still warns with the script present: $out" ;; *) ok ;; esac
+rm .claude/bin/foo
+expect_code 0 "CORE-AC32: after an uninstall the warning names the extension again" .claude/bin/check extensions
+expect_out "extension foo" "CORE-AC32: the warning names the extension"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

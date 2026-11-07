@@ -152,5 +152,34 @@ expect "CORE-AC31: the message names the extensions" sh -c "echo \"\$1\" | grep 
 expect "CORE-AC31: no file changed" test "$before" = "$after"
 rm -rf "$old"
 
+# CORE-AC19, CORE-AC20, CORE-AC33: install.sh --extension copies the extension's scripts and appends its
+# kit.conf.part as one section; a second install keeps one section; two parts with one variable stop the install.
+ext=$(mktemp -d)
+mkdir -p "$ext/evidence/plugin/bin" "$ext/other/plugin/bin"
+printf '#!/bin/sh\necho evidence\n' >"$ext/evidence/plugin/bin/evidence"
+chmod +x "$ext/evidence/plugin/bin/evidence"
+printf '# Seeds the database.\nKIT_SEED=""\nKIT_E2E=""\n' >"$ext/evidence/plugin/kit.conf.part"
+printf '#!/bin/sh\necho other\n' >"$ext/other/plugin/bin/other"
+printf 'KIT_OTHER=""\nKIT_E2E="dup"\n' >"$ext/other/plugin/kit.conf.part"
+proj=$(mktemp -d)
+"$here/install.sh" "$proj" --adapter typescript --plugin >/dev/null || echo "FAIL: core install for extensions exited $?"
+core_before=$(sed '/^# extension: /,$d' "$proj/.claude/kit.conf")
+"$here/install.sh" "$proj" --extension "$ext/evidence/plugin" >/dev/null || echo "FAIL: extension install exited $?"
+expect "CORE-AC19: the extension's script is in .claude/bin" test -x "$proj/.claude/bin/evidence"
+expect "CORE-AC19: kit.conf gains the section header" grep -q '^# extension: evidence bin/evidence$' "$proj/.claude/kit.conf"
+section=$(sed -n '/^# extension: evidence /,/^# extension: /p' "$proj/.claude/kit.conf" | grep '^KIT_' | cut -d= -f1 | tr '\n' ' ')
+expect "CORE-AC19: the section holds exactly the part's variables" test "$section" = "KIT_SEED KIT_E2E "
+expect "CORE-AC19: the core variables are unchanged" test "$(sed '/^# extension: /,$d' "$proj/.claude/kit.conf")" = "$core_before"
+"$here/install.sh" "$proj" --extension "$ext/evidence/plugin" >/dev/null || echo "FAIL: second extension install exited $?"
+expect "CORE-AC20: a second install keeps one section" test "$(grep -c '^# extension: evidence ' "$proj/.claude/kit.conf")" -eq 1
+out=$("$here/install.sh" "$proj" --extension "$ext/other/plugin" 2>&1)
+code=$?
+expect "CORE-AC33: a part that redefines a variable stops the install" test "$code" -eq 2
+expect "CORE-AC33: the message names both extensions and the variable" sh -c "echo \"\$1\" | grep -q 'KIT_E2E' && echo \"\$1\" | grep -q 'evidence' && echo \"\$1\" | grep -q 'other'" sh "$out"
+expect "CORE-AC33: nothing of the refused extension was installed" test ! -e "$proj/.claude/bin/other" -a "$(grep -c '^# extension: ' "$proj/.claude/kit.conf")" -eq 1
+expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$proj' --extension no-such-extension >/dev/null 2>&1"
+expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
+rm -rf "$ext" "$proj"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

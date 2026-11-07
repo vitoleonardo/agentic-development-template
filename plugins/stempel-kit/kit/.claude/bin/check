@@ -1,6 +1,7 @@
 #!/bin/sh
 # Run one project check as defined by the stack adapter in .claude/kit.conf.
 # Usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]
+#        .claude/bin/check extensions   warn about kit.conf sections of extensions whose script is missing
 # In a monorepo each file is checked with the nearest <package>/.claude/kit.conf, from that package's folder;
 # without files the check runs in every package that configures it.
 # --against-baseline compares test, lint, typecheck or coverage with .claude/baseline.tsv (see .claude/bin/baseline).
@@ -17,6 +18,21 @@ if [ "${1:-}" = --against-baseline ]; then
   shift
   exec "$root/.claude/bin/baseline" compare "$@"
 fi
+
+# extensions: every "# extension: <name> <script>" section in kit.conf needs its script in .claude/ (CORE-AC30).
+warn_extensions() {
+  [ -f .claude/kit.conf ] || return 0
+  awk '/^# extension: / { print $3, $4 }' .claude/kit.conf | while read -r ext_name ext_script; do
+    [ -n "$ext_script" ] && [ -e ".claude/$ext_script" ] && continue
+    echo "check: extension $ext_name has a section in .claude/kit.conf but no .claude/$ext_script; install it again or delete the section." >&2
+  done
+  return 0
+}
+if [ "${1:-}" = extensions ]; then
+  warn_extensions
+  exit 0
+fi
+warn_extensions
 
 usage="usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]"
 name=${1:-}
