@@ -1,0 +1,32 @@
+# The tests that spend tokens: every tests/*/run.sh of the core and the extensions, run by
+# plugins/stempel-kit/tests/agent-tests.sh until KIT_TEST_BUDGET_USD (a repository variable; 10 USD when unset)
+# is spent. Weekly and on request only; never on a push or a pull request (CORE-AC24).
+name: agent-tests
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-tests:
+    name: Agent tests within the budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      KIT_TEST_BUDGET_USD: ${{ vars.KIT_TEST_BUDGET_USD }}
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run the agent tests until the budget is spent
+        run: sh plugins/stempel-kit/tests/agent-tests.sh

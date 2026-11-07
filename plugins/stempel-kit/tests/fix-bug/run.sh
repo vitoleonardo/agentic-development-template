@@ -18,7 +18,7 @@ check() { if eval "$2"; then echo "ok:   $1"; else echo "FAIL: $1"; failed=$((fa
 fresh() {
   work=$(mktemp -d)
   repo=$work/demo
-  log=$work/transcript.jsonl
+  log=${KIT_TEST_TRANSCRIPT:-$work/transcript.jsonl}
   echo "== $1: working in $work (kept for inspection)"
   cp -R "$here/examples/demo-app" "$repo"
   rm -rf "$repo/node_modules" "$repo/.next" "$repo/.work"

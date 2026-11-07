@@ -15,7 +15,7 @@ fixture=${1:-pnpm-monorepo}
 model=${2:-sonnet}
 work=$(mktemp -d)
 repo=$work/$fixture
-log=$work/transcript.jsonl
+log=${KIT_TEST_TRANSCRIPT:-$work/transcript.jsonl}
 echo "Working in $work (kept for inspection)"
 
 src=$tests/$fixture

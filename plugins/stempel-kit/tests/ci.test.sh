@@ -30,5 +30,39 @@ same "$(printf 'README.md\nplugins/repo-check/build\n' | sh "$run" --select)" ""
 sh "$run" --extension nope >/dev/null 2>&1; same "$?" 2 "run.sh --extension with an unknown name is a usage error"
 sh "$run" --what >/dev/null 2>&1; same "$?" 2 "run.sh with an unknown option is a usage error"
 
+agents=$root/.github/workflows/agent-tests.yml
+grep -q '^  schedule:' "$agents" && grep -Eq '^ +- cron: ' "$agents" && ok || fail "CORE-AC24: agent-tests.yml has a weekly schedule"
+grep -q '^  workflow_dispatch:' "$agents" && ok || fail "CORE-AC24: agent-tests.yml runs on workflow_dispatch"
+! grep -Eq '^  (push|pull_request):' "$agents" && ok || fail "CORE-AC24: agent-tests.yml never runs on a push or a pull request"
+grep -q 'sh plugins/stempel-kit/tests/agent-tests.sh' "$agents" && grep -q 'KIT_TEST_BUDGET_USD' "$agents" && ok ||
+  fail "CORE-AC24: agent-tests.yml runs tests/agent-tests.sh with KIT_TEST_BUDGET_USD"
+for runner in "$root"/plugins/stempel-kit/tests/*/run.sh "$root"/plugins/stempel-kit-*/tests/*/run.sh; do
+  grep -q 'KIT_TEST_TRANSCRIPT' "$runner" && ok || fail "CORE-AC24: ${runner#"$root"/} writes its transcript to KIT_TEST_TRANSCRIPT, where agent-tests.sh reads the cost"
+done
+
+# agent-tests.sh stops after the run whose summed cost passes the budget and names the runs it skipped.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+for cost in 4 7 1; do
+  mkdir -p "$work/t$cost"
+  printf '#!/bin/sh\nprintf '"'"'{"type":"result","total_cost_usd":%s}\\n'"'"' >"$KIT_TEST_TRANSCRIPT"\n' "$cost" >"$work/t$cost/run.sh"
+done
+out=$(KIT_TEST_BUDGET_USD=10 sh "$here/tests/agent-tests.sh" "$work/t4/run.sh" "$work/t7/run.sh" "$work/t1/run.sh" 2>&1)
+code=$?
+same "$code" 1 "CORE-AC24: a spent budget leaves the run red"
+case $out in *"t4/run.sh: pass, 4.0000 USD (4.0000 of 10 USD spent)"*"t7/run.sh: pass, 7.0000 USD (11.0000 of 10 USD spent)"*) ok ;; *) fail "CORE-AC24: the runs before the budget run and report their cost: $out" ;; esac
+case $out in *"skipped: $work/t1/run.sh"*) ok ;; *) fail "CORE-AC24: the run after the budget is skipped and named: $out" ;; esac
+case $out in *"t1/run.sh: pass"*) fail "CORE-AC24: the run after the budget must not run: $out" ;; *) ok ;; esac
+out=$(KIT_TEST_BUDGET_USD=20 sh "$here/tests/agent-tests.sh" "$work/t4/run.sh" "$work/t7/run.sh" "$work/t1/run.sh" 2>&1)
+code=$?
+same "$code" 0 "CORE-AC24: within the budget every run runs and the exit is 0"
+case $out in *"t1/run.sh: pass, 1.0000 USD (12.0000 of 20 USD spent)"*) ok ;; *) fail "CORE-AC24: the last run within the budget runs: $out" ;; esac
+printf '#!/bin/sh\nexit 1\n' >"$work/t1/run.sh"
+out=$(KIT_TEST_BUDGET_USD=20 sh "$here/tests/agent-tests.sh" "$work/t1/run.sh" 2>&1)
+code=$?
+case $code:$out in 1:*"t1/run.sh: fail, 0.0000 USD"*) ok ;; *) fail "CORE-AC24: a failed run leaves the exit 1 and reports fail: $code $out" ;; esac
+out=$(sh "$here/tests/agent-tests.sh" "$work/t4/run.sh" "$work/t7/run.sh" "$work/t1/run.sh" 2>&1)
+case $out in *"of 10 USD spent"*) ok ;; *) fail "CORE-AC24: the budget is 10 USD when KIT_TEST_BUDGET_USD is unset: $out" ;; esac
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
