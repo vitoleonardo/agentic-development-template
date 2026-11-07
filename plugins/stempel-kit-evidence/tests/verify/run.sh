@@ -1,13 +1,13 @@
 #!/bin/sh
 # Headless /ship-feature with /verify-feature on a copy of the demo app (VERIFY-AC1, AC2, AC6).
 # Needs Claude Code, Node, the Playwright Chromium build, and spends tokens, so it is not part of CI.
-# Run: sh plugins/stempel-kit/tests/verify/run.sh [model]
+# Run: sh plugins/stempel-kit-evidence/tests/verify/run.sh [model]
 # The remote is a bare repository in the temp folder, so nothing leaves the machine. bypassPermissions stands
 # in for the user approving each command; the scripted answers say what to approve.
 # shellcheck disable=SC2034 # $code is read inside the conditions that check() evaluates
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../../stempel-kit" && pwd)
 model=${1:-sonnet}
 work=$(mktemp -d)
 repo=$work/demo
@@ -17,6 +17,8 @@ echo "Working in $work (kept for inspection)"
 cp -R "$here/examples/demo-app" "$repo"
 rm -rf "$repo/node_modules" "$repo/.next" "$repo/.work"
 "$here/install.sh" "$repo" --adapter typescript --preset nextjs >/dev/null
+"$here/install.sh" "$repo" --extension onboard >/dev/null
+"$here/install.sh" "$repo" --extension evidence >/dev/null
 cd "$repo" || exit 1
 npm ci >/dev/null 2>&1
 export E2E_PORT=3418 KIT_BASE=main

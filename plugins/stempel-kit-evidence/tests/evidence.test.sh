@@ -1,14 +1,17 @@
 #!/bin/sh
-# Tests for .claude/bin/evidence. Run: sh plugins/stempel-kit/tests/evidence.test.sh
+# Tests for .claude/bin/evidence. Run: sh plugins/stempel-kit-evidence/tests/evidence.test.sh
 # A fixture repo with fake checks and a bare local remote, so no network or real test runner is needed.
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
+ext=$(CDPATH='' cd -- "$(dirname -- "$0")/../plugin" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
+# The core with this extension and stempel-kit-onboard, whose baseline reads the JUnit reports.
+cp "$ext"/bin/* "$here/../stempel-kit-onboard/plugin/bin/baseline" "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

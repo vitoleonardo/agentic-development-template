@@ -21,7 +21,7 @@ For each criterion in your task:
 
 Then run `.claude/bin/check typecheck`. The edit hook also reports code you copied (`duplicates-related`): reuse the original instead.
 
-If the task changes what a page shows and `KIT_SCREENSHOTS` is set in `.claude/kit.conf`, take its screenshots before you return: `EVIDENCE_DIR=.work/<branch>/task-<n> .claude/bin/evidence screenshots --no-base`. Open every image with Read and judge it the way the reviewer will ("Reviewing screenshots" in `.claude/agents/reviewer.md`): the criterion's own words, every item it asks for, nothing cut off or covered at desktop or mobile width. Fix what does not match, then take the screenshots again.
+If stempel-kit-evidence is installed, the task changes what a page shows and `KIT_SCREENSHOTS` is set in `.claude/kit.conf`, take its screenshots before you return: `EVIDENCE_DIR=.work/<branch>/task-<n> .claude/bin/evidence screenshots --no-base`. Open every image with Read and judge it the way the reviewer will ("Reviewing screenshots" in `.claude/agents/reviewer.md`): the criterion's own words, every item it asks for, nothing cut off or covered at desktop or mobile width. Fix what does not match, then take the screenshots again.
 
 Rules:
 

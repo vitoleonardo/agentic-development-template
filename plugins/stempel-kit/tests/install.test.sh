@@ -40,10 +40,12 @@ expect "full: core rules installed" test -f "$full/.claude/rules/output.md" -a -
 expect "full: structure map installed" grep -q '`src/features/<domain>/`' "$full/.claude/rules/structure.md"
 expect "full: structure gate installed" test -x "$full/.claude/bin/structure"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
-expect "full: verify skill, evidence script and evidence workflow installed" test -f "$full/.claude/skills/verify-feature/SKILL.md" -a -x "$full/.claude/bin/evidence" -a -f "$full/.github/workflows/evidence.yml"
+expect "full: the evidence workflow installed" test -f "$full/.github/workflows/evidence.yml"
+expect "full: the evidence pack is not in the core" test ! -e "$full/.claude/bin/evidence" -a ! -e "$full/.claude/skills/verify-feature"
 expect "full: leadtime, route and usage installed" test -x "$full/.claude/bin/leadtime" -a -x "$full/.claude/bin/route" -a -x "$full/.claude/bin/usage" -a -x "$full/.claude/hooks/usage"
 expect "full: run records and /improve-kit installed" test -x "$full/.claude/bin/runs" -a -f "$full/.claude/skills/improve-kit/SKILL.md"
-expect "full: adapter helpers and the onboarding tools installed" test -f "$full/.claude/bin/coverage-files.mjs" -a -x "$full/.claude/bin/baseline" -a -x "$full/.claude/bin/onboard-apply" -a -f "$full/.claude/skills/onboard/SKILL.md"
+expect "full: adapter helpers installed" test -f "$full/.claude/bin/coverage-files.mjs"
+expect "full: the onboarding tools are not in the core" test ! -e "$full/.claude/bin/baseline" -a ! -e "$full/.claude/bin/onboard-apply" -a ! -e "$full/.claude/skills/onboard"
 python=$(mktemp -d)
 "$here/install.sh" "$python" --adapter python >/dev/null || echo "FAIL: python install exited $?"
 expect "python: adapter config, helpers and rule installed" test -x "$python/.claude/bin/pytest-related" -a -f "$python/.claude/bin/coverage-files.py" -a -f "$python/.claude/rules/python.md"
@@ -180,6 +182,18 @@ expect "CORE-AC33: nothing of the refused extension was installed" test ! -e "$p
 expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$proj' --extension no-such-extension >/dev/null 2>&1"
 expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
 rm -rf "$ext" "$proj"
+
+# CORE-AC18: the onboard extension installs by name into a core-only project.
+proj=$(mktemp -d)
+"$here/install.sh" "$proj" --plugin >/dev/null || echo "FAIL: core install for onboard exited $?"
+"$here/install.sh" "$proj" --extension onboard >/dev/null || echo "FAIL: onboard install exited $?"
+expect "CORE-AC18: onboard's scripts are in .claude/bin" test -x "$proj/.claude/bin/baseline" -a -x "$proj/.claude/bin/onboard-apply"
+expect "CORE-AC18: the onboard section names its first script" grep -q '^# extension: onboard bin/baseline$' "$proj/.claude/kit.conf"
+expect "CORE-AC18: check finds the onboard script" sh -c "cd '$proj' && ! .claude/bin/check extensions 2>&1 | grep -q onboard"
+"$here/install.sh" "$proj" --extension evidence >/dev/null || echo "FAIL: evidence install exited $?"
+expect "CORE-AC13: evidence's script is in .claude/bin" test -x "$proj/.claude/bin/evidence"
+expect "CORE-AC13: the evidence section names its script" grep -q '^# extension: evidence bin/evidence$' "$proj/.claude/kit.conf"
+rm -rf "$proj"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

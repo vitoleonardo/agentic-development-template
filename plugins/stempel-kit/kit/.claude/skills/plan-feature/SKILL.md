@@ -13,7 +13,8 @@ Do not edit source files in this step. The only files you write are the state fi
 ## 1. Read
 
 - The spec in `specs/`. If its status in `specs/README.md` is not `approved`, stop and say so. For a fix without a spec, title the plan `# Plan: <slug> (fix)` and write one to three criteria under `## Criteria` (`- **<PREFIX>-ACn**: Given …, when …, then …`, a prefix no spec uses); they are approved with the plan. `/fix-bug` does this from a bug report.
-- The code the feature touches. For a large codebase, explore the affected areas with parallel `Explore` subagents, passing `model` from `.claude/bin/route explore`, so you read their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
+- The code the feature touches. For a large codebase, explore the affected areas with parallel `Explore` subagents, so you read their conclusions, not file dumps. Collect `path:line` anchors, existing pieces to reuse, and the pattern to mirror.
+- If stempel-kit-routing is installed, pass each `Explore` subagent `model` from `.claude/bin/route explore`.
 
 ## 2. Write the plan
 
@@ -82,7 +83,8 @@ Rules for the plan:
 - Name the test cases, not just "add tests".
 - When `KIT_E2E_MAP` is set (`.claude/kit.conf`) and a task adds an e2e test for source paths no row of the map matches, that task adds the row (`<source pattern> TAB <e2e test patterns>`) and names the map file in its Files cell. Without the row, every change to those paths runs the whole e2e suite.
 - Order the tasks so nothing is built before what it depends on. Tasks run one after another, in this order.
-- Tier: the model tier a task needs. The default is `.claude/bin/route tier implement`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
+- Tier: the model tier a task needs (`fast`, `standard`, `deep`). The default is `standard`. Raise a task to `deep` when it touches auth, data migrations, concurrency, money or a protected contract, or when there is no existing pattern to copy. Lower it to `fast` for pure renames and copy tasks. Every tier other than the default gets a one-line reason under the table (`Task 3 deep: changes the permission check`).
+- If stempel-kit-routing is installed, the default tier is `.claude/bin/route tier implement`.
 - Group: one headless session implements each group with shared context, so tasks that share files or depend directly on each other go together. A group holds at most 3 consecutive tasks, in plan order. Every task has a group; ids are short (`A`, `B`). The group runs on its highest task tier: one deep task puts the whole group on deep. A group above the default tier gets one line under the table with the reason (`Group B deep: task 5 changes the permission check`).
 
 ## 3. Check it
@@ -95,7 +97,9 @@ Summarise: the design decisions, the groups and their tiers, the tasks, the file
 
 The verify gate fails a branch above twice `KIT_MAX_CHANGED_LINES`, and the build stops as soon as a group passes that limit. If the plan stays one PR above it, add `Approved size: <n> lines` with a margin over the estimate. Only this approval can raise the limit; a session never changes it later.
 
-Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over `KIT_MAX_CHANGED_LINES`. At `autonomous`, `gate plan` ranks the plan with `.claude/bin/risk plan` (`specs/risk-gates.md`): an `Architecture` line other than `none`, a file in a risky path, or very complex work makes it `ask`, and it prints the reasons. Show them with the summary: a person approves the spec and the plan together.
+Then run `.claude/bin/gate plan`, and `.claude/bin/gate split` when the estimate is over `KIT_MAX_CHANGED_LINES`. When `gate plan` prints reasons with its answer, show them with the summary: a person approves the spec and the plan together.
+
+If stempel-kit-risk is installed, `gate plan` at `autonomous` ranks the plan with `.claude/bin/risk plan` (`specs/risk-gates.md`): an `Architecture` line other than `none`, a file in a risky path, or very complex work makes it `ask`, and it prints the reasons.
 
 In a headless session (an autopilot build) an `ask` from `gate plan` has nobody to answer it: write the Stops line `- plan | approval | <the rank and its reasons> | – | user: approve the plan`, end the session with the reasons as your last message, and do not set the status. The build stops there; the developer approves the plan in a terminal.
 

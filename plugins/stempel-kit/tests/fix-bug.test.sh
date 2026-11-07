@@ -44,12 +44,14 @@ has "FIXBUG-AC11 task 2 is fix and depends on 1" "$skill" "| 2 | fix | <source f
 has "FIXBUG-AC30 a feature open on another branch gets no plan" "$skill" "write no plan"
 
 # --- building -------------------------------------------------------------------------
-has "FIXBUG-AC12 task 1 goes to the test-writer on route tests" "$skill" 'Dispatch the `test-writer` (description `task 1: reproduce <slug>`, `model` from `.claude/bin/route tests`)'
+has "FIXBUG-AC12 task 1 goes to the test-writer" "$skill" 'Dispatch the `test-writer` (description `task 1: reproduce <slug>`)'
+has "FIXBUG-AC12 with routing, on route tests" "$skill" '`route tests` for the `test-writer` (task 1)'
 has "FIXBUG-AC13 a test that never failed dispatches no fix" "$skill" "A test passed without ever failing: no fix is dispatched"
 has "FIXBUG-AC13 and writes a Stops line of class test" "$skill" 'Write a Stops line of class `test`'
 has "FIXBUG-AC31 the spec's own behaviour is class spec" "$skill" 'Write a Stops line of class `spec`, change no spec, and ask'
 has "FIXBUG-AC32 untestable code is class plan" "$skill" 'stop with a Stops line of class `plan`'
-has "FIXBUG-AC14 task 2 goes to the implementer on the row's tier" "$skill" 'Dispatch the `implementer` (description `task 2: fix <slug>`, `model` from `.claude/bin/route <tier>` with the row'"'"'s Tier)'
+has "FIXBUG-AC14 task 2 goes to the implementer" "$skill" 'Dispatch the `implementer` (description `task 2: fix <slug>`)'
+has "FIXBUG-AC14 with routing, on the row's tier" "$skill" '`route <tier>` for the `implementer` (task 2, the row'"'"'s Tier)'
 has "FIXBUG-AC14 with the red test's file and message" "$skill" "the red test's file and its failure message"
 has "FIXBUG-AC15 the retry is one tier higher" "$skill" '`.claude/bin/route up <tier>`'
 has "FIXBUG-AC15 with the retry description" "$skill" '`task 2 retry <tier>: fix <slug>`'
@@ -70,8 +72,8 @@ has "FIXBUG-AC27 the implementer runs an existing red test" "$kit/agents/impleme
 has "FIXBUG-AC27 the implementer reads the plan's criteria" "$kit/agents/implementer.md" 'a `## Criteria` section in the state file holds the criteria of a fix'
 has "FIXBUG-AC28 the test-writer takes the plan's criteria" "$kit/agents/test-writer.md" 'When `.work/<branch>.md` has a `## Criteria` section, those are the criteria.'
 has "FIXBUG-AC28 the reviewer takes the plan's criteria" "$kit/agents/reviewer.md" 'If no row names the branch, take the spec from the title of `.work/<branch>.md`; its `## Criteria` section, when present, lists the criteria to judge.'
-has "FIXBUG-AC29 verify sets the status only for a feature row" "$kit/skills/verify-feature/SKILL.md" 'when the feature'"'"'s row in `specs/README.md` names this branch, set its status to `in-review` (a fix branch leaves the list alone)'
-has "FIXBUG-AC29 verify reads the plan's criteria for a fix" "$kit/skills/verify-feature/SKILL.md" 'or its `## Criteria` for a fix'
+has "FIXBUG-AC29 verify sets the status only for a feature row" "$here/../stempel-kit-evidence/plugin/skills/verify-feature/SKILL.md" 'when the feature'"'"'s row in `specs/README.md` names this branch, set its status to `in-review` (a fix branch leaves the list alone)'
+has "FIXBUG-AC29 verify reads the plan's criteria for a fix" "$here/../stempel-kit-evidence/plugin/skills/verify-feature/SKILL.md" 'or its `## Criteria` for a fix'
 has "FIXBUG-AC21 the PR skill finds the spec through the title" "$kit/skills/pr-description/SKILL.md" 'through the title of `.work/<branch>.md`; a fix'"'"'s criteria are its `## Criteria`'
 has "FIXBUG-AC21 the PR skill links the report for a fix" "$kit/skills/pr-description/SKILL.md" 'for a fix, the issue URL or the `## Bug` source instead'
 has "the plan skill names the fix title" "$kit/skills/plan-feature/SKILL.md" '# Plan: <slug> (fix)'

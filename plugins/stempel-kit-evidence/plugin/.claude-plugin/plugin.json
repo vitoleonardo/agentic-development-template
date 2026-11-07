@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-evidence",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: /verify-feature and the evidence pack - hard gates, data runs, the edge-case matrix, screenshots and the kit-evidence branch. Needs stempel-kit-onboard for test results. Install into a project with install.sh --extension evidence.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit", "stempel-kit-onboard"]
+}

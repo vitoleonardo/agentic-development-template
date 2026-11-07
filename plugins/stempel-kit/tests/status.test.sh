@@ -10,6 +10,8 @@ trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project" "$work/pristine"
 cp -R "$here/kit/." "$project/"
+# The extensions these scripts call.
+cp "$here"/../stempel-kit-onboard/plugin/bin/* "$here"/../stempel-kit-evidence/plugin/bin/* "$project/.claude/bin/"
 cp "$project/specs/README.md" "$work/pristine/README.md"
 cp "$project/.claude/kit.conf" "$work/pristine/kit.conf"
 cd "$project" || exit 1

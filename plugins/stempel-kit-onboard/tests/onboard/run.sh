@@ -1,6 +1,6 @@
 #!/bin/sh
 # Headless /onboard run on a fixture repo (ONBOARD-AC1, AC2, AC3, AC5). Needs Claude Code, network, pnpm and uv,
-# and spends tokens, so it is not part of CI. Run: sh plugins/stempel-kit/tests/onboard/run.sh [fixture] [model]
+# and spends tokens, so it is not part of CI. Run: sh plugins/stempel-kit-onboard/tests/onboard/run.sh [fixture] [model]
 #   fixture  pnpm-monorepo (default), python-pkg, or demo-app (ONBOARD-AC4: same resolved kit.conf as install.sh)
 #   model    default sonnet
 # The answers a user would give are scripted. bypassPermissions stands in for the user approving each command
@@ -9,7 +9,8 @@
 # shellcheck disable=SC2034 # $code is read inside the conditions that check() evaluates
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../../stempel-kit" && pwd)
+tests=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 fixture=${1:-pnpm-monorepo}
 model=${2:-sonnet}
 work=$(mktemp -d)
@@ -17,11 +18,12 @@ repo=$work/$fixture
 log=$work/transcript.jsonl
 echo "Working in $work (kept for inspection)"
 
-src=$here/tests/onboard/$fixture
+src=$tests/$fixture
 [ "$fixture" = demo-app ] && src=$here/examples/demo-app
 cp -R "$src" "$repo"
 rm -rf "$repo/.venv" "$repo/ai-service/.venv" "$repo/node_modules"
 "$here/install.sh" "$repo" >/dev/null
+"$here/install.sh" "$repo" --extension onboard >/dev/null
 cd "$repo" || exit 1
 [ -f pnpm-lock.yaml ] && pnpm install --frozen-lockfile >/dev/null 2>&1
 [ -f package-lock.json ] && npm ci >/dev/null 2>&1

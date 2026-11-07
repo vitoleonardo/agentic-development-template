@@ -1,6 +1,6 @@
 ---
 name: fix-bug
-description: Fix a reported bug test-first - the report becomes one to three criteria in the plan (the spec's own criterion when one exists), the test-writer writes the red test, the implementer the fix, then independent review, verify with an evidence pack and the PR description. Use when the user reports a bug, names an issue or a failing test. Never writes a feature spec, never changes an approved spec on its own, never sets a feature's status.
+description: Fix a reported bug test-first - the report becomes one to three criteria in the plan (the spec's own criterion when one exists), the test-writer writes the red test, the implementer the fix, then independent review, verify and the PR description. Use when the user reports a bug, names an issue or a failing test. Never writes a feature spec, never changes an approved spec on its own, never sets a feature's status.
 argument-hint: <bug report, issue number or URL, or failing test name>
 ---
 
@@ -14,7 +14,11 @@ You orchestrate. Subagents write the test and the fix in fresh contexts; you own
 
 Run `.claude/bin/gate level` once and tell the user the level. Every gate below runs `.claude/bin/gate <name>` first. `ask`: stop and ask, as written. `auto`: decide, add one line under Decisions to review in the state file, and continue. Failure stops (retries, review rounds, the budget, the `spec` and `env` classes) ask at every level; verify rounds ask when `.claude/bin/gate round` says so.
 
-**Model routing.** Every dispatch passes the Agent tool's `model` parameter from `.claude/bin/route`: `route tests` for the `test-writer` (task 1), `route <tier>` for the `implementer` (task 2, the row's Tier), `route review` for the `reviewer`. Put the task and the step in the dispatch's description (`task 1: reproduce <slug>`, `task 2: fix <slug>`, `task 2 retry deep: fix <slug>`, `review round 1`), because the usage record maps agents to tasks through it.
+If stempel-kit-routing is installed, run `.claude/bin/usage adopt <the branch you started on>` right after creating the branch in step 3, so the tokens spent before it count for this fix.
+
+**Dispatch descriptions.** Put the task and the step in each dispatch's description (`task 1: reproduce <slug>`, `task 2: fix <slug>`, `task 2 retry deep: fix <slug>`, `review round 1`).
+
+If stempel-kit-routing is installed, every dispatch passes the Agent tool's `model` parameter from `.claude/bin/route`: `route tests` for the `test-writer` (task 1), `route <tier>` for the `implementer` (task 2, the row's Tier), `route review` for the `reviewer`, never below the tier the implementer used. The usage record maps agents to tasks through the descriptions. Without it, every agent runs on the session's model.
 
 ## 0. Resume or start
 
@@ -42,7 +46,7 @@ Then write the criteria: one to three lines of `- **<ID>**: Given <state>, when 
 
 ## 3. Plan (gate: plan)
 
-Create the branch when you are on the base branch: `<issue>-<slug>` for an issue, else `fix-<slug>` (never a spec's file name: a branch named like a feature would match that feature's row in `specs/README.md`). Run `.claude/bin/usage adopt <the branch you started on>`. Write `.work/<branch>.md`:
+Create the branch when you are on the base branch: `<issue>-<slug>` for an issue, else `fix-<slug>` (never a spec's file name: a branch named like a feature would match that feature's row in `specs/README.md`). Write `.work/<branch>.md`:
 
 ```markdown
 # Plan: <slug> (fix)          or, for a covered or gap bug: # Plan: <slug> (spec: specs/<feature>.md)
@@ -98,7 +102,7 @@ Then summarise the bug, the criteria and the cause in five lines and run `.claud
 
 ## 4. Reproduce (task 1)
 
-Dispatch the `test-writer` (description `task 1: reproduce <slug>`, `model` from `.claude/bin/route tests`) with the state file path, the criteria, the test file and the `## Bug` section. Its job: one test per criterion, named with the ID, that fails for the reported reason; or, when the report names a failing test, run that test and report its failure. It shares none of your context, so be complete.
+Dispatch the `test-writer` (description `task 1: reproduce <slug>`) with the state file path, the criteria, the test file and the `## Bug` section. Its job: one test per criterion, named with the ID, that fails for the reported reason; or, when the report names a failing test, run that test and report its failure. It shares none of your context, so be complete.
 
 Check what it returns:
 
@@ -109,25 +113,33 @@ Check what it returns:
 
 ## 5. Fix (task 2, gate: commit)
 
-Dispatch the `implementer` (description `task 2: fix <slug>`, `model` from `.claude/bin/route <tier>` with the row's Tier) with the state file path, the task row, the red test's file and its failure message, and the cause from the plan. It runs the red test, confirms it still fails for that reason, writes the smallest change that makes it pass, and never changes the test.
+Dispatch the `implementer` (description `task 2: fix <slug>`) with the state file path, the task row, the red test's file and its failure message, and the cause from the plan. It runs the red test, confirms it still fails for that reason, writes the smallest change that makes it pass, and never changes the test.
 
 Check what it returns. Run `.claude/bin/check typecheck` and `.claude/bin/check test-related <the test file and the changed files>` yourself. Do not take its word for it.
 
-If the checks fail once, dispatch task 2 again one tier higher (`.claude/bin/route up <tier>`; a deep task stays on deep) with the description `task 2 retry <tier>: fix <slug>`, and write a Stops line of class `tier`. If it fails again, stop and ask the user. If the implementer reports that the criterion is wrong, that is class `spec`: stop and ask; never change an approved spec on your own.
+If the checks fail once, dispatch task 2 again with the description `task 2 retry <tier>: fix <slug>`, and write a Stops line of class `tier`.
+
+If stempel-kit-routing is installed, the retry runs one tier higher (`.claude/bin/route up <tier>`; a deep task stays on deep).
+
+If it fails again, stop and ask the user. If the implementer reports that the criterion is wrong, that is class `spec`: stop and ask; never change an approved spec on your own.
 
 When the checks pass: fill the Green cell of the Verify log rows, tick task 2, add one line to Notes (`path:line` of the fix), and commit the test and the fix in one commit (gate commit): the test alone would leave the branch red. Simplify is skipped: a fix touches two files, and the reviewer runs `.claude/bin/check similar` on them.
 
 ## 6. Independent review
 
-Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`), `model` from `.claude/bin/route review`, and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the plan's `## Criteria` (and the spec the title names) and the rules. If the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff. The reviewer never runs on a lower tier than the implementer used; raise it if it would. Fix every high finding through the implementer (task 2 again, same description with the round), then review again. Rounds, delta reviews and the stop after two rounds with open high findings are as in "Independent review" of `/ship-feature`; record every round under `## Rounds`.
+Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`) and the same instructions as `/review-diff`: the state file's Base, and that it reviews the diff against the plan's `## Criteria` (and the spec the title names) and the rules. Fix every high finding through the implementer (task 2 again, same description with the round), then review again. Rounds, delta reviews and the stop after two rounds with open high findings are as in "Independent review" of `/ship-feature`; record every round under `## Rounds`.
+
+If stempel-kit-evidence is installed, the diff changes UI and `KIT_SCREENSHOTS` is set, first run `EVIDENCE_DIR=.work/<branch>/review-<n> .claude/bin/evidence screenshots --no-base` and give the reviewer that folder with the diff.
 
 ## 7. Verify
 
-Follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md`: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. It reads the criteria from the plan's `## Criteria`, and it leaves `specs/README.md` alone because no row names this branch. If verify fails, classify every failure as in "Verify failures" of `/ship-feature`; the product being wrong is `hotfix`, and `.claude/bin/gate round hotfix <n>` (n counts this branch's failed verify rounds of that class) says whether to ask or to fix and verify again. Pushing the pack is gate push.
+Run the checks of "Verify" in `/ship-feature`. If one fails, classify every failure as in "Verify failures" of `/ship-feature`; the product being wrong is `hotfix`, and `.claude/bin/gate round hotfix <n>` (n counts this branch's failed verify rounds of that class) says whether to ask or to fix and verify again.
+
+If stempel-kit-evidence is installed, follow `${CLAUDE_SKILL_DIR}/../verify-feature/SKILL.md` instead: hard gates, data runs, edge-case matrix, screenshots, and the evidence pack. It reads the criteria from the plan's `## Criteria`, and it leaves `specs/README.md` alone because no row names this branch. Pushing the pack is gate push.
 
 ## 8. PR (gate: push)
 
-Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`, and add the line from `.claude/bin/usage line`. The Why links the report's source (the issue URL, or the `## Bug` section's source), not a spec. The description is a file in `.work/`, so write it without asking; pushing and creating the PR are gate push.
+Follow `${CLAUDE_SKILL_DIR}/../pr-description/SKILL.md`. The Why links the report's source (the issue URL, or the `## Bug` section's source), not a spec. The description is a file in `.work/`, so write it without asking; pushing and creating the PR are gate push.
 
 Finally, report in at most six lines: the branch, the commit, the red test and what it showed, the review verdict, the checks, and anything left open.
 
