@@ -9,7 +9,7 @@ here=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 model=${1:-sonnet}
 work=$(mktemp -d)
 repo=$work/demo
-log=$work/transcript.jsonl
+log=${KIT_TEST_TRANSCRIPT:-$work/transcript.jsonl}
 echo "Working in $work (kept for inspection)"
 
 cp -R "$here/examples/demo-app" "$repo"

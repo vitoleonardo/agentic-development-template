@@ -1,9 +1,10 @@
-# Tests for plugins/stempel-kit: the hook, spec-lint and installer tests, and the
-# TypeScript adapter's quality gates run on the demo app with the kit installed.
+# Tests for the kit: the core's suites always, each extension's suites when its folder changed (CORE-AC23), and
+# the TypeScript adapter's quality gates on the demo app with the kit installed. Nothing here spends tokens.
 name: stempel-kit
 
-# No path filters: the jobs are required status checks, and a filtered required check
-# would leave pull requests that do not touch the kit waiting forever.
+# No path filters: "Core tests" and "Demo app gates" are the required status checks, and a filtered required
+# check would leave pull requests that do not touch the kit waiting forever. The "Extension <name>" jobs exist
+# only when the selection names them, so they are not required.
 on:
   pull_request:
   push:
@@ -21,56 +22,54 @@ defaults:
     working-directory: plugins/stempel-kit
 
 jobs:
-  kit:
-    name: Kit tests
+  core:
+    name: Core tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Shellcheck
         run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/lib.sh tests/*.sh tests/*/run.sh ../stempel-kit-improve/tests/leadtime/fake-gh adapters/python/.claude/bin/pytest-related ../stempel-kit-*/plugin/bin/* ../stempel-kit-*/plugin/hooks/[!h]* ../stempel-kit-*/tests/*.sh ../stempel-kit-*/tests/*/run.sh
-      - name: Hooks
-        run: sh tests/hooks.test.sh
-      - name: Spec lint
-        run: sh tests/spec-lint.test.sh
-      - name: Plan lint
-        run: sh tests/plan-lint.test.sh
-      - name: Installer
-        run: sh tests/install.test.sh
-      - name: Check
-        run: sh tests/check.test.sh
-      - name: Skills without extensions
-        run: sh tests/skills.test.sh
-      - name: Core size
-        run: sh tests/core-size.test.sh
-      - name: Extension layout
-        run: sh tests/extensions.test.sh
-      - name: Onboard extension
-        run: sh ../stempel-kit-onboard/tests/baseline.test.sh
-      - name: Evidence extension
-        run: sh ../stempel-kit-evidence/tests/evidence.test.sh
-      - name: Routing and usage
-        run: sh ../stempel-kit-routing/tests/usage.test.sh
-      - name: Lead time
-        run: sh ../stempel-kit-improve/tests/leadtime.test.sh
-      - name: Run records
-        run: sh ../stempel-kit-improve/tests/runs.test.sh
-      - name: Autopilot
-        run: sh ../stempel-kit-autopilot/tests/autopilot.test.sh
-      - name: Structure map
-        run: sh tests/structure.test.sh
-      - name: Status
-        run: sh ../stempel-kit-autopilot/tests/status.test.sh
-      - name: Steering
-        run: sh ../stempel-kit-autopilot/tests/steer.test.sh
-      - name: Fix bug skill
-        run: sh tests/fix-bug.test.sh
-      - name: Stacked layers
-        run: sh ../stempel-kit-autopilot/tests/stack.test.sh
-      - name: Risk rank
-        run: sh ../stempel-kit-risk/tests/risk.test.sh
-      - name: All suites under dash
-        run: for t in tests/hooks tests/check tests/skills tests/core-size tests/extensions ../stempel-kit-onboard/tests/baseline ../stempel-kit-evidence/tests/evidence ../stempel-kit-routing/tests/usage ../stempel-kit-improve/tests/leadtime ../stempel-kit-improve/tests/runs tests/structure ../stempel-kit-autopilot/tests/autopilot ../stempel-kit-autopilot/tests/status tests/plan-lint tests/fix-bug ../stempel-kit-autopilot/tests/stack ../stempel-kit-risk/tests/risk ../stempel-kit-autopilot/tests/steer; do dash "$t.test.sh" || exit 1; done
+      - name: Core suites
+        run: sh tests/run.sh --core
+      - name: Core suites under dash
+        run: KIT_TEST_SHELL=dash sh tests/run.sh --core
+
+  # An extension's tests run when its folder changed, and all of them when the core or this workflow changed
+  # (CORE-AC23). tests/*/run.sh spend tokens and run in agent-tests.yml only.
+  changes:
+    name: Changed extensions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      extensions: ${{ steps.select.outputs.extensions }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Select the extensions whose folders changed
+        id: select
+        run: |
+          base=${{ github.event.pull_request.base.sha || github.event.before }}
+          if git cat-file -e "$base" 2>/dev/null; then git diff --name-only "$base" HEAD; else echo plugins/stempel-kit/; fi |
+            sh tests/run.sh --select | jq -Rsc 'split("\n") | map(select(. != ""))' | sed 's/^/extensions=/' >>"$GITHUB_OUTPUT"
+
+  extension:
+    name: Extension ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.extensions != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.changes.outputs.extensions) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Suites
+        run: sh tests/run.sh --extension ${{ matrix.name }}
+      - name: Suites under dash
+        run: KIT_TEST_SHELL=dash sh tests/run.sh --extension ${{ matrix.name }}
 
   demo:
     name: Demo app gates
