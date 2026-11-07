@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-improve",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: run records per branch (runs), lead time for changes (leadtime) and /improve-kit, which proposes changes to the kit from the records. Install into a project with install.sh --extension improve.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit", "stempel-kit-routing"]
+}

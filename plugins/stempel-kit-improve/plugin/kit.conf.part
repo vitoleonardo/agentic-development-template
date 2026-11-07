@@ -1,0 +1,4 @@
+# Run records and lead time (.claude/bin/runs, .claude/bin/leadtime, /improve-kit).
+# Run records in reports/runs/ and the /improve-kit loop (.claude/bin/runs). Empty: off; "1": on.
+# .claude/bin/autopilot turns it on for its sessions.
+KIT_IMPROVE=""

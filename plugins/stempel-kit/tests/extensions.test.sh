@@ -26,6 +26,7 @@ owns() {
 owns evidence plugin/bin/evidence plugin/skills/verify-feature/SKILL.md tests/evidence.test.sh
 owns autopilot plugin/bin/autopilot plugin/bin/stack plugin/bin/status plugin/hooks/steer plugin/hooks/summary plugin/hooks/hooks.json tests/autopilot.test.sh tests/stack.test.sh tests/status.test.sh tests/steer.test.sh
 owns routing plugin/bin/route plugin/bin/usage plugin/hooks/usage plugin/hooks/hooks.json tests/usage.test.sh
+owns improve plugin/bin/runs plugin/bin/leadtime plugin/skills/improve-kit/SKILL.md tests/runs.test.sh tests/leadtime.test.sh
 owns onboard plugin/bin/baseline plugin/bin/onboard-apply plugin/skills/onboard/SKILL.md tests/baseline.test.sh
 
 echo "$passed passed, $failed failed"
