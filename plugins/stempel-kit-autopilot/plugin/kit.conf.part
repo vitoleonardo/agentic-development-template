@@ -1,0 +1,6 @@
+# Unattended builds and stacked pull requests (.claude/bin/autopilot, .claude/bin/stack, .claude/bin/status).
+# How the build merges a stack: squash, merge or rebase.
+KIT_MERGE_METHOD="squash"
+# A GH_CONFIG_DIR logged in as the build's own GitHub account (a GitHub App or a machine user), so a person other than
+# the author can approve a high-ranked pull request. Without it the build pushes as you.
+KIT_BOT_GH_CONFIG=""

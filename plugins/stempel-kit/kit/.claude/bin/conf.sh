@@ -101,3 +101,18 @@ changed_file_matching() {
   done)
   [ -n "$_file" ] && printf '%s\n' "$_file"
 }
+
+# file_value <path relative to the root> <variable>: the variable from the config of the file's package.
+# In a monorepo a package's .claude/kit.conf decides its own source and test patterns.
+file_value() {
+  conf_value "$(package_of "$1")" "$2"
+}
+
+# kit_check <check> [files]: a check as the hooks run it; typecheck compares with the baseline when there is one.
+kit_check() {
+  if [ "$1" = typecheck ] && [ -f .claude/baseline.tsv ]; then
+    .claude/bin/check --against-baseline typecheck
+  else
+    .claude/bin/check "$@"
+  fi
+}

@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Shellcheck
-        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/summary kit/.claude/hooks/steer kit/.claude/hooks/lib.sh tests/*.sh tests/*/run.sh tests/leadtime/fake-gh adapters/python/.claude/bin/pytest-related ../stempel-kit-*/plugin/bin/* ../stempel-kit-*/plugin/hooks/[!h]* ../stempel-kit-*/tests/*.sh ../stempel-kit-*/tests/*/run.sh
+        run: shellcheck -s sh -S warning install.sh kit/.claude/bin/* kit/.claude/hooks/guard kit/.claude/hooks/record-edit kit/.claude/hooks/check-edits kit/.claude/hooks/lib.sh tests/*.sh tests/*/run.sh tests/leadtime/fake-gh adapters/python/.claude/bin/pytest-related ../stempel-kit-*/plugin/bin/* ../stempel-kit-*/plugin/hooks/[!h]* ../stempel-kit-*/tests/*.sh ../stempel-kit-*/tests/*/run.sh
       - name: Hooks
         run: sh tests/hooks.test.sh
       - name: Spec lint
@@ -54,21 +54,21 @@ jobs:
       - name: Run records
         run: sh tests/runs.test.sh
       - name: Autopilot
-        run: sh tests/autopilot.test.sh
+        run: sh ../stempel-kit-autopilot/tests/autopilot.test.sh
       - name: Structure map
         run: sh tests/structure.test.sh
       - name: Status
-        run: sh tests/status.test.sh
+        run: sh ../stempel-kit-autopilot/tests/status.test.sh
       - name: Steering
-        run: sh tests/steer.test.sh
+        run: sh ../stempel-kit-autopilot/tests/steer.test.sh
       - name: Fix bug skill
         run: sh tests/fix-bug.test.sh
       - name: Stacked layers
-        run: sh tests/stack.test.sh
+        run: sh ../stempel-kit-autopilot/tests/stack.test.sh
       - name: Risk rank
         run: sh tests/risk.test.sh
       - name: All suites under dash
-        run: for t in tests/hooks tests/check tests/skills tests/extensions ../stempel-kit-onboard/tests/baseline ../stempel-kit-evidence/tests/evidence ../stempel-kit-routing/tests/usage tests/leadtime tests/runs tests/structure tests/autopilot tests/status tests/plan-lint tests/fix-bug tests/stack tests/risk tests/steer; do dash "$t.test.sh" || exit 1; done
+        run: for t in tests/hooks tests/check tests/skills tests/extensions ../stempel-kit-onboard/tests/baseline ../stempel-kit-evidence/tests/evidence ../stempel-kit-routing/tests/usage tests/leadtime tests/runs tests/structure ../stempel-kit-autopilot/tests/autopilot ../stempel-kit-autopilot/tests/status tests/plan-lint tests/fix-bug ../stempel-kit-autopilot/tests/stack tests/risk ../stempel-kit-autopilot/tests/steer; do dash "$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates

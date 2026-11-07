@@ -8,7 +8,6 @@ pack_head() {
   sed -n 's/^ *"head": *"\([0-9a-f]*\)".*/\1/p' | head -n 1
 }
 
-# Hook input: the hooks of the core and of the extensions read it into HOOK_INPUT.
 # Print the string value of a JSON key from the hook input (last occurrence),
 # with the common escapes undone. Good enough for paths and commands; not a
 # general JSON parser.
@@ -31,4 +30,39 @@ json_escape() {
       if (NR > 1) print "\\n"
       print
     }'
+}
+
+# kit_hook_start: how every hook starts, in the core and in the extensions: work from the project root
+# ($CLAUDE_PROJECT_DIR, else KIT_ROOT), load the package lookup and kit.conf (the environment wins for the
+# approval, gate, budget and improve variables), and read the hook input into HOOK_INPUT.
+kit_hook_start() {
+  KIT_ROOT=${CLAUDE_PROJECT_DIR:-${KIT_ROOT:-$PWD}}
+  cd "$KIT_ROOT" || exit 1
+  # shellcheck source=conf.sh
+  . ./.claude/bin/conf.sh
+  _kit_env=$(export -p | grep -E '^(export|declare -x) KIT_(APPROVAL|GATE_[A-Z]+|BUDGET_TOKENS|IMPROVE)=')
+  if [ -f .claude/kit.conf ]; then
+    # shellcheck source=/dev/null
+    . ./.claude/kit.conf
+  fi
+  eval "$_kit_env"
+  # shellcheck disable=SC2034 # read by json_string and json_bool
+  HOOK_INPUT=$(cat)
+}
+
+# Per-session state files under .work/ (gitignored).
+state_file() {
+  sid=$(json_string session_id | tr -cd 'A-Za-z0-9_-')
+  mkdir -p .work
+  [ -f .work/.gitignore ] || printf '*\n!.gitignore\n' >.work/.gitignore
+  printf '.work/session-%s.%s' "${sid:-unknown}" "$1"
+}
+
+# Path relative to the project root, or empty if the file is outside it.
+relative_path() {
+  case $1 in
+    "$KIT_ROOT"/*) printf '%s' "${1#"$KIT_ROOT"/}" ;;
+    /*) ;;
+    *) printf '%s' "$1" ;;
+  esac
 }

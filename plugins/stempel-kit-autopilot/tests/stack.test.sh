@@ -1,9 +1,9 @@
 #!/bin/sh
-# Tests for .claude/bin/stack (specs/stacked-groups.md). Run: sh plugins/stempel-kit/tests/stack.test.sh
+# Tests for .claude/bin/stack (specs/stacked-groups.md). Run: sh plugins/stempel-kit-autopilot/tests/stack.test.sh
 # A fixture repo with a bare local remote and a fake gh that records its calls, so no network is needed.
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 project=$work/project

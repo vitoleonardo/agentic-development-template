@@ -10,19 +10,10 @@
 # the transcripts are cumulative.
 # The hook runs from the extension's plugin folder, so its helpers come from the project: the core's
 # .claude/bin/json.sh and the .claude/bin/usage that install.sh --extension routing copied there.
-KIT_ROOT=${CLAUDE_PROJECT_DIR:-$PWD}
-cd "$KIT_ROOT" || exit 0
-[ -x .claude/bin/usage ] && [ -f .claude/bin/json.sh ] || exit 0
+[ -x "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/usage" ] && [ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh" ] || exit 0
 # shellcheck source=/dev/null
-. ./.claude/bin/json.sh
-budget_from_environment=${KIT_BUDGET_TOKENS-unset}
-if [ -f .claude/kit.conf ]; then
-  # shellcheck source=/dev/null
-  . ./.claude/kit.conf
-fi
-[ "$budget_from_environment" = unset ] || KIT_BUDGET_TOKENS=$budget_from_environment
-# shellcheck disable=SC2034 # read by json_string and json_bool in .claude/bin/json.sh
-HOOK_INPUT=$(cat)
+. "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh"
+kit_hook_start
 
 branch=$(git branch --show-current 2>/dev/null)
 dir=.work/${branch:-detached}

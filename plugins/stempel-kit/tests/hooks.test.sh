@@ -9,6 +9,8 @@ project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
 cp -R "$here/adapters/typescript/.claude/." "$project/.claude/"
+# The Stop hook that reads what check-edits logged comes with stempel-kit-autopilot.
+cp "$here/../stempel-kit-autopilot/plugin/hooks/summary" "$project/.claude/hooks/"
 export CLAUDE_PROJECT_DIR="$project"
 
 failed=0
@@ -265,6 +267,8 @@ sed -i.bak 's/^- Architecture: none/- Architecture: a queue between the API and 
 out=$(plan_gate KIT_APPROVAL=autonomous)
 case $out in *"a queue between the API and the mailer"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC18: an architecture change asks at the plan gate and says why: $out" ;; esac
 case $(plan_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC2: strict asks at the plan gate" ;; esac
+# A stack to merge needs stempel-kit-autopilot.
+cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$risk_repo/.claude/bin/"
 merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/gate merge 2>&1); }
 case $(merge_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC29: strict asks at the merge gate" ;; esac
 out=$(merge_gate KIT_APPROVAL=autonomous)

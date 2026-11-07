@@ -26,6 +26,11 @@
       "description": "Extension: model routing per dispatched agent, the token usage record and a token budget per branch"
     },
     {
+      "name": "stempel-kit-autopilot",
+      "source": "./plugins/stempel-kit-autopilot/plugin",
+      "description": "Extension: unattended builds with one headless session per planned group, stacked pull requests per group, the build status and steering. Needs stempel-kit-routing"
+    },
+    {
       "name": "stempel-kit-onboard",
       "source": "./plugins/stempel-kit-onboard/plugin",
       "description": "Extension: /onboard for existing repositories and a baseline so legacy failures never block a pull request"

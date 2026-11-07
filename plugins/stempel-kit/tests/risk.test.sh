@@ -8,6 +8,8 @@ trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
+# risk stack ranks the layers that stempel-kit-autopilot's stack cuts.
+cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

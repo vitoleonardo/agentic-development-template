@@ -1,6 +1,10 @@
 #!/bin/sh
 [ -n "${KIT_AUTOPILOT_RUN:-}" ] || exit 0
-. "$(dirname -- "$0")/lib.sh"
+# The hook runs from the extension's plugin folder; its helpers come from the project's .claude/bin/json.sh.
+[ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh" ] || exit 0
+# shellcheck source=/dev/null
+. "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh"
+kit_hook_start
 printf '%s' "$HOOK_INPUT" | sed 's/"tool_input".*//' | grep -q '"agent_id"[[:space:]]*:' && exit 0
 
 inbox=.work/autopilot/steer

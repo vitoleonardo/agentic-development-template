@@ -1,7 +1,7 @@
 #!/bin/sh
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fake=$work/fake
