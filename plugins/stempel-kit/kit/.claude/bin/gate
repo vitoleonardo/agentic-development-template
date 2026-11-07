@@ -60,7 +60,7 @@ by_risk() {
   out=$(cd "$root" && { [ -x .claude/bin/risk ] || exit 3; } && KIT_PUSH_ASK_PATTERNS=$env_push_ask .claude/bin/risk "$name" 2>&1)
   code=$?
   if [ "$code" -eq 0 ] || { [ "$code" -ne 1 ] && [ "$name" = push ]; }; then echo auto; return; fi
-  [ -n "$out" ] || out="no risk rank (stempel-kit-risk is not installed)"
+  [ -n "$out" ] || out="no risk rank ($([ "$code" -eq 3 ] && echo "stempel-kit-risk is not installed" || echo ".claude/bin/risk exit $code"))"
   printf '%s\n' "$out" | sed "s/^/gate $name: /" >&2
   echo "gate $name: a person approves this $name (.claude/bin/risk)." >&2
   echo ask
