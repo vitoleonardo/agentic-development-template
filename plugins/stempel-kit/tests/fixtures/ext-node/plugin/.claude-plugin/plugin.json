@@ -1,0 +1,7 @@
+{
+  "name": "stempel-kit-ext-node",
+  "version": "0.1.0",
+  "description": "Test fixture: an extension written in TypeScript, so the extension checks accept a runtime other than sh (CORE-AC21).",
+  "requires": ["node"],
+  "extends": ["stempel-kit"]
+}
