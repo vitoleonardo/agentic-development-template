@@ -11,7 +11,7 @@ mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
 cp "$ext"/bin/* "$project/.claude/bin/"
 # risk stack ranks the layers that stempel-kit-autopilot's stack cuts.
-cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$project/.claude/bin/"
+cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$here/../stempel-kit-autopilot/plugin/bin/plans.sh" "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

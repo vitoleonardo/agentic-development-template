@@ -305,7 +305,7 @@ for h in guard record-edit check-edits; do
 done
 rm -rf "$empty"
 # The merge gate comes with stempel-kit-autopilot: .claude/bin/stack gate.
-cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$risk_repo/.claude/bin/"
+cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$here/../stempel-kit-autopilot/plugin/bin/plans.sh" "$risk_repo/.claude/bin/"
 merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/stack gate 2>&1); }
 case $(merge_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC29: strict asks at the merge gate" ;; esac
 out=$(merge_gate KIT_APPROVAL=autonomous)

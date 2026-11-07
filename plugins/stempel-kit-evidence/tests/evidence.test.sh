@@ -12,6 +12,8 @@ mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
 # The core with this extension and stempel-kit-onboard, whose baseline reads the JUnit reports.
 cp "$ext"/bin/* "$here/../stempel-kit-onboard/plugin/bin/baseline" "$project/.claude/bin/"
+# Stacked layers come from stempel-kit-autopilot's plans.sh.
+cp "$here/../stempel-kit-autopilot/plugin/bin/plans.sh" "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

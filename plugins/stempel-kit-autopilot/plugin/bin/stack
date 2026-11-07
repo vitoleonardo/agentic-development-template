@@ -25,6 +25,8 @@ export KIT_ROOT
 . "$root/.claude/bin/conf.sh"
 # shellcheck source=features.sh
 . "$root/.claude/bin/features.sh"
+# shellcheck source=plans.sh
+. "$root/.claude/bin/plans.sh"
 
 tab=$(printf '\t')
 branch=$(git branch --show-current 2>/dev/null)
@@ -35,7 +37,7 @@ remote=${KIT_EVIDENCE_REMOTE:-origin}
 tmp=$(mktemp -d) || exit 2
 trap 'rm -rf "$tmp"' EXIT
 
-# layers: this feature's layers, bottom to top (features.sh feature_layers).
+# layers: this feature's layers, bottom to top (plans.sh feature_layers).
 layers() {
   feature_layers "$branch" 2>"$tmp/notes" || return 1
   if [ -s "$tmp/notes" ]; then sed 's/^/stack: /' "$tmp/notes" >&2; fi

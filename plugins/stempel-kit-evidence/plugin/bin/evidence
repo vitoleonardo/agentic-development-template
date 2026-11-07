@@ -36,6 +36,9 @@ export KIT_ROOT NO_COLOR=1 FORCE_COLOR=0 CI=${CI:-1}
 . "$root/.claude/bin/conf.sh"
 # shellcheck source=features.sh
 . "$root/.claude/bin/features.sh"
+# feature_layers comes with stempel-kit-autopilot; without it a branch is one layer.
+# shellcheck source=/dev/null
+[ ! -f "$root/.claude/bin/plans.sh" ] || . "$root/.claude/bin/plans.sh"
 [ -f .claude/kit.conf ] || { echo "evidence: .claude/kit.conf is missing." >&2; exit 2; }
 
 branch=$(git branch --show-current 2>/dev/null)
@@ -88,7 +91,7 @@ check_gate() {
 }
 
 # size_numbers: sets $max, $approved (the plan's "Approved size: <n> lines", if it has one), $layer_count and, per
-# stacked layer (features.sh feature_layers), "<layer> TAB <changed lines>" in $tmp/layer-sizes. A layer is measured
+# stacked layer (plans.sh feature_layers), "<layer> TAB <changed lines>" in $tmp/layer-sizes. A layer is measured
 # against the layer below; the top one includes uncommitted and untracked files. $changed and $largest are the
 # largest layer's lines and name.
 size_numbers() {

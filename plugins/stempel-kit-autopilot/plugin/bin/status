@@ -41,6 +41,8 @@ idle_limit=${idle_from_environment:-${AUTOPILOT_MAX_IDLE_SECONDS:-1200}}
 case $idle_limit in '' | *[!0-9]*) idle_limit=1200 ;; esac
 # shellcheck source=features.sh
 . "$root/.claude/bin/features.sh"
+# shellcheck source=plans.sh
+. "$root/.claude/bin/plans.sh"
 # shellcheck source=json.sh
 . "$root/.claude/bin/json.sh"
 
