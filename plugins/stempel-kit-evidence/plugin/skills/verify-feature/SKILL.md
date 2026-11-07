@@ -13,7 +13,7 @@ Review finds problems in the code; verify proves the behaviour, with artefacts a
 ## 0. Preconditions
 
 - The last `/review-diff` round has no high findings. Copy its report to `.work/<branch>/evidence/review.md`.
-- Every task is committed. Then, when the feature's row in `specs/README.md` names this branch, set its status to `in-review` (a fix branch leaves the list alone); run `.claude/bin/runs record` (with `KIT_IMPROVE` on it writes `reports/runs/<branch>.tsv` for `/improve-kit`; off, it writes nothing), and commit the record and, when it changed, the status together, before the gates: the pack is valid only for the commit it was made on, so nothing may be committed after it. Any later commit, even a typo fix, makes it stale, and verify must run again.
+- Every task is committed. Then, when the feature's row in `specs/README.md` names this branch, set its status to `in-review` (a fix branch leaves the list alone), and commit it before the gates. If stempel-kit-improve is installed, run `.claude/bin/runs record` first (with `KIT_IMPROVE` on it writes `reports/runs/<branch>.tsv` for `/improve-kit`; off, it writes nothing) and commit the record with the status. Commit before the gates because the pack is valid only for the commit it was made on, so nothing may be committed after it. Any later commit, even a typo fix, makes it stale, and verify must run again.
 - The working tree is clean.
 - Read the spec the state file's title names, or its `## Criteria` for a fix, and the plan (`.work/<branch>.md`), including its test cases and its `Approved dependencies` line.
 

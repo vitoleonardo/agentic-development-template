@@ -39,7 +39,7 @@ feature() {
 
 
 b=$work/python-pkg
-cp -R "$kit/tests/onboard/python-pkg" "$b"
+cp -R "$kit/../stempel-kit-onboard/tests/onboard/python-pkg" "$b"
 cd "$b" || exit 1
 printf 'TOKEN=%s\n' "$canary" >.env.production
 git init -q -b main
@@ -74,7 +74,7 @@ has "$r" "| Review | yellow | PR size (median changed lines) 15.0, 4 merges (git
 has "$r" "| Gates | red | CI files: none; checks in CI: none; test files: 1 (git ls-files)" "Gates with evidence"
 has "$r" "| Release | yellow | Merges per week 0.3; Tags in 90 days 2 (git for-each-ref refs/tags); Follow-up fix rate (%) 25.0; days since the last merge: 10" "Release with evidence"
 has "$r" "**Too few PRs for a reliable comparison** (4)." "leadtime's warning below 10"
-grep -qF "Too few PRs for a reliable comparison" "$kit/kit/.claude/bin/leadtime" && ok || fail "the warning is leadtime's own text"
+grep -qF "Too few PRs for a reliable comparison" "$kit/../stempel-kit-improve/plugin/bin/leadtime" && ok || fail "the warning is leadtime's own text"
 has "$r" "| PR size (median changed lines) | 15.0 | git log --first-parent -m --numstat HEAD, 90 days | 4 merges |" "a number with source and count"
 has "$r" "| Tags in 90 days | 2 | git for-each-ref refs/tags | 2 |" "tags"
 for marker in "<!-- fill:reason -->" "<!-- fill:next-steps -->" "<!-- fill:offer -->"; do has "$r" "$marker" "the model's parts are marked"; done
@@ -91,7 +91,7 @@ git ls-files -z >"$work/python.files"
 
 
 a=$work/pnpm-monorepo
-cp -R "$kit/tests/onboard/pnpm-monorepo" "$a"
+cp -R "$kit/../stempel-kit-onboard/tests/onboard/pnpm-monorepo" "$a"
 cd "$a" || exit 1
 mkdir -p specs .claude .github/workflows
 printf '# Export\n\n## Acceptance criteria\n\n- EXPORT-AC1: Given a list, when I export, then I get a file.\n' >specs/export.md
@@ -105,7 +105,7 @@ git remote add origin https://github.com/acme/shop.git
 printf 'SECRET=%s\n' "$canary" >.env
 before=$(git status --porcelain --untracked-files=all)
 
-GH="$kit/tests/leadtime/fake-gh" "$scan" --lang en --gh >"$work/out" 2>&1 || fail "the gh scan failed: $(cat "$work/out")"
+GH="$kit/../stempel-kit-improve/tests/leadtime/fake-gh" "$scan" --lang en --gh >"$work/out" 2>&1 || fail "the gh scan failed: $(cat "$work/out")"
 after=$(git status --porcelain --untracked-files=all)
 [ "$before" = "$after" ] && ok || fail "git status changed with gh: before '$before', after '$after'"
 has "$r" "The jam is at: Review (Review)" "the jam moves to Review"

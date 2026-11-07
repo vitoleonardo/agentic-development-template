@@ -1,0 +1,8 @@
+# Risk ranks for plans, pushes and stack layers (.claude/bin/risk, the Risk workflow).
+# Files whose change makes a layer high, so a person approves its merge (auth, migrations); at standard the push asks
+# (.claude/bin/gate). Shell patterns, separated by spaces. KIT_GATE_PUSH="auto" turns this off.
+KIT_PUSH_ASK_PATTERNS=""
+# The risk score from which a plan or layer is high, so a person approves it; half of it is medium.
+KIT_RISK_HUMAN="8"
+# Files whose change is an architecture change, high whatever the score: module boundaries, shared core, ADRs.
+KIT_ARCHITECTURE_PATTERNS=""

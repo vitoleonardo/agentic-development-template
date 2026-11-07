@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for the run records (.claude/bin/runs) and `usage tsv`.
-# Run: sh plugins/stempel-kit/tests/runs.test.sh
+# Run: sh plugins/stempel-kit-improve/tests/runs.test.sh
 #
 # Expected values, calculated by hand from the fixtures below:
 #   usage.tsv: main 100+50+250 = 400, a1 (sonnet) 10+20+70 = 100, a2 (opus) 20+30+250 = 300, r1 (opus) 50+50+100 = 200
@@ -13,10 +13,15 @@
 #     stops: tier 1, kit 2 (one from old-a), spec 1 (old-b).
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
+ext=$(CDPATH='' cd -- "$(dirname -- "$0")/../plugin" && pwd)
 project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
+cp "$ext"/bin/* "$project/.claude/bin/"
+# As install.sh --extension improve writes it.
+printf '\n# extension: improve bin/leadtime\n' >>"$project/.claude/kit.conf"
+cat "$ext/kit.conf.part" >>"$project/.claude/kit.conf"
 # runs reads the usage record of the routing extension.
 cp "$here"/../stempel-kit-routing/plugin/bin/* "$project/.claude/bin/"
 cd "$project" || exit 1

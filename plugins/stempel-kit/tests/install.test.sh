@@ -42,11 +42,11 @@ expect "full: structure gate installed" test -x "$full/.claude/bin/structure"
 expect "full: adapter and preset installed" test -f "$full/.claude/rules/typescript.md" -a -f "$full/.claude/rules/nextjs.md"
 expect "full: the evidence workflow installed" test -f "$full/.github/workflows/evidence.yml"
 expect "full: the evidence pack is not in the core" test ! -e "$full/.claude/bin/evidence" -a ! -e "$full/.claude/skills/verify-feature"
-expect "full: leadtime installed" test -x "$full/.claude/bin/leadtime"
+expect "full: leadtime is not in the core" test ! -e "$full/.claude/bin/leadtime"
 expect "full: autopilot is not in the core" test ! -e "$full/.claude/bin/autopilot" -a ! -e "$full/.claude/bin/stack" -a ! -e "$full/.claude/bin/status" -a ! -e "$full/.claude/hooks/steer" -a ! -e "$full/.claude/hooks/summary"
 expect "full: routing is not in the core" test ! -e "$full/.claude/bin/route" -a ! -e "$full/.claude/bin/usage" -a ! -e "$full/.claude/hooks/usage"
 expect "full: settings.json registers no usage hook" sh -c "! grep -q 'hooks/usage' '$full/.claude/settings.json'"
-expect "full: run records and /improve-kit installed" test -x "$full/.claude/bin/runs" -a -f "$full/.claude/skills/improve-kit/SKILL.md"
+expect "full: run records and /improve-kit are not in the core" test ! -e "$full/.claude/bin/runs" -a ! -e "$full/.claude/skills/improve-kit"
 expect "full: adapter helpers installed" test -f "$full/.claude/bin/coverage-files.mjs"
 expect "full: the onboarding tools are not in the core" test ! -e "$full/.claude/bin/baseline" -a ! -e "$full/.claude/bin/onboard-apply" -a ! -e "$full/.claude/skills/onboard"
 python=$(mktemp -d)
@@ -182,9 +182,28 @@ code=$?
 expect "CORE-AC33: a part that redefines a variable stops the install" test "$code" -eq 2
 expect "CORE-AC33: the message names both extensions and the variable" sh -c "echo \"\$1\" | grep -q 'KIT_E2E' && echo \"\$1\" | grep -q 'evidence' && echo \"\$1\" | grep -q 'other'" sh "$out"
 expect "CORE-AC33: nothing of the refused extension was installed" test ! -e "$proj/.claude/bin/other" -a "$(grep -c '^# extension: ' "$proj/.claude/kit.conf")" -eq 1
+mkdir -p "$ext/indented/plugin/bin" && printf '#!/bin/sh\n' >"$ext/indented/plugin/bin/indented"
+printf 'if true; then\n  KIT_TYPECHECK="x"\nfi\ntrue && KIT_SEED="y"\n' >"$ext/indented/plugin/kit.conf.part"
+out=$("$here/install.sh" "$proj" --extension "$ext/indented/plugin" 2>&1)
+expect "CORE-AC33: an indented assignment of a core variable stops the install" sh -c "echo \"\$1\" | grep -q 'KIT_TYPECHECK is already defined by the core'" sh "$out"
+expect "CORE-AC33: an assignment after && is seen too" sh -c "echo \"\$1\" | grep -q 'KIT_SEED is already defined by extension evidence'" sh "$out"
 expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$proj' --extension no-such-extension >/dev/null 2>&1"
 expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
 rm -rf "$ext" "$proj"
+
+# CORE-AC5: an adapter install writes the core part; an extension installed by name gets the adapter's settings.
+proj=$(mktemp -d)
+"$here/install.sh" "$proj" --adapter typescript --plugin >/dev/null || echo "FAIL: adapter install exited $?"
+expect "CORE-AC5: the adapter's kit.conf has the core variables" grep -q '^KIT_TYPECHECK="$pm run typecheck"$' "$proj/.claude/kit.conf"
+expect "CORE-AC5: the adapter's kit.conf has no extension variable" sh -c "! grep -q '^KIT_MODEL_FAST=\|^KIT_SEED\|^KIT_COVERAGE_THRESHOLD=\|^KIT_RISK_HUMAN=' '$proj/.claude/kit.conf'"
+expect "CORE-AC5: no extensions folder in the project" test ! -e "$proj/extensions"
+for e in onboard evidence routing autopilot improve risk; do
+  "$here/install.sh" "$proj" --extension "$e" >/dev/null 2>"$proj/err" || echo "FAIL: --extension $e on the typescript adapter exited $?: $(cat "$proj/err")"
+done
+expect "CORE-AC5: the evidence section holds the adapter's settings" sh -c "sed -n '/^# extension: evidence /,/^# extension: /p' '$proj/.claude/kit.conf' | grep -q 'KIT_E2E_PATTERNS=\"e2e/'"
+expect "CORE-AC5: the onboard section holds the adapter's coverage helper" sh -c "sed -n '/^# extension: onboard /,/^# extension: /p' '$proj/.claude/kit.conf' | grep -q 'coverage-files.mjs'"
+expect "CORE-AC5: every typescript check still resolves" sh -c "cd '$proj' && . ./.claude/kit.conf && [ -n \"\$KIT_TEST\" ] && [ -n \"\$KIT_COVERAGE_FILES\" ] && [ \"\$KIT_MODEL_DEEP\" = opus ]"
+rm -rf "$proj"
 
 # CORE-AC18: the onboard extension installs by name into a core-only project.
 proj=$(mktemp -d)
@@ -196,6 +215,13 @@ expect "CORE-AC18: check finds the onboard script" sh -c "cd '$proj' && ! .claud
 "$here/install.sh" "$proj" --extension evidence >/dev/null || echo "FAIL: evidence install exited $?"
 "$here/install.sh" "$proj" --extension routing >/dev/null || echo "FAIL: routing install exited $?"
 "$here/install.sh" "$proj" --extension autopilot >/dev/null || echo "FAIL: autopilot install exited $?"
+"$here/install.sh" "$proj" --extension improve >/dev/null || echo "FAIL: improve install exited $?"
+"$here/install.sh" "$proj" --extension risk >/dev/null || echo "FAIL: risk install exited $?"
+expect "CORE-AC17: risk's script is in .claude/bin" test -x "$proj/.claude/bin/risk"
+expect "CORE-AC17: the Risk workflow is in .github/workflows" test -f "$proj/.github/workflows/risk.yml"
+expect "CORE-AC17: the risk section holds its variables" sh -c "sed -n '/^# extension: risk bin\/risk\$/,\$p' '$proj/.claude/kit.conf' | grep -q '^KIT_RISK_HUMAN='"
+expect "CORE-AC16: improve's scripts are in .claude/bin" test -x "$proj/.claude/bin/runs" -a -x "$proj/.claude/bin/leadtime"
+expect "CORE-AC16: the improve section names its first script" grep -q '^# extension: improve bin/leadtime$' "$proj/.claude/kit.conf"
 expect "CORE-AC14: autopilot's scripts are in .claude/bin" test -x "$proj/.claude/bin/autopilot" -a -x "$proj/.claude/bin/stack" -a -x "$proj/.claude/bin/status"
 expect "CORE-AC14: the autopilot section names its first script" grep -q '^# extension: autopilot bin/autopilot$' "$proj/.claude/kit.conf"
 expect "CORE-AC15: routing's scripts are in .claude/bin" test -x "$proj/.claude/bin/route" -a -x "$proj/.claude/bin/usage"

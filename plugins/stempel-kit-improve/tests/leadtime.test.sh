@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests for .claude/bin/leadtime against recorded GitHub data (tests/leadtime/prs.json), no network.
-# Run: sh plugins/stempel-kit/tests/leadtime.test.sh   (needs jq, which stands in for gh's --jq)
+# Run: sh plugins/stempel-kit-improve/tests/leadtime.test.sh   (needs jq, which stands in for gh's --jq)
 #
 # Expected values, calculated by hand from prs.json (September 2026, times in hours):
 #   PR   first commit  ready        first review       merged       lead cycle review rounds size  kit fix
@@ -20,12 +20,14 @@
 #   Baseline (06-02..08-31): PR 90 lead 24, PR 91 lead 12 -> median 18; 12 vs 18 is -33 %.
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
+ext=$(CDPATH='' cd -- "$(dirname -- "$0")/../plugin" && pwd)
 project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
+cp "$ext"/bin/* "$project/.claude/bin/"
 cd "$project" || exit 1
-export GH="$here/tests/leadtime/fake-gh" LEADTIME_TODAY=2026-09-30 FAKE_GH_LOG="$project/gh.log"
+export GH="$ext/../tests/leadtime/fake-gh" LEADTIME_TODAY=2026-09-30 FAKE_GH_LOG="$project/gh.log"
 
 failed=0
 passed=0

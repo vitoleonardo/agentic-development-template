@@ -7,8 +7,9 @@
 #   --plugin   the skills, agents and hooks come from the stempel-kit plugin; install only the project files
 #   --force    overwrite files that already exist in the project
 #   --update   replace the kit files the project has not changed; stage the kit's version of changed ones in .work/kit-update/
-#   --extension <name>  add an extension to a project that has the core: its scripts go to .claude/bin/ and its
-#              kit.conf.part becomes the section "# extension: <name> <script>" at the end of .claude/kit.conf.
+#   --extension <name>  add an extension to a project that has the core: its scripts go to .claude/bin/, its
+#              workflows to .github/workflows/, and its kit.conf.part becomes the section
+#              "# extension: <name> bin/<script>" at the end of .claude/kit.conf.
 #              The name resolves to ../stempel-kit-<name>/plugin next to this kit; a path with a slash is used as is.
 # Existing project files are never overwritten without --force; they are listed for a manual merge.
 # Without --adapter, --preset and --plugin, the options of the last install (in .claude/kit.manifest) are used.
@@ -34,7 +35,7 @@ parse_options() {
       --force) force=1; shift ;;
       --update) update=1; shift ;;
       --extension) extension=${2:?--extension needs a name or a plugin dir}; shift 2 ;;
-      -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       -*) echo "install: unknown option $1" >&2; exit 2 ;;
       *) target=$1; shift ;;
     esac
@@ -68,14 +69,38 @@ if [ -n "$extension" ]; then
   [ -f "$conf" ] || { echo "install: $target has no .claude/kit.conf; install the core first." >&2; exit 2; }
   part=$ext_dir/kit.conf.part
   [ -f "$part" ] || { echo "install: $ext_dir has no kit.conf.part." >&2; exit 2; }
+  # Installed by name into a project with an adapter, the extension gets the adapter's settings when it has them.
+  installed_adapter=""
+  case $extension in */*) ;; *) installed_adapter=$(awk -F'\t' '$1 == "options" { print $2 }' "$manifest" 2>/dev/null | sed -n 's/.*--adapter \([^ ]*\).*/\1/p') ;; esac
+  if [ -n "$installed_adapter" ] && [ -f "$kit/adapters/$installed_adapter/extensions/$ext_name.conf" ]; then
+    part=$kit/adapters/$installed_adapter/extensions/$ext_name.conf
+  fi
   script=$(cd "$ext_dir" && ls bin 2>/dev/null | head -n 1)
   [ -n "$script" ] || { echo "install: $ext_dir has no bin/ script." >&2; exit 2; }
   header="# extension: $ext_name bin/$script"
   # Every KIT_ variable the part defines must be new: not in the core part of kit.conf, not in another section.
+  # An assignment may be indented (inside an if) or follow && (has_script e2e && KIT_E2E=...).
   awk -v name="$ext_name" -v part="$part" '
-    FNR == NR { if ($0 ~ /^KIT_[A-Z0-9_]*=/) { sub(/=.*/, ""); mine[$0] = 1 }; next }
+    # assigned <line>: the KIT_ variables the line assigns, separated by spaces.
+    function assigned(l,   out) {
+      out = ""
+      if (l ~ /^[[:space:]]*#/) return out
+      while (match(l, /(^|[[:space:];&|])KIT_[A-Z0-9_]+=/)) {
+        v = substr(l, RSTART, RLENGTH - 1); sub(/^[^K]*/, "", v)
+        out = out " " v
+        l = substr(l, RSTART + RLENGTH)
+      }
+      return out
+    }
+    FNR == NR { n = split(assigned($0), a, " "); for (i = 1; i <= n; i++) mine[a[i]] = 1; next }
     /^# extension: / { owner = $3; next }
-    /^KIT_[A-Z0-9_]*=/ { v = $0; sub(/=.*/, "", v); if ((v in mine) && owner != name) { printf "install: %s is already defined by %s; extension %s cannot define it too.\n", v, (owner == "" ? "the core" : "extension " owner), name; bad = 1 } }
+    {
+      n = split(assigned($0), a, " ")
+      for (i = 1; i <= n; i++) if ((a[i] in mine) && owner != name && !(a[i] in told)) {
+        printf "install: %s is already defined by %s; extension %s cannot define it too.\n", a[i], (owner == "" ? "the core" : "extension " owner), name
+        told[a[i]] = 1; bad = 1
+      }
+    }
     END { exit bad }
   ' "$part" "$conf" >&2 || exit 2
   mkdir -p "$target/.claude/bin"
@@ -83,6 +108,18 @@ if [ -n "$extension" ]; then
     [ -f "$f" ] || continue
     cp "$f" "$target/.claude/bin/$(basename -- "$f")"
     [ -x "$f" ] && chmod +x "$target/.claude/bin/$(basename -- "$f")"
+  done
+  # Workflows the extension brings (the Risk check) go where GitHub reads them.
+  # A workflow the project already has and changed is kept, as for every project file without --force.
+  for f in "$ext_dir"/workflows/*.yml; do
+    [ -f "$f" ] || continue
+    dest=$target/.github/workflows/$(basename -- "$f")
+    if [ -f "$dest" ] && [ "$force" -eq 0 ] && ! cmp -s "$f" "$dest"; then
+      echo "install: kept .github/workflows/$(basename -- "$f"), which differs from the extension's; merge it by hand or use --force." >&2
+      continue
+    fi
+    mkdir -p "$target/.github/workflows"
+    cp "$f" "$dest"
   done
   # Replace the extension's own section if there is one, then append the part under its header.
   tmp=$(mktemp)
@@ -235,7 +272,7 @@ copy() {
 
 # The plugin manifest and the plugin's hook config only matter when kit/.claude is loaded as a plugin.
 list_tree() {
-  (cd "$1" && find . -type f ! -path './presets/*' | sed 's|^\./||') | while IFS= read -r rel; do
+  (cd "$1" && find . -type f ! -path './presets/*' ! -path './extensions/*' | sed 's|^\./||') | while IFS= read -r rel; do
     case $rel in
       .claude/.claude-plugin/* | .claude/hooks/hooks.json) continue ;;
       .claude/skills/* | .claude/agents/* | .claude/hooks/*) [ "$plugin" -eq 1 ] && continue ;;

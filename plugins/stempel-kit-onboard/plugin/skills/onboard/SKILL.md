@@ -83,7 +83,7 @@ Then prove the configuration:
 
 - For each package, `.claude/bin/check test-related <one source file>` and `.claude/bin/check format <one source file>` (these take files), then `.claude/bin/check typecheck` and `.claude/bin/check build` (these take none).
 - The full gates: `.claude/bin/check --against-baseline test`, `lint`, `typecheck` and `coverage`, plus `.claude/bin/check duplicates` and `.claude/bin/structure`. On the unchanged default branch every one must pass; a failure here means the baseline, a command or the Map is wrong. Then run `.claude/bin/structure` with one made-up file name per home of the Map; each must pass.
-- If the repository has PR history on GitHub, run `.claude/bin/leadtime --baseline` to freeze the "before" numbers (the 90 days before today) in `reports/`. With fewer than ten merged PRs it says so; a fresh fork has none, and then the comparison has to come from `--split-by kit` later.
+- If stempel-kit-improve is installed and the repository has PR history on GitHub, run `.claude/bin/leadtime --baseline` to freeze the "before" numbers (the 90 days before today) in `reports/`. With fewer than ten merged PRs it says so; a fresh fork has none, and then the comparison has to come from `--split-by kit` later.
 
 Check the tools the gates rely on: `command -v gitleaks` (without it the secret gate falls back to a pattern scan that only warns about `name = value` matches) and, for the TypeScript adapter, `node_modules/.bin/jscpd`. Each one that is missing is a setup gap.
 
