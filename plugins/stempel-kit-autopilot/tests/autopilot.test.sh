@@ -874,8 +874,11 @@ same "$(cat "$work/err")" "autopilot: commit or stash your changes first." "AC13
 stub_stack() {
   rm -f "$fake/stack-codes" "$fake/stack-calls"
   sed -i.bak 's/^KIT_STACK_CHECKS=.*/KIT_STACK_CHECKS="ci"/' .claude/kit.conf && rm -f .claude/kit.conf.bak
+  cp "$here/../stempel-kit-autopilot/plugin/bin/stack" .claude/bin/stack-real
   cat >.claude/bin/stack <<'EOF'
 #!/bin/sh
+# The merge gate is the real one and stays out of the call log.
+[ "$1" != gate ] || exec "$(dirname -- "$0")/stack-real" gate
 echo "$*" >>"$FAKE_DIR/stack-calls"
 b=$(git branch --show-current)
 case $1 in
@@ -969,11 +972,14 @@ stub_risk() {
   git add -A
   git commit -qm "stub risk"
 }
+# stub_merge: a stack command that records its calls; `gate` is the real merge gate.
 stub_merge() {
   rm -f "$fake/stack-calls"
+  cp "$here/../stempel-kit-autopilot/plugin/bin/stack" .claude/bin/stack-real
   cat >.claude/bin/stack <<'EOF'
 #!/bin/sh
 echo "$*" >>"$FAKE_DIR/stack-calls"
+[ "$1" != gate ] || exec "$(dirname -- "$0")/stack-real" gate
 exit 0
 EOF
   chmod +x .claude/bin/stack

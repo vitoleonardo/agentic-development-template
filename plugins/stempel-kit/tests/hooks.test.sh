@@ -267,9 +267,36 @@ sed -i.bak 's/^- Architecture: none/- Architecture: a queue between the API and 
 out=$(plan_gate KIT_APPROVAL=autonomous)
 case $out in *"a queue between the API and the mailer"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC18: an architecture change asks at the plan gate and says why: $out" ;; esac
 case $(plan_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC2: strict asks at the plan gate" ;; esac
-# A stack to merge needs stempel-kit-autopilot.
+# CORE-AC10, CORE-AC11: the core gate needs no extension.
+core_repo=$(mktemp -d)
+cp -R "$here/kit/." "$core_repo/"
+sed -i '/^KIT_APPROVAL=/d' "$core_repo/.claude/kit.conf"
+out=$(cd "$core_repo" && env -u KIT_APPROVAL .claude/bin/gate level 2>&1)
+case $out in strict) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: CORE-AC11: gate level without KIT_APPROVAL prints strict: $out" ;; esac
+(cd "$core_repo" && git init -q -b main && git add -A && git -c user.name=t -c user.email=t@example.invalid commit -qm base && git checkout -qb 9-change && printf 'x\n' >auth.ts && git add auth.ts && git -c user.name=t -c user.email=t@example.invalid commit -qm auth)
+# A push-ask pattern of stempel-kit-risk that matches the change: the core gate must not read it.
+rm -f "$core_repo/.claude/bin/risk" # until task 11 moves risk into stempel-kit-risk
+printf 'KIT_PUSH_ASK_PATTERNS="*"\n' >>"$core_repo/.claude/kit.conf"
+for level in strict standard autonomous; do
+  out=$(cd "$core_repo" && KIT_APPROVAL=$level KIT_BASE=main .claude/bin/gate push 2>&1)
+  code=$?
+  case $level:$code:$out in strict:0:ask | standard:0:auto | autonomous:0:auto) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: CORE-AC10: gate push at $level without extensions: exit $code, $out" ;; esac
+done
+out=$(cd "$core_repo" && .claude/bin/gate merge 2>&1)
+case $? in 2) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: gate merge is unknown without stack: $out" ;; esac
+# The guard keeps its default test patterns when KIT_TEST_PATTERNS is unset.
+sed -i '/^KIT_TEST_PATTERNS=/d' "$core_repo/.claude/kit.conf"
+for case_ in "block:src/app.ts" "allow:src/app.test.ts"; do
+  want=${case_%%:*} file=${case_#*:}
+  printf '{"session_id":"t","tool_name":"Edit","agent_type":"test-writer","tool_input":{"file_path":"%s/%s"}}' "$core_repo" "$file" |
+    CLAUDE_PROJECT_DIR=$core_repo "$core_repo/.claude/hooks/guard" >/dev/null 2>&1
+  code=$?
+  case $want:$code in block:2 | allow:0) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: the guard's default test patterns: the test-writer editing $file should $want (exit $code)" ;; esac
+done
+rm -rf "$core_repo"
+# The merge gate comes with stempel-kit-autopilot: .claude/bin/stack gate.
 cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$risk_repo/.claude/bin/"
-merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/gate merge 2>&1); }
+merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/stack gate 2>&1); }
 case $(merge_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC29: strict asks at the merge gate" ;; esac
 out=$(merge_gate KIT_APPROVAL=autonomous)
 case $out in *"the stack stage is not green"*ask) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: RISK-AC28: without a green stage the merge gate asks: $out" ;; esac
