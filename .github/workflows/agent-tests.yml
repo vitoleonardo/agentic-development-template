@@ -25,7 +25,6 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       KIT_TEST_BUDGET_USD: ${{ vars.KIT_TEST_BUDGET_USD }}
       NO_COLOR: "1"
-      KIT_TEST_TRANSCRIPTS: ${{ runner.temp }}/transcripts
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -41,7 +40,7 @@ jobs:
         working-directory: plugins/stempel-kit/examples/demo-app
         run: npm ci && npx playwright install --with-deps chromium
       - name: Run the agent tests until the budget is spent
-        run: sh plugins/stempel-kit/tests/agent-tests.sh
+        run: KIT_TEST_TRANSCRIPTS="$RUNNER_TEMP/transcripts" sh plugins/stempel-kit/tests/agent-tests.sh
       - name: Keep the transcripts
         if: always()
         uses: actions/upload-artifact@v4
