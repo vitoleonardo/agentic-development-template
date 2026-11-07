@@ -134,5 +134,23 @@ expect "legacy update: the kit's version is staged" test -f "$legacy/.work/kit-u
 expect "legacy update: a manifest is written" test -f "$legacy/.claude/kit.manifest"
 rm -rf "$legacy"
 
+# CORE-AC2, CORE-AC31: the marketplace lists one kit, and a project on the retired plugin is told so and left alone.
+marketplace=$here/../../.claude-plugin/marketplace.json
+expect "CORE-AC2: the marketplace lists stempel-kit and repo-check" sh -c "grep -q '\"name\": \"stempel-kit\"' '$marketplace' && grep -q '\"name\": \"repo-check\"' '$marketplace'"
+expect "CORE-AC2: the marketplace lists no $retired" sh -c "! grep -q -- '$retired' '$marketplace'"
+expect "CORE-AC2: no description says never both" sh -c "! grep -qi 'never both' '$marketplace'"
+old=$(mktemp -d)
+mkdir -p "$old/.claude"
+printf '{ "enabledPlugins": { "%s@stempel-kit": true } }\n' "$retired" >"$old/.claude/settings.json"
+before=$(cd "$old" && find . -type f -exec cksum {} + | sort)
+out=$("$here/install.sh" "$old" --plugin 2>&1)
+code=$?
+after=$(cd "$old" && find . -type f -exec cksum {} + | sort)
+expect "CORE-AC31: a project on $retired is refused with exit 2" test "$code" -eq 2
+expect "CORE-AC31: the message says $retired is retired" sh -c "echo \"\$1\" | grep -q -- '$retired is retired'" sh "$out"
+expect "CORE-AC31: the message names the extensions" sh -c "echo \"\$1\" | grep -q 'stempel-kit-evidence' && echo \"\$1\" | grep -q 'stempel-kit-autopilot'" sh "$out"
+expect "CORE-AC31: no file changed" test "$before" = "$after"
+rm -rf "$old"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

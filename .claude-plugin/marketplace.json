@@ -1,6 +1,6 @@
 {
   "name": "stempel-kit",
-  "description": "Stempel Kit: spec-driven workflow, guard hooks, CI gates and subagents for Claude Code, plus repo-check, a read-only delivery assessment",
+  "description": "Stempel Kit: spec-driven workflow, guard hooks, CI gates and subagents for Claude Code, with extensions for evidence packs, autopilot, routing, run records, risk ranks and onboarding, plus repo-check, a read-only delivery assessment",
   "owner": {
     "name": "Viktor Krawutschke"
   },
@@ -8,12 +8,7 @@
     {
       "name": "stempel-kit",
       "source": "./plugins/stempel-kit/kit/.claude",
-      "description": "Spec-driven workflow, guard hooks, check hooks and subagents for Claude Code"
-    },
-    {
-      "name": "stempel-kit-next",
-      "source": "./plugins/stempel-kit-next/kit/.claude",
-      "description": "Next version of the kit under test: one headless session per planned group of tasks. Install this or stempel-kit, never both"
+      "description": "The core: spec-driven workflow, guard and check hooks, three subagents and approval gates for Claude Code. Extensions add the evidence pack, autopilot, routing, run records, risk ranks and onboarding"
     },
     {
       "name": "repo-check",

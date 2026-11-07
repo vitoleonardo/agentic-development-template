@@ -41,6 +41,14 @@ parse_options "$@"
 [ "$force" -eq 1 ] && [ "$update" -eq 1 ] && { echo "install: use either --force or --update" >&2; exit 2; }
 target=$(CDPATH='' cd -- "$target" && pwd)
 manifest=$target/.claude/kit.manifest
+# A project on the retired next plugin: say so and change nothing (CORE-AC31).
+retired="stempel-kit-""next"
+if grep -qs -- "$retired" "$target/.claude/settings.json" "$target/.claude/kit.manifest"; then
+  echo "install: $retired is retired. Install stempel-kit and the extensions that replaced its parts:" >&2
+  echo "  stempel-kit-evidence stempel-kit-onboard stempel-kit-routing stempel-kit-autopilot stempel-kit-improve stempel-kit-risk" >&2
+  echo "  /plugin uninstall $retired@stempel-kit, then /plugin install stempel-kit@stempel-kit and each extension, then rerun install.sh --plugin." >&2
+  exit 2
+fi
 old_manifest=/dev/null
 [ -f "$manifest" ] && old_manifest=$manifest
 if [ -z "$options" ]; then
