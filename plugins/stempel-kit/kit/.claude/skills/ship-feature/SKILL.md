@@ -24,7 +24,7 @@ Run `git branch --show-current`. If `.work/<branch>.md` exists, read its Progres
 
 **Dispatch descriptions.** Put the step in each dispatch's description (`task 3: invite form`, `simplify`, `review round 2`).
 
-If stempel-kit-routing is installed, every dispatch passes the Agent tool's `model` parameter from `.claude/bin/route`: `route explore` for `Explore`, `route tests` for the `test-writer`, `route <tier>` for the `implementer` (the task's Tier), `route review` for the `reviewer`. Run `.claude/bin/route check` first; if it warns that `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set, tell the user that every subagent will run on one model and the tiers are ignored. The usage record maps agents to steps through the descriptions, and the usage hook blocks a dispatch once `KIT_BUDGET_TOKENS` is used up; then stop and ask.
+If stempel-kit-routing is installed, every dispatch passes the Agent tool's `model` parameter from `.claude/bin/route`: `route explore` for `Explore`, `route tests` for the `test-writer`, `route <tier>` for the `implementer` (the task's Tier), `route review` for the `reviewer` and the screenshot review, `route implement` for the simplifier. Run `.claude/bin/route check` first; if it warns that `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set, tell the user that every subagent will run on one model and the tiers are ignored. The usage record maps agents to steps through the descriptions, and the usage hook blocks a dispatch once `KIT_BUDGET_TOKENS` is used up; then stop and ask.
 
 Without it, every agent runs on the session's model.
 
@@ -38,7 +38,7 @@ Follow `${CLAUDE_SKILL_DIR}/../plan-feature/SKILL.md` until the plan is approved
 
 If stempel-kit-routing is installed and you created the branch, run `.claude/bin/usage adopt <the branch you started on>`, so the tokens of the spec and the plan count for this feature.
 
-Then decide the base once for the whole run and write it as `Base: <branch>` under the plan's title: `KIT_BASE` if it is set, else the open PR's base (`gh pr view --json baseRefName --jq .baseRefName`), else the branch you started on when it is not `main` (a stacked feature), else `main`. Review, verify and the PR use this base.
+Then decide the base once for the whole run and write it as `Base: <branch>` under the plan's title: `KIT_BASE` if it is set, else the open PR's base (`gh pr view --json baseRefName --jq .baseRefName`), else the branch you started on when it is not `main` (a stacked feature), else `main`. Review, verify and the PR use this base; the kit's scripts read it from the state file, so a stacked branch never counts the earlier branches' changes as its own.
 
 Everything the build needs is now in files.
 
@@ -116,7 +116,7 @@ A verify round that fails gets one line under `## Rounds` in the state file (`- 
 
 ## If stempel-kit-autopilot is installed: build sessions
 
-`.claude/bin/autopilot` starts these sessions and has already set the gates: the approved plan covers commits, and deps and config unless the project's config asks for them. A session has nobody to ask. Where this skill says to stop and ask, write the Stops line, end the session with the question as your last message, and let the build decide what happens next.
+`.claude/bin/autopilot` starts these sessions and has already set the gates: the approved plan covers commits, and deps and config unless the project's config asks for them. The build goes on if the terminal that started it closes. The routing paragraph of step 0 applies to every dispatch in these sessions. A session has nobody to ask. Where this skill says to stop and ask, write the Stops line, end the session with the question as your last message, and let the build decide what happens next.
 
 ### Group session (`--group <id> --tasks <n,n|none> --from <commit>`)
 
@@ -135,7 +135,7 @@ With several groups, once every task is ticked:
 3. Record each round under Rounds: `- group <id> review <n> | <full|delta> | <commit range> | pass`, or `<n> high open` in place of `pass`.
 4. Fix every high finding yourself and commit it, then review again. After two rounds with open high findings, write a Stops line of class `hotfix`, and end the session.
 
-If stempel-kit-routing is installed, the group reviewer's `model` is this group's tier, at least standard, and deep if a task of the group was retried on deep.
+If stempel-kit-routing is installed, a retry inside a group runs one tier above the group's tier, and the group reviewer's `model` is this group's tier, at least standard, and deep if a task of the group was retried on deep.
 
 If this group's last round in Rounds is not `pass`, a build stopped there: start with a full review, numbered on from that round, with at most 2 more rounds.
 
@@ -145,7 +145,11 @@ Leave no uncommitted changes when you end.
 
 Every group is done. Do steps 4 to 7 on the whole branch. With several groups, step 4 runs only when the two checks list clones in files changed on this branch: each group already simplified its own work.
 
-In step 7, a feature with several groups gets one description per layer (the "Stacked layers" of `/pr-description`); the run record for `/improve-kit`, if any, was committed before the pack, so commit nothing now. Opening the pull requests is gate push. With `auto`, run `.claude/bin/stack submit` yourself: it cuts one branch per group below the top, pushes them with their evidence packs, and opens one pull request per layer, stacked. With `ask` in a final session, do not run it: write a Stops line of class `push` and end the session; the developer approves it by running `/ship-feature` in a terminal.
+In step 7, a feature with several groups gets one description per layer (the "Stacked layers" of `/pr-description`). Commit nothing now.
+
+If stempel-kit-improve is installed, the run record for `/improve-kit`, if any, was committed before the pack.
+
+Opening the pull requests is gate push. With `auto`, run `.claude/bin/stack submit` yourself: it cuts one branch per group below the top, pushes them with their evidence packs, and opens one pull request per layer, stacked. With `ask` in a final session, do not run it: write a Stops line of class `push` and end the session; the developer approves it by running `/ship-feature` in a terminal.
 
 ### Stack session (`--stack` or `--stack review`)
 

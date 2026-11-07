@@ -16,13 +16,15 @@ fail() { failed=$((failed + 1)); echo "FAIL: $1"; }
 # unblocked <file>: "line: text" of every mention outside a block of the extension that owns it.
 unblocked() {
   awk '
-    function owner(s) {
-      if (s ~ /\.claude\/bin\/(evidence|verify)([^a-z-]|$)|\/verify-feature|verify-feature\/|kit-evidence/) return "evidence"
-      if (s ~ /\.claude\/bin\/(autopilot|stack|status)([^a-z-]|$)|\/steer|hooks\/(steer|summary)/) return "autopilot"
-      if (s ~ /\.claude\/bin\/(route|usage)([^a-z-]|$)|hooks\/usage/) return "routing"
-      if (s ~ /\.claude\/bin\/(runs|leadtime)([^a-z-]|$)|\/improve-kit|improve-kit\//) return "improve"
-      if (s ~ /\.claude\/bin\/risk([^a-z-]|$)/) return "risk"
-      if (s ~ /\.claude\/bin\/(baseline|onboard-apply)([^a-z-]|$)|\/onboard([^a-z-]|$)/) return "onboard"
+    # owner <mention>: the extension that owns a mention, or "" for one of the core.
+    function owner(m) {
+      sub(/^(\.claude\/bin\/|\$KIT_BIN\/)/, "bin/", m)
+      if (m ~ /^bin\/evidence$|verify-feature|^kit-evidence$/) return "evidence"
+      if (m ~ /^bin\/(autopilot|stack|status)$|^\/steer$|^hooks\/(steer|summary)$/) return "autopilot"
+      if (m ~ /^bin\/(route|usage)$|^hooks\/usage$/) return "routing"
+      if (m ~ /^bin\/(runs|leadtime)$|improve-kit/) return "improve"
+      if (m ~ /^bin\/risk$/) return "risk"
+      if (m ~ /^bin\/(baseline|onboard-apply)$|^\/onboard$/) return "onboard"
       return ""
     }
     # names <text>: the extensions an opener names, as " a b ", or "" when it is no opener.
@@ -44,14 +46,16 @@ unblocked() {
     /^[[:space:]]*$/ { unit = ""; started = 0; next }
     !fence && (!started || /^[[:space:]]*(- |[0-9]+\. )/) { unit = names($0); started = 1 }
     {
+      # every mention, left to right
       rest = $0
-      while ((o = owner(rest)) != "") {
+      while (match(rest, /(\.claude\/bin\/|\$KIT_BIN\/)[a-z-]+|\/verify-feature|verify-feature\/|kit-evidence|\/steer|hooks\/[a-z]+|\/improve-kit|improve-kit\/|\/onboard/)) {
+        m = substr(rest, RSTART, RLENGTH)
+        rest = substr(rest, RSTART + RLENGTH)
+        if (m == "/onboard" && rest ~ /^[a-z-]/) continue
+        if ((o = owner(m)) == "") continue
         allowed = (index(unit, " " o " ") > 0)
         for (l = 1; l <= 6; l++) if (index(head[l], " " o " ") > 0) allowed = 1
         if (!allowed) { printf "%d: %s needs an \"If stempel-kit-%s is installed\" block: %s\n", FNR, o, o, substr($0, 1, 120); break }
-        # look past this mention for another extension on the same line
-        match(rest, /\.claude\/bin\/[a-z-]+|\/verify-feature|verify-feature\/|kit-evidence|\/steer|hooks\/[a-z]+|\/improve-kit|improve-kit\/|\/onboard/)
-        rest = substr(rest, RSTART + RLENGTH)
       }
     }
   ' "$1"
@@ -85,6 +89,8 @@ Run `.claude/bin/autopilot --ship`.
 
 Run `.claude/bin/route up deep` here.
 
+If stempel-kit-evidence is installed, record it for `/improve-kit` and `$KIT_BIN/evidence push`.
+
 ## Next
 
 Run `.claude/bin/stack submit`.
@@ -93,7 +99,8 @@ out=$(unblocked "$probe")
 want='3: evidence
 9: routing
 17: routing
-21: autopilot'
+19: improve
+23: autopilot'
 got=$(printf '%s\n' "$out" | sed 's/^\([0-9]*\): \([a-z]*\) .*/\1: \2/')
 [ "$got" = "$want" ] && ok || fail "the lint finds exactly the unblocked mentions; got:
 $out"
