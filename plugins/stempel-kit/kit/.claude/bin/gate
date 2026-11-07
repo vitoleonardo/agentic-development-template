@@ -17,8 +17,8 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 gate_variable=KIT_GATE_$(printf '%s' "$name" | tr a-z A-Z)
 gate_value() { eval "printf '%s' \"\${$gate_variable:-}\""; }
 
-# The environment wins over kit.conf for the level, the gate's own override and the verify rounds.
-env_level=${KIT_APPROVAL:-} env_rounds=${KIT_VERIFY_ROUNDS:-} env_gate=$(gate_value)
+# The environment wins over kit.conf for the level, the gate's own override, the verify rounds and the push patterns.
+env_level=${KIT_APPROVAL:-} env_rounds=${KIT_VERIFY_ROUNDS:-} env_gate=$(gate_value) env_push_ask=${KIT_PUSH_ASK_PATTERNS:-}
 # shellcheck source=/dev/null
 [ ! -f "$root/.claude/kit.conf" ] || . "$root/.claude/kit.conf"
 conf_gate=$(gate_value)
@@ -54,20 +54,16 @@ case $override in
 esac
 
 # by_risk: the extension stempel-kit-risk ranks the plan (at autonomous) and the push (at standard) with
-# .claude/bin/risk <plan|push>; a high rank asks a person. Without it a person approves every plan and a push
-# decides itself.
+# .claude/bin/risk <plan|push>; exit 1 (high) asks a person. Without the extension, or when risk cannot rank
+# (exit 2), a person approves every plan and a push decides itself.
 by_risk() {
-  if [ ! -x "$root/.claude/bin/risk" ]; then
-    [ "$name" = push ] && { echo auto; return; }
-    echo "gate plan: no risk rank (stempel-kit-risk is not installed); a person approves this plan." >&2
-    echo ask
-  elif out=$(cd "$root" && .claude/bin/risk "$name" 2>&1); then
-    echo auto
-  else
-    printf '%s\n' "$out" | sed "s/^/gate $name: /" >&2
-    echo "gate $name: a person approves this $name (.claude/bin/risk)." >&2
-    echo ask
-  fi
+  out=$(cd "$root" && { [ -x .claude/bin/risk ] || exit 3; } && KIT_PUSH_ASK_PATTERNS=$env_push_ask .claude/bin/risk "$name" 2>&1)
+  code=$?
+  if [ "$code" -eq 0 ] || { [ "$code" -ne 1 ] && [ "$name" = push ]; }; then echo auto; return; fi
+  [ -n "$out" ] || out="no risk rank (stempel-kit-risk is not installed)"
+  printf '%s\n' "$out" | sed "s/^/gate $name: /" >&2
+  echo "gate $name: a person approves this $name (.claude/bin/risk)." >&2
+  echo ask
 }
 
 case $level:$name in

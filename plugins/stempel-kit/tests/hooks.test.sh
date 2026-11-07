@@ -247,6 +247,8 @@ risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*
 printf 'alter table x;\n' >"$risk_repo/db/migrations/1.sql" && risk_git add -A && risk_git commit -qm migration
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*"
 risk_gate_is ask KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="db/migrations/*"
+# kit.conf's pattern (migrations/*) matches the change, the environment's does not: the environment wins.
+risk_gate_is auto KIT_APPROVAL=standard KIT_PUSH_ASK_PATTERNS="api/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="api/*"
 risk_gate_is auto KIT_APPROVAL=autonomous KIT_PUSH_ASK_PATTERNS="db/migrations/*" KIT_GATE_PUSH=auto
 risk_gate_is ask KIT_APPROVAL=standard

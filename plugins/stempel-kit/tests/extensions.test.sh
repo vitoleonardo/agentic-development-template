@@ -52,7 +52,9 @@ problems() {
     esac
     printf '%s\n' "$_requires" | grep -qx "$_runtime" || echo "$_name: plugin/bin/${_script##*/} needs $_runtime, which requires does not name"
   done
-  for _e in $(json_list "$_manifest" extends); do
+  _extends=$(json_list "$_manifest" extends)
+  [ -n "$_extends" ] || echo "$_name: plugin.json names nothing under extends (stempel-kit, or an extension)"
+  for _e in $_extends; do
     [ "$_e" = stempel-kit ] || [ -d "$plugins/$_e/plugin" ] || echo "$_name: extends names $_e, which is not the core or an extension"
   done
   [ -f "$1/plugin/kit.conf.part" ] || echo "$_name: no plugin/kit.conf.part"
