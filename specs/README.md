@@ -17,3 +17,4 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | Independent acceptance tests | `independent-tests.md` | draft | – | 1 |
 | Kit greenfield MVP | `kit-greenfield-mvp.md` | draft | – | 5 |
 | Cost visibility | `cost-visibility.md` | draft | – | 2 |
+| Kit core split | `kit-core-split.md` | approved | spec-kit-core-split | 0 |
