@@ -44,12 +44,14 @@ has "FIXBUG-AC11 task 2 is fix and depends on 1" "$skill" "| 2 | fix | <source f
 has "FIXBUG-AC30 a feature open on another branch gets no plan" "$skill" "write no plan"
 
 # --- building -------------------------------------------------------------------------
-has "FIXBUG-AC12 task 1 goes to the test-writer on route tests" "$skill" 'Dispatch the `test-writer` (description `task 1: reproduce <slug>`, `model` from `.claude/bin/route tests`)'
+has "FIXBUG-AC12 task 1 goes to the test-writer" "$skill" 'Dispatch the `test-writer` (description `task 1: reproduce <slug>`)'
+has "FIXBUG-AC12 with routing, on route tests" "$skill" '`route tests` for the `test-writer` (task 1)'
 has "FIXBUG-AC13 a test that never failed dispatches no fix" "$skill" "A test passed without ever failing: no fix is dispatched"
 has "FIXBUG-AC13 and writes a Stops line of class test" "$skill" 'Write a Stops line of class `test`'
 has "FIXBUG-AC31 the spec's own behaviour is class spec" "$skill" 'Write a Stops line of class `spec`, change no spec, and ask'
 has "FIXBUG-AC32 untestable code is class plan" "$skill" 'stop with a Stops line of class `plan`'
-has "FIXBUG-AC14 task 2 goes to the implementer on the row's tier" "$skill" 'Dispatch the `implementer` (description `task 2: fix <slug>`, `model` from `.claude/bin/route <tier>` with the row'"'"'s Tier)'
+has "FIXBUG-AC14 task 2 goes to the implementer" "$skill" 'Dispatch the `implementer` (description `task 2: fix <slug>`)'
+has "FIXBUG-AC14 with routing, on the row's tier" "$skill" '`route <tier>` for the `implementer` (task 2, the row'"'"'s Tier)'
 has "FIXBUG-AC14 with the red test's file and message" "$skill" "the red test's file and its failure message"
 has "FIXBUG-AC15 the retry is one tier higher" "$skill" '`.claude/bin/route up <tier>`'
 has "FIXBUG-AC15 with the retry description" "$skill" '`task 2 retry <tier>: fix <slug>`'

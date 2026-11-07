@@ -29,11 +29,11 @@ warn_extensions() {
   done
   return 0
 }
+# Only on request, so the hooks that run a check on every edit stay quiet; /ship-feature asks at its start.
 if [ "${1:-}" = extensions ]; then
   warn_extensions
   exit 0
 fi
-warn_extensions
 
 usage="usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]"
 name=${1:-}
