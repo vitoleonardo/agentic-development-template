@@ -69,6 +69,12 @@ if [ -n "$extension" ]; then
   [ -f "$conf" ] || { echo "install: $target has no .claude/kit.conf; install the core first." >&2; exit 2; }
   part=$ext_dir/kit.conf.part
   [ -f "$part" ] || { echo "install: $ext_dir has no kit.conf.part." >&2; exit 2; }
+  # Installed by name into a project with an adapter, the extension gets the adapter's settings when it has them.
+  installed_adapter=""
+  case $extension in */*) ;; *) installed_adapter=$(awk -F'\t' '$1 == "options" { print $2 }' "$manifest" 2>/dev/null | sed -n 's/.*--adapter \([^ ]*\).*/\1/p') ;; esac
+  if [ -n "$installed_adapter" ] && [ -f "$kit/adapters/$installed_adapter/extensions/$ext_name.conf" ]; then
+    part=$kit/adapters/$installed_adapter/extensions/$ext_name.conf
+  fi
   script=$(cd "$ext_dir" && ls bin 2>/dev/null | head -n 1)
   [ -n "$script" ] || { echo "install: $ext_dir has no bin/ script." >&2; exit 2; }
   header="# extension: $ext_name bin/$script"
@@ -242,7 +248,7 @@ copy() {
 
 # The plugin manifest and the plugin's hook config only matter when kit/.claude is loaded as a plugin.
 list_tree() {
-  (cd "$1" && find . -type f ! -path './presets/*' | sed 's|^\./||') | while IFS= read -r rel; do
+  (cd "$1" && find . -type f ! -path './presets/*' ! -path './extensions/*' | sed 's|^\./||') | while IFS= read -r rel; do
     case $rel in
       .claude/.claude-plugin/* | .claude/hooks/hooks.json) continue ;;
       .claude/skills/* | .claude/agents/* | .claude/hooks/*) [ "$plugin" -eq 1 ] && continue ;;

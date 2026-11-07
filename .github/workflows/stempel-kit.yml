@@ -41,6 +41,8 @@ jobs:
         run: sh tests/check.test.sh
       - name: Skills without extensions
         run: sh tests/skills.test.sh
+      - name: Core size
+        run: sh tests/core-size.test.sh
       - name: Extension layout
         run: sh tests/extensions.test.sh
       - name: Onboard extension
@@ -68,7 +70,7 @@ jobs:
       - name: Risk rank
         run: sh ../stempel-kit-risk/tests/risk.test.sh
       - name: All suites under dash
-        run: for t in tests/hooks tests/check tests/skills tests/extensions ../stempel-kit-onboard/tests/baseline ../stempel-kit-evidence/tests/evidence ../stempel-kit-routing/tests/usage ../stempel-kit-improve/tests/leadtime ../stempel-kit-improve/tests/runs tests/structure ../stempel-kit-autopilot/tests/autopilot ../stempel-kit-autopilot/tests/status tests/plan-lint tests/fix-bug ../stempel-kit-autopilot/tests/stack ../stempel-kit-risk/tests/risk ../stempel-kit-autopilot/tests/steer; do dash "$t.test.sh" || exit 1; done
+        run: for t in tests/hooks tests/check tests/skills tests/core-size tests/extensions ../stempel-kit-onboard/tests/baseline ../stempel-kit-evidence/tests/evidence ../stempel-kit-routing/tests/usage ../stempel-kit-improve/tests/leadtime ../stempel-kit-improve/tests/runs tests/structure ../stempel-kit-autopilot/tests/autopilot ../stempel-kit-autopilot/tests/status tests/plan-lint tests/fix-bug ../stempel-kit-autopilot/tests/stack ../stempel-kit-risk/tests/risk ../stempel-kit-autopilot/tests/steer; do dash "$t.test.sh" || exit 1; done
 
   demo:
     name: Demo app gates

@@ -226,6 +226,7 @@ risk_repo=$(mktemp -d)
 cp -R "$project/.claude" "$risk_repo/"
 # The push, plan and merge ranks come with stempel-kit-risk.
 cp "$here/../stempel-kit-risk/plugin/bin/risk" "$risk_repo/.claude/bin/"
+{ printf '\n# extension: risk bin/risk\n'; cat "$here/adapters/typescript/extensions/risk.conf"; } >>"$risk_repo/.claude/kit.conf"
 risk_git() { git -C "$risk_repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 risk_git init -q -b main && risk_git add -A && risk_git commit -qm base && risk_git switch -qc 7-risk
 mkdir -p "$risk_repo/src" "$risk_repo/db/migrations"

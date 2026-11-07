@@ -186,6 +186,20 @@ expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$pro
 expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
 rm -rf "$ext" "$proj"
 
+# CORE-AC5: an adapter install writes the core part; an extension installed by name gets the adapter's settings.
+proj=$(mktemp -d)
+"$here/install.sh" "$proj" --adapter typescript --plugin >/dev/null || echo "FAIL: adapter install exited $?"
+expect "CORE-AC5: the adapter's kit.conf has the core variables" grep -q '^KIT_TYPECHECK="$pm run typecheck"$' "$proj/.claude/kit.conf"
+expect "CORE-AC5: the adapter's kit.conf has no extension variable" sh -c "! grep -q '^KIT_MODEL_FAST=\|^KIT_SEED\|^KIT_COVERAGE_THRESHOLD=\|^KIT_RISK_HUMAN=' '$proj/.claude/kit.conf'"
+expect "CORE-AC5: no extensions folder in the project" test ! -e "$proj/extensions"
+for e in onboard evidence routing autopilot improve risk; do
+  "$here/install.sh" "$proj" --extension "$e" >/dev/null 2>"$proj/err" || echo "FAIL: --extension $e on the typescript adapter exited $?: $(cat "$proj/err")"
+done
+expect "CORE-AC5: the evidence section holds the adapter's settings" sh -c "sed -n '/^# extension: evidence /,/^# extension: /p' '$proj/.claude/kit.conf' | grep -q 'KIT_E2E_PATTERNS=\"e2e/'"
+expect "CORE-AC5: the onboard section holds the adapter's coverage helper" sh -c "sed -n '/^# extension: onboard /,/^# extension: /p' '$proj/.claude/kit.conf' | grep -q 'coverage-files.mjs'"
+expect "CORE-AC5: every typescript check still resolves" sh -c "cd '$proj' && . ./.claude/kit.conf && [ -n \"\$KIT_TEST\" ] && [ -n \"\$KIT_COVERAGE_FILES\" ] && [ \"\$KIT_MODEL_DEEP\" = opus ]"
+rm -rf "$proj"
+
 # CORE-AC18: the onboard extension installs by name into a core-only project.
 proj=$(mktemp -d)
 "$here/install.sh" "$proj" --plugin >/dev/null || echo "FAIL: core install for onboard exited $?"
