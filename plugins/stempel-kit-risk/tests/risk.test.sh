@@ -1,13 +1,15 @@
 #!/bin/sh
-# Tests for .claude/bin/risk (specs/risk-gates.md). Run: sh plugins/stempel-kit/tests/risk.test.sh
+# Tests for .claude/bin/risk (specs/risk-gates.md). Run: sh plugins/stempel-kit-risk/tests/risk.test.sh
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
+ext=$(CDPATH='' cd -- "$(dirname -- "$0")/../plugin" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
+cp "$ext"/bin/* "$project/.claude/bin/"
 # risk stack ranks the layers that stempel-kit-autopilot's stack cuts.
 cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$project/.claude/bin/"
 cd "$project" || exit 1
@@ -174,7 +176,7 @@ grep -qF '"Bash(gh pr merge *)"' "$settings" && grep -qF '"Bash(gh stack merge *
 for conf in "$here/kit/.claude/kit.conf" "$here"/adapters/*/.claude/kit.conf; do
   grep -qx 'KIT_APPROVAL="autonomous"' "$conf" && ok || fail "RISK-AC4: $conf sets KIT_APPROVAL=autonomous"
 done
-workflow=$here/adapters/typescript/.github/workflows/risk.yml
+workflow=$ext/workflows/risk.yml
 grep -q '^  pull_request_target:' "$workflow" && grep -q '^  pull_request_review:' "$workflow" && ok || fail "RISK-AC34: risk.yml runs on pull_request_target and on reviews"
 grep -qF 'ref: ${{ github.event.pull_request.base.sha }}' "$workflow" && ok || fail "RISK-AC34: risk.yml checks out the base branch's files"
 grep -qF '.user.login != \"$AUTHOR\"' "$workflow" && ok || fail "RISK-AC37: the author's own approval does not count"

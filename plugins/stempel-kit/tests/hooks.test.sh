@@ -224,6 +224,8 @@ fi
 
 risk_repo=$(mktemp -d)
 cp -R "$project/.claude" "$risk_repo/"
+# The push, plan and merge ranks come with stempel-kit-risk.
+cp "$here/../stempel-kit-risk/plugin/bin/risk" "$risk_repo/.claude/bin/"
 risk_git() { git -C "$risk_repo" -c user.name=t -c user.email=t@example.invalid "$@"; }
 risk_git init -q -b main && risk_git add -A && risk_git commit -qm base && risk_git switch -qc 7-risk
 mkdir -p "$risk_repo/src" "$risk_repo/db/migrations"
@@ -275,7 +277,6 @@ out=$(cd "$core_repo" && env -u KIT_APPROVAL .claude/bin/gate level 2>&1)
 case $out in strict) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: CORE-AC11: gate level without KIT_APPROVAL prints strict: $out" ;; esac
 (cd "$core_repo" && git init -q -b main && git add -A && git -c user.name=t -c user.email=t@example.invalid commit -qm base && git checkout -qb 9-change && printf 'x\n' >auth.ts && git add auth.ts && git -c user.name=t -c user.email=t@example.invalid commit -qm auth)
 # A push-ask pattern of stempel-kit-risk that matches the change: the core gate must not read it.
-rm -f "$core_repo/.claude/bin/risk" # until task 11 moves risk into stempel-kit-risk
 printf 'KIT_PUSH_ASK_PATTERNS="*"\n' >>"$core_repo/.claude/kit.conf"
 for level in strict standard autonomous; do
   out=$(cd "$core_repo" && KIT_APPROVAL=$level KIT_BASE=main .claude/bin/gate push 2>&1)

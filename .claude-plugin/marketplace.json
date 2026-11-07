@@ -36,6 +36,11 @@
       "description": "Extension: run records per branch, lead time for changes and /improve-kit, which proposes kit changes from them"
     },
     {
+      "name": "stempel-kit-risk",
+      "source": "./plugins/stempel-kit-risk/plugin",
+      "description": "Extension: risk ranks for plans, pushes and stack layers, so only a high rank asks a person, and the Risk workflow"
+    },
+    {
       "name": "stempel-kit-onboard",
       "source": "./plugins/stempel-kit-onboard/plugin",
       "description": "Extension: /onboard for existing repositories and a baseline so legacy failures never block a pull request"

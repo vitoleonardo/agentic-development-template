@@ -7,8 +7,9 @@
 #   --plugin   the skills, agents and hooks come from the stempel-kit plugin; install only the project files
 #   --force    overwrite files that already exist in the project
 #   --update   replace the kit files the project has not changed; stage the kit's version of changed ones in .work/kit-update/
-#   --extension <name>  add an extension to a project that has the core: its scripts go to .claude/bin/ and its
-#              kit.conf.part becomes the section "# extension: <name> <script>" at the end of .claude/kit.conf.
+#   --extension <name>  add an extension to a project that has the core: its scripts go to .claude/bin/, its
+#              workflows to .github/workflows/, and its kit.conf.part becomes the section
+#              "# extension: <name> bin/<script>" at the end of .claude/kit.conf.
 #              The name resolves to ../stempel-kit-<name>/plugin next to this kit; a path with a slash is used as is.
 # Existing project files are never overwritten without --force; they are listed for a manual merge.
 # Without --adapter, --preset and --plugin, the options of the last install (in .claude/kit.manifest) are used.
@@ -34,7 +35,7 @@ parse_options() {
       --force) force=1; shift ;;
       --update) update=1; shift ;;
       --extension) extension=${2:?--extension needs a name or a plugin dir}; shift 2 ;;
-      -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       -*) echo "install: unknown option $1" >&2; exit 2 ;;
       *) target=$1; shift ;;
     esac
@@ -83,6 +84,12 @@ if [ -n "$extension" ]; then
     [ -f "$f" ] || continue
     cp "$f" "$target/.claude/bin/$(basename -- "$f")"
     [ -x "$f" ] && chmod +x "$target/.claude/bin/$(basename -- "$f")"
+  done
+  # Workflows the extension brings (the Risk check) go where GitHub reads them.
+  for f in "$ext_dir"/workflows/*.yml; do
+    [ -f "$f" ] || continue
+    mkdir -p "$target/.github/workflows"
+    cp "$f" "$target/.github/workflows/$(basename -- "$f")"
   done
   # Replace the extension's own section if there is one, then append the part under its header.
   tmp=$(mktemp)

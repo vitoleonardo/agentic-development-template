@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-risk",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: risk ranks for plans, pushes and stack layers (risk), so at KIT_APPROVAL=autonomous only a high rank asks a person, and the Risk workflow for pull requests. Install into a project with install.sh --extension risk.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit"]
+}
