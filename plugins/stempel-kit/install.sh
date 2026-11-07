@@ -79,10 +79,28 @@ if [ -n "$extension" ]; then
   [ -n "$script" ] || { echo "install: $ext_dir has no bin/ script." >&2; exit 2; }
   header="# extension: $ext_name bin/$script"
   # Every KIT_ variable the part defines must be new: not in the core part of kit.conf, not in another section.
+  # An assignment may be indented (inside an if) or follow && (has_script e2e && KIT_E2E=...).
   awk -v name="$ext_name" -v part="$part" '
-    FNR == NR { if ($0 ~ /^KIT_[A-Z0-9_]*=/) { sub(/=.*/, ""); mine[$0] = 1 }; next }
+    # assigned <line>: the KIT_ variables the line assigns, separated by spaces.
+    function assigned(l,   out) {
+      out = ""
+      if (l ~ /^[[:space:]]*#/) return out
+      while (match(l, /(^|[[:space:];&|])KIT_[A-Z0-9_]+=/)) {
+        v = substr(l, RSTART, RLENGTH - 1); sub(/^[^K]*/, "", v)
+        out = out " " v
+        l = substr(l, RSTART + RLENGTH)
+      }
+      return out
+    }
+    FNR == NR { n = split(assigned($0), a, " "); for (i = 1; i <= n; i++) mine[a[i]] = 1; next }
     /^# extension: / { owner = $3; next }
-    /^KIT_[A-Z0-9_]*=/ { v = $0; sub(/=.*/, "", v); if ((v in mine) && owner != name) { printf "install: %s is already defined by %s; extension %s cannot define it too.\n", v, (owner == "" ? "the core" : "extension " owner), name; bad = 1 } }
+    {
+      n = split(assigned($0), a, " ")
+      for (i = 1; i <= n; i++) if ((a[i] in mine) && owner != name && !(a[i] in told)) {
+        printf "install: %s is already defined by %s; extension %s cannot define it too.\n", a[i], (owner == "" ? "the core" : "extension " owner), name
+        told[a[i]] = 1; bad = 1
+      }
+    }
     END { exit bad }
   ' "$part" "$conf" >&2 || exit 2
   mkdir -p "$target/.claude/bin"
@@ -92,10 +110,16 @@ if [ -n "$extension" ]; then
     [ -x "$f" ] && chmod +x "$target/.claude/bin/$(basename -- "$f")"
   done
   # Workflows the extension brings (the Risk check) go where GitHub reads them.
+  # A workflow the project already has and changed is kept, as for every project file without --force.
   for f in "$ext_dir"/workflows/*.yml; do
     [ -f "$f" ] || continue
+    dest=$target/.github/workflows/$(basename -- "$f")
+    if [ -f "$dest" ] && [ "$force" -eq 0 ] && ! cmp -s "$f" "$dest"; then
+      echo "install: kept .github/workflows/$(basename -- "$f"), which differs from the extension's; merge it by hand or use --force." >&2
+      continue
+    fi
     mkdir -p "$target/.github/workflows"
-    cp "$f" "$target/.github/workflows/$(basename -- "$f")"
+    cp "$f" "$dest"
   done
   # Replace the extension's own section if there is one, then append the part under its header.
   tmp=$(mktemp)

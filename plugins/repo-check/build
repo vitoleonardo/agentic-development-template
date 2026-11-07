@@ -20,7 +20,7 @@ esac
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 skill=$here/plugin/skills/repo-check/SKILL.md
-leadtime=$here/../stempel-kit/kit/.claude/bin/leadtime
+leadtime=$here/../stempel-kit-improve/plugin/bin/leadtime
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

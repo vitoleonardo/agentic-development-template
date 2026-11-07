@@ -90,7 +90,7 @@ jobs:
       # Clones the pull request adds against the base branch (KIT_DUPLICATES); legacy clones do not block.
       - name: Duplicates
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: .claude/bin/check duplicates || [ $? -eq 4 ]
+        run: .claude/bin/check duplicates || { code=$?; [ "$code" -eq 3 ] || [ "$code" -eq 4 ]; } # 3: not configured without stempel-kit-evidence
 
       # Every new source file sits in a home of the Map in .claude/rules/structure.md.
       - name: Structure

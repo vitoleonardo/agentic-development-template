@@ -182,6 +182,11 @@ code=$?
 expect "CORE-AC33: a part that redefines a variable stops the install" test "$code" -eq 2
 expect "CORE-AC33: the message names both extensions and the variable" sh -c "echo \"\$1\" | grep -q 'KIT_E2E' && echo \"\$1\" | grep -q 'evidence' && echo \"\$1\" | grep -q 'other'" sh "$out"
 expect "CORE-AC33: nothing of the refused extension was installed" test ! -e "$proj/.claude/bin/other" -a "$(grep -c '^# extension: ' "$proj/.claude/kit.conf")" -eq 1
+mkdir -p "$ext/indented/plugin/bin" && printf '#!/bin/sh\n' >"$ext/indented/plugin/bin/indented"
+printf 'if true; then\n  KIT_TYPECHECK="x"\nfi\ntrue && KIT_SEED="y"\n' >"$ext/indented/plugin/kit.conf.part"
+out=$("$here/install.sh" "$proj" --extension "$ext/indented/plugin" 2>&1)
+expect "CORE-AC33: an indented assignment of a core variable stops the install" sh -c "echo \"\$1\" | grep -q 'KIT_TYPECHECK is already defined by the core'" sh "$out"
+expect "CORE-AC33: an assignment after && is seen too" sh -c "echo \"\$1\" | grep -q 'KIT_SEED is already defined by extension evidence'" sh "$out"
 expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$proj' --extension no-such-extension >/dev/null 2>&1"
 expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
 rm -rf "$ext" "$proj"
