@@ -9,6 +9,8 @@ trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project"
 cp -R "$here/kit/." "$project/"
+# evidence reads JUnit reports with the onboard extension's baseline.
+cp "$here/../stempel-kit-onboard/plugin/bin/baseline" "$project/.claude/bin/"
 cd "$project" || exit 1
 
 failed=0

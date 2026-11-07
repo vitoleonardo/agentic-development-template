@@ -4,7 +4,8 @@
 #        .claude/bin/check extensions   warn about kit.conf sections of extensions whose script is missing
 # In a monorepo each file is checked with the nearest <package>/.claude/kit.conf, from that package's folder;
 # without files the check runs in every package that configures it.
-# --against-baseline compares test, lint, typecheck or coverage with .claude/baseline.tsv (see .claude/bin/baseline).
+# --against-baseline compares test, lint, typecheck or coverage with .claude/baseline.tsv when the extension
+# stempel-kit-onboard is installed (.claude/bin/baseline); without it the check runs plain.
 # Exit codes: the check's own code, 2 for usage or setup errors, 3 when the check is not configured,
 # 4 when kit.conf marks it "n/a: <reason>".
 set -u
@@ -16,7 +17,7 @@ export KIT_ROOT
 
 if [ "${1:-}" = --against-baseline ]; then
   shift
-  exec "$root/.claude/bin/baseline" compare "$@"
+  [ -x "$root/.claude/bin/baseline" ] && exec "$root/.claude/bin/baseline" compare "$@"
 fi
 
 # extensions: every "# extension: <name> <script>" section in kit.conf needs its script in .claude/ (CORE-AC30).

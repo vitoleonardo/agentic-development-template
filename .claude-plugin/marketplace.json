@@ -14,6 +14,11 @@
       "name": "repo-check",
       "source": "./plugins/repo-check/plugin",
       "description": "Find where your delivery is jammed right now: a 10-question interview or a strictly read-only scan of the repository. Sends nothing."
+    },
+    {
+      "name": "stempel-kit-onboard",
+      "source": "./plugins/stempel-kit-onboard/plugin",
+      "description": "Extension: /onboard for existing repositories and a baseline so legacy failures never block a pull request"
     }
   ]
 }

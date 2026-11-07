@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-onboard",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: /onboard for existing repositories, a baseline of every check so legacy failures never block a pull request, and onboard-apply. Install into a project with install.sh --extension onboard.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit"]
+}

@@ -438,6 +438,8 @@ esac
   git add -A && git -c user.name=t -c user.email=t@example.invalid commit -qm base
   printf 'KIT_SOURCE_PATTERNS="*.ts"\nKIT_TYPECHECK="printf '"'"'src/old.ts:1:1: error TS1: legacy\\n'"'"'; exit 1"\n' >.claude/kit.conf
   printf 'typecheck\t.\tsrc/old.ts\t1\n' >.claude/baseline.tsv
+  # The baseline comes with the onboard extension.
+  cp "$here/../stempel-kit-onboard/plugin/bin/baseline" .claude/bin/
   printf '{"session_id":"b1","tool_name":"Edit","tool_input":{"file_path":"%s/src/a b.ts"}}' "$project" | .claude/hooks/record-edit
   printf '{"session_id":"b1"}' | KIT_BASE=main .claude/hooks/check-edits
   printf '{"session_id":"b1","stop_hook_active":false}' | KIT_BASE=main .claude/hooks/summary
@@ -447,7 +449,7 @@ case $(cat "$project/baseline.out") in
   *'typecheck pass'*) passed=$((passed + 1)) ;;
   *) failed=$((failed + 1)); echo "FAIL: summary should report typecheck pass against the baseline: $(cat "$project/baseline.out")" ;;
 esac
-rm -rf "$project/.git" "$project/.claude/baseline.tsv" "$project/src/old.ts" "$project/baseline.out" "$project/.work/session-b1."*
+rm -rf "$project/.git" "$project/.claude/baseline.tsv" "$project/.claude/bin/baseline" "$project/src/old.ts" "$project/baseline.out" "$project/.work/session-b1."*
 
 # A spec edit runs spec-lint and reports its findings to Claude.
 printf '# X\n\nID prefix: X\n\n## Acceptance criteria\n- **X-AC1**: it works fast\n' >"$project/specs/x.md"
