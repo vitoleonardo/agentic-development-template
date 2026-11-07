@@ -20,11 +20,19 @@ if [ "${1:-}" = --select ]; then
   changed=$(cat)
   if printf '%s\n' "$changed" | grep -Eq '^(plugins/stempel-kit/|\.github/workflows/stempel-kit\.yml$)'; then extensions; exit 0; fi
   selected=$(for e in $(extensions); do printf '%s\n' "$changed" | grep -q "^plugins/stempel-kit-$e/" && echo "$e"; done)
-  for e in $(extensions); do
-    for c in $selected; do
-      [ "$e" != "$c" ] && grep -rqs "stempel-kit-$c" "$plugins/stempel-kit-$e/tests" "$plugins/stempel-kit-$e/plugin/.claude-plugin/plugin.json" &&
-        selected="$selected $e" && break
+  # Dependents too, until nothing is added: extensions whose tests or whose extends line name a selected one.
+  while :; do
+    more=""
+    for e in $(extensions); do
+      case " $selected " in *" $e "*) continue ;; esac
+      for c in $selected; do
+        if grep -rqs "stempel-kit-$c" "$plugins/stempel-kit-$e/tests" || grep -s '"extends"' "$plugins/stempel-kit-$e/plugin/.claude-plugin/plugin.json" | grep -q "stempel-kit-$c"; then
+          more="$more $e"; break
+        fi
+      done
     done
+    [ -n "$more" ] || break
+    selected="$(printf '%s\n' $selected $more | tr '\n' ' ')"
   done
   printf '%s\n' $selected | sort -u | grep .
   exit 0
