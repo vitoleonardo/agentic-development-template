@@ -1,11 +1,10 @@
 #!/bin/sh
 # Run one project check as defined by the stack adapter in .claude/kit.conf.
 # Usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]
-#        .claude/bin/check extensions   warn about kit.conf sections of extensions whose script is missing
+#        .claude/bin/check extensions   warn about kit.conf sections of extensions whose script is missing (CORE-AC30)
 # In a monorepo each file is checked with the nearest <package>/.claude/kit.conf, from that package's folder;
-# without files the check runs in every package that configures it.
-# --against-baseline compares test, lint, typecheck or coverage with .claude/baseline.tsv when the extension
-# stempel-kit-onboard is installed (.claude/bin/baseline); without it the check runs plain.
+# without files the check runs in every package that configures it. --against-baseline compares with
+# .claude/baseline.tsv when stempel-kit-onboard is installed (.claude/bin/baseline); without it the check runs plain.
 # Exit codes: the check's own code, 2 for usage or setup errors, 3 when the check is not configured,
 # 4 when kit.conf marks it "n/a: <reason>".
 set -u
@@ -17,36 +16,22 @@ export KIT_ROOT
 
 if [ "${1:-}" = --against-baseline ]; then
   shift
-  [ -x "$root/.claude/bin/baseline" ] && exec "$root/.claude/bin/baseline" compare "$@"
+  [ ! -x .claude/bin/baseline ] || exec .claude/bin/baseline compare "$@"
 fi
-
-# extensions: every "# extension: <name> <script>" section in kit.conf needs its script in .claude/ (CORE-AC30).
-warn_extensions() {
-  [ -f .claude/kit.conf ] || return 0
-  awk '/^# extension: / { print $3, $4 }' .claude/kit.conf | while read -r ext_name ext_script; do
-    [ -n "$ext_script" ] && [ -e ".claude/$ext_script" ] && continue
-    echo "check: extension $ext_name has a section in .claude/kit.conf but no .claude/$ext_script; install it again or delete the section." >&2
-  done
-  return 0
-}
 # Only on request, so the hooks that run a check on every edit stay quiet; /ship-feature asks at its start.
 if [ "${1:-}" = extensions ]; then
-  warn_extensions
+  [ ! -f .claude/kit.conf ] || awk '/^# extension: / { print $3, $4 }' .claude/kit.conf | while read -r ext_name ext_script; do
+    [ -n "$ext_script" ] && [ -e ".claude/$ext_script" ] ||
+      echo "check: extension $ext_name has a section in .claude/kit.conf but no .claude/$ext_script; install it again or delete the section." >&2
+  done
   exit 0
 fi
-
-usage="usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]"
 name=${1:-}
-[ $# -gt 0 ] && shift
 case $name in
-  typecheck | lint | test | test-related | coverage | format | build | duplicates | duplicates-related | similar) ;;
-  *) echo "$usage" >&2; exit 2 ;;
+  typecheck | lint | test | test-related | coverage | format | build | duplicates | duplicates-related | similar) shift ;;
+  *) echo "usage: .claude/bin/check [--against-baseline] <typecheck|lint|test|test-related|coverage|format|build|duplicates|duplicates-related|similar> [files...]" >&2; exit 2 ;;
 esac
-
-if [ ! -f .claude/kit.conf ]; then
-  echo "check: .claude/kit.conf is missing. Copy a stack adapter into the project (see the kit README)." >&2
-  exit 2
-fi
+[ -f .claude/kit.conf ] || { echo "check: .claude/kit.conf is missing. Copy a stack adapter into the project (see the kit README)." >&2; exit 2; }
 # shellcheck source=conf.sh
 . "$root/.claude/bin/conf.sh"
 # Commands that compare with the base branch (the duplicates checks) read it from KIT_BASE.
@@ -54,18 +39,16 @@ KIT_BASE=$(base_ref)
 export KIT_BASE
 var=KIT_$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')
 
-# run_in <package> [files relative to the package]
+# run_in <package> [files relative to the package]: the check from the package's folder with its kit.conf.
 run_in() {
-  pkg=$1
-  shift
   (
-    cd "$pkg" || exit 2
+    cd "$1" || exit 2
     where=.claude/kit.conf
-    [ "$pkg" = . ] || where="$pkg/.claude/kit.conf"
+    [ "$1" = . ] || where="$1/.claude/kit.conf"
+    shift
     # shellcheck source=/dev/null
     . ./.claude/kit.conf
-    cmd=""
-    eval "cmd=\${$var:-}"
+    cmd=""; eval "cmd=\${$var:-}"
     case $cmd in
       '') echo "check: '$name' is not configured in $where." >&2; exit 3 ;;
       n/a:*) echo "check: '$name' is $cmd ($where)." >&2; exit 4 ;;
@@ -74,41 +57,28 @@ run_in() {
     exec sh -c "$cmd"' "$@"' check "$@"
   )
 }
-
-# run_in_files <package>: run_in with the package's newline-separated files as arguments.
+# run_in_files <package>: run_in with the package's files from $groups as arguments.
 run_in_files() {
-  files=$(printf '%s' "$groups" | awk -F '\t' -v p="$1" '$1 == p { print $2 }')
-  old_ifs=$IFS
-  IFS='
+  set -f; old_ifs=$IFS; IFS='
 '
-  set -f
-  # shellcheck disable=SC2086
-  set -- "$1" $files
-  set +f
-  IFS=$old_ifs
+  # shellcheck disable=SC2046
+  set -- "$1" $(printf '%s' "$groups" | awk -F '\t' -v p="$1" '$1 == p { print $2 }')
+  IFS=$old_ifs; set +f
   run_in "$@" </dev/null
 }
 
 # Each file goes to its package, with its path relative to that package.
 groups=""
 for file in "$@"; do
-  case $file in "$root"/*) file=${file#"$root"/} ;; esac
+  file=${file#"$root"/}
   pkg=$(package_of "$file")
   rel=$file
   [ "$pkg" = . ] || rel=${file#"$pkg"/}
   groups="$groups$pkg	$rel
 "
 done
-if [ $# -gt 0 ]; then
-  pkgs=$(printf '%s' "$groups" | cut -f1 | sort -u)
-else
-  pkgs=$(packages)
-fi
-
-if [ "$(printf '%s\n' "$pkgs" | grep -c .)" -eq 1 ]; then
-  run_in_files "$pkgs"
-  exit
-fi
+if [ $# -gt 0 ]; then pkgs=$(printf '%s' "$groups" | cut -f1 | sort -u); else pkgs=$(packages); fi
+[ "$(printf '%s\n' "$pkgs" | grep -c .)" -ne 1 ] || { run_in_files "$pkgs"; exit; }
 
 # Several packages: stop at the first failure. Otherwise pass if any package ran the check,
 # then "n/a" if any package marks it so, else "not configured".

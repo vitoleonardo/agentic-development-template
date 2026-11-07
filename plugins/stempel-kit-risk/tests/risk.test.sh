@@ -181,5 +181,16 @@ grep -q '^  pull_request_target:' "$workflow" && grep -q '^  pull_request_review
 grep -qF 'ref: ${{ github.event.pull_request.base.sha }}' "$workflow" && ok || fail "RISK-AC34: risk.yml checks out the base branch's files"
 grep -qF '.user.login != \"$AUTHOR\"' "$workflow" && ok || fail "RISK-AC37: the author's own approval does not count"
 
+# risk push: the push gate at standard asks when the branch changes a KIT_PUSH_ASK_PATTERNS file; the environment wins.
+change 20-push src/auth/login.ts 3
+rank push
+same "$code" 1 "risk push: an auth change is high"
+contains "$out" "the branch changes src/auth/login.ts (KIT_PUSH_ASK_PATTERNS)" "risk push names the file"
+out=$(KIT_PUSH_ASK_PATTERNS="db/*" .claude/bin/risk push 2>&1); code=$?
+same "$code:$out" "0:" "risk push with a pattern from the environment that does not match"
+change 21-push src/app/b.ts 3
+rank push
+same "$code:$out" "0:" "risk push without a risky file"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

@@ -1,12 +1,10 @@
 # shellcheck shell=sh
+# Plan and state-file helpers that plan-lint and the extensions' scripts share (POSIX sh).
 
+# section_lines <state file> <section>: the "- " lines under "## <section>", without template placeholders.
 section_lines() {
   [ -f "$1" ] || return 0
-  awk -v name="$2" '
-    { sub(/\r$/, "") }
-    /^## / { inside = ($0 == "## " name); next }
-    inside && /^- / && !/^- </ { print }
-  ' "$1"
+  awk -v name="$2" '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## " name); next } inside && /^- / && !/^- </' "$1"
 }
 
 # plan_rows <state file>: "<task>|<group>|<tier>|<1 when open>" for each numbered task under Progress, in order.
@@ -25,25 +23,19 @@ plan_rows() {
           h = tolower(trim(c[i]))
           if (h == "#") col_task = i; else if (h == "group") col_group = i; else if (h == "tier") col_tier = i
         }
-        head = 1
-        next
+        head = 1; next
       }
       id = col_task ? trim(c[col_task]) : ""
       if (id ~ /^[0-9]+$/) { group[id] = col_group ? trim(c[col_group]) : ""; tier[id] = col_tier ? trim(c[col_tier]) : "" }
       next
     }
     section == "Progress" && /^- \[[ xX]\] [0-9]+/ && !/^- \[[ xX]\] [0-9]+[ \t]+<[^<>]*>[ \t]*$/ {
-      id = $0
-      sub(/^- \[[ xX]\] /, "", id)
-      sub(/[^0-9].*$/, "", id)
+      id = $0; sub(/^- \[[ xX]\] /, "", id); sub(/[^0-9].*$/, "", id)
       ids[++count] = id
       open[count] = ($0 ~ /^- \[ \]/) ? 1 : 0
     }
     END {
-      for (i = 1; i <= count; i++) {
-        id = ids[i]
-        printf "%s|%s|%s|%d\n", id, (col_group ? group[id] : int((i + 2) / 3)), tier[id], open[i]
-      }
+      for (i = 1; i <= count; i++) printf "%s|%s|%s|%d\n", ids[i], (col_group ? group[ids[i]] : int((i + 2) / 3)), tier[ids[i]], open[i]
     }
   ' "$1"
 }
@@ -51,12 +43,9 @@ plan_rows() {
 # plan_has_groups <state file>: true when the Tasks table has a Group column.
 plan_has_groups() {
   [ -f "$1" ] || return 1
-  awk '
-    { sub(/\r$/, "") }
-    /^## / { inside = ($0 == "## Tasks"); next }
+  awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Tasks"); next }
     inside && /^\|/ { n = split(tolower($0), c, "|"); for (i = 2; i < n; i++) { gsub(/[ \t\r]/, "", c[i]); if (c[i] == "group") found = 1 } exit }
-    END { exit !found }
-  ' "$1"
+    END { exit !found }' "$1"
 }
 
 # plan_shape_problem: from plan_rows on stdin, what breaks the group rules, if anything.
