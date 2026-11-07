@@ -34,12 +34,16 @@ json_escape() {
 
 # kit_hook_start: how every hook starts, in the core and in the extensions: work from the project root
 # ($CLAUDE_PROJECT_DIR, else KIT_ROOT), load the package lookup and kit.conf (the environment wins for the
-# approval, gate, budget and improve variables), and read the hook input into HOOK_INPUT.
+# approval, gate, budget and improve variables), and read the hook input into HOOK_INPUT. The core's hooks have
+# sourced their own conf.sh already; an extension's hook takes the project's, and does nothing without it.
 kit_hook_start() {
   KIT_ROOT=${CLAUDE_PROJECT_DIR:-${KIT_ROOT:-$PWD}}
   cd "$KIT_ROOT" || exit 1
-  # shellcheck source=conf.sh
-  . ./.claude/bin/conf.sh
+  if ! command -v conf_value >/dev/null 2>&1; then
+    [ -f ./.claude/bin/conf.sh ] || exit 0
+    # shellcheck source=conf.sh
+    . ./.claude/bin/conf.sh
+  fi
   _kit_env=$(export -p | grep -E '^(export|declare -x) KIT_(APPROVAL|GATE_[A-Z]+|BUDGET_TOKENS|IMPROVE)=')
   if [ -f .claude/kit.conf ]; then
     # shellcheck source=/dev/null

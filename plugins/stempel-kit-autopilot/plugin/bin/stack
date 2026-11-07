@@ -310,13 +310,17 @@ merge_stack() {
 # its author. KIT_GATE_MERGE="ask" or "auto" decides alone; at strict a person merges.
 merge_gate() {
   _override=${KIT_GATE_MERGE:-$(conf_value . KIT_GATE_MERGE)}
-  case $_override in ask | auto) echo "$_override"; return 0 ;; esac
+  case $_override in
+    ask | auto) echo "$_override"; return 0 ;;
+    '') ;;
+    *) echo "gate merge: KIT_GATE_MERGE='$_override' is not ask or auto; ignoring it." >&2 ;;
+  esac
   if [ "$("$root/.claude/bin/gate" level 2>/dev/null)" = strict ]; then echo ask; return 0; fi
   (
     cd "$root" || exit 1
     branch=$(git branch --show-current 2>/dev/null)
     stage=$(conf_value . KIT_STACK_CHECKS)
-    if [ "${KIT_STACK_CHECKS:-${stage:-ci}}" != off ] && [ "$(cat ".work/$branch/stack/green" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
+    if [ "${stage:-ci}" != off ] && [ "$(cat ".work/$branch/stack/green" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
       echo "gate merge: the stack stage is not green on $(git rev-parse --short HEAD)." >&2
       echo ask
       exit 0

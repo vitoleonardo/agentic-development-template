@@ -20,7 +20,8 @@ gate_value() {
 }
 
 env_level=${KIT_APPROVAL:-}
-env_rounds=${KIT_VERIFY_ROUNDS:-}
+env_rounds=""
+[ "$name" != round ] || env_rounds=${KIT_VERIFY_ROUNDS:-}
 env_gate=$(gate_value)
 env_push_ask=""
 [ -x "$root/.claude/bin/risk" ] && env_push_ask=${KIT_PUSH_ASK_PATTERNS:-}

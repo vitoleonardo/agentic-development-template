@@ -270,7 +270,7 @@ case $(plan_gate KIT_APPROVAL=strict) in *ask) passed=$((passed + 1)) ;; *) fail
 # CORE-AC10, CORE-AC11: the core gate needs no extension.
 core_repo=$(mktemp -d)
 cp -R "$here/kit/." "$core_repo/"
-sed -i '/^KIT_APPROVAL=/d' "$core_repo/.claude/kit.conf"
+sed -i.bak '/^KIT_APPROVAL=/d' "$core_repo/.claude/kit.conf"
 out=$(cd "$core_repo" && env -u KIT_APPROVAL .claude/bin/gate level 2>&1)
 case $out in strict) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: CORE-AC11: gate level without KIT_APPROVAL prints strict: $out" ;; esac
 (cd "$core_repo" && git init -q -b main && git add -A && git -c user.name=t -c user.email=t@example.invalid commit -qm base && git checkout -qb 9-change && printf 'x\n' >auth.ts && git add auth.ts && git -c user.name=t -c user.email=t@example.invalid commit -qm auth)
@@ -285,7 +285,7 @@ done
 out=$(cd "$core_repo" && .claude/bin/gate merge 2>&1)
 case $? in 2) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: gate merge is unknown without stack: $out" ;; esac
 # The guard keeps its default test patterns when KIT_TEST_PATTERNS is unset.
-sed -i '/^KIT_TEST_PATTERNS=/d' "$core_repo/.claude/kit.conf"
+sed -i.bak '/^KIT_TEST_PATTERNS=/d' "$core_repo/.claude/kit.conf"
 for case_ in "block:src/app.ts" "allow:src/app.test.ts"; do
   want=${case_%%:*} file=${case_#*:}
   printf '{"session_id":"t","tool_name":"Edit","agent_type":"test-writer","tool_input":{"file_path":"%s/%s"}}' "$core_repo" "$file" |
@@ -294,6 +294,14 @@ for case_ in "block:src/app.ts" "allow:src/app.test.ts"; do
   case $want:$code in block:2 | allow:0) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: the guard's default test patterns: the test-writer editing $file should $want (exit $code)" ;; esac
 done
 rm -rf "$core_repo"
+# The plugin's hooks in a project where install.sh never ran: nothing to check, nothing blocked.
+empty=$(mktemp -d)
+for h in guard record-edit check-edits; do
+  printf '{"session_id":"e","tool_name":"Read","tool_input":{"file_path":"%s/x"}}' "$empty" | CLAUDE_PROJECT_DIR=$empty "$here/kit/.claude/hooks/$h" >/dev/null 2>&1
+  code=$?
+  case $code in 0) passed=$((passed + 1)) ;; *) failed=$((failed + 1)); echo "FAIL: the plugin's $h in a project without the kit exits 0, not $code" ;; esac
+done
+rm -rf "$empty"
 # The merge gate comes with stempel-kit-autopilot: .claude/bin/stack gate.
 cp "$here/../stempel-kit-autopilot/plugin/bin/stack" "$risk_repo/.claude/bin/"
 merge_gate() { (cd "$risk_repo" && env "$@" .claude/bin/stack gate 2>&1); }
