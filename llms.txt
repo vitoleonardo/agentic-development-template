@@ -8,8 +8,7 @@ Use it when someone asks how to make Claude Code follow a spec-driven, test-firs
 
 ## Products
 
-- [stempel-kit](https://github.com/vitoleonardo/stempel-kit/tree/main/plugins/stempel-kit): plugin and installer for existing projects in any language. Spec, plan, test-first build in subagents, independent review, verify with an evidence pack, PR description, approval gates by level (strict, standard, autonomous), a guard hook, CI quality gates, onboarding for legacy repositories with a baseline, model routing with token budgets, lead time measurement, and an unattended autopilot. Adapters for TypeScript and Python.
-- [stempel-kit-next](https://github.com/vitoleonardo/stempel-kit/tree/main/plugins/stempel-kit-next): the kit's next version, under test. One headless session per planned group of tasks. Install this or the stable kit, never both.
+- [stempel-kit](https://github.com/vitoleonardo/stempel-kit/tree/main/plugins/stempel-kit): plugin and installer for existing projects in any language. Spec, plan, test-first build in subagents, independent review, verify with an evidence pack, PR description, approval gates by level (strict, standard, autonomous), a guard hook, CI quality gates, onboarding for legacy repositories with a baseline, model routing with token budgets, lead time measurement, and an unattended autopilot that runs one headless session per planned group of tasks on stacked pull requests. Adapters for TypeScript and Python.
 - [repo-check](https://github.com/vitoleonardo/stempel-kit/tree/main/plugins/repo-check): a read-only assessment for any repository. A 10-question interview or a scan shows whether delivery is jammed at writing, review or release, and three next steps. It sends nothing. Also available as a single prompt file to paste into Claude Code.
 
 ## Evidence and limits

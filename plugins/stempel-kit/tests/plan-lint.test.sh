@@ -41,12 +41,14 @@ Base: <the branch this one builds on; /ship-feature fills it in>
 - Side effects: one email per invite, sent from the request after the role check; on failure the page shows the error
 - Reused: searched src/lib for mail sending: none
 - Approved dependencies: none
+- Architecture: none
+- Estimate: 120 lines
 
 ## Tasks
-| # | Task | Files | Criteria | Test cases | Depends on | Tier |
-|---|------|-------|----------|------------|------------|------|
-| 1 | invite form | `src/features/invite/form.ts` | INVITE-AC1, INVITE-AC2 | `src/features/invite/form.test.ts`: INVITE-AC1: sends the email, INVITE-AC2: shows the team name | – | – |
-| 2 | member check | `src/features/invite/members.ts` | INVITE-AC3 | `src/features/invite/members.test.ts`: INVITE-AC3: already a member | 1 | standard |
+| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |
+|---|------|-------|----------|------------|------------|------|-------|
+| 1 | invite form | `src/features/invite/form.ts` | INVITE-AC1, INVITE-AC2 | `src/features/invite/form.test.ts`: INVITE-AC1: sends the email, INVITE-AC2: shows the team name | – | – | A |
+| 2 | member check | `src/features/invite/members.ts` | INVITE-AC3 | `src/features/invite/members.test.ts`: INVITE-AC3: already a member | 1 | standard | A |
 
 ## Progress
 - [ ] 1 invite form
@@ -145,7 +147,7 @@ expect fail "PLANLINT-AC7 a criterion without a task is named" "$(replace "$good
 printf '%s' "$(replace "$spec" 's/^- \*\*INVITE-AC2\*\*:.*/- **INVITE-AC2** (removed 01.11.2026: merged into AC1)/')" >specs/invite.md
 expect pass "PLANLINT-AC8 a removed criterion needs no task" "$(replace "$good" 's/, INVITE-AC2 / /')"
 printf '%s' "$spec" >specs/invite.md
-expect fail "PLANLINT-AC9 a task naming an ID the spec lacks" "$(replace "$good" 's/| INVITE-AC3 |/| INVITE-AC9 |/')" "$plan:14:" "specs/invite.md has no INVITE-AC9"
+expect fail "PLANLINT-AC9 a task naming an ID the spec lacks" "$(replace "$good" 's/| INVITE-AC3 |/| INVITE-AC9 |/')" "$plan:16:" "specs/invite.md has no INVITE-AC9"
 covered=$(replace "$good" 's/^## Design$/## Criteria\n- **INVITE-AC3**: Given an address that is already a member, when the admin invites it, then the page shows "Already a member" and no email is sent.\n\n## Design/' 's/| INVITE-AC1, INVITE-AC2 |/| – |/')
 expect pass "PLANLINT-AC10 the plan's own criteria replace the spec's set" "$covered"
 expect fail "PLANLINT-AC11 a plan criterion the spec lacks" "$(replace "$covered" 's/\*\*INVITE-AC3\*\*/**INVITE-AC9**/' 's/| INVITE-AC3 |/| INVITE-AC9 |/')" "$plan:5:" "specs/invite.md has no INVITE-AC9"
@@ -160,32 +162,32 @@ expect fail "PLANLINT-AC15 a duplicate fix criterion" "$(replace "$fixgood" 's/^
 
 # --- tasks table ------------------------------------------------------------------------
 
-expect fail "PLANLINT-AC16 a header without the Test cases column" "$(replace "$good" 's/| Test cases |/| Checks |/')" "$plan:11:" 'no "Test cases" column'
+expect fail "PLANLINT-AC16 a header without the Test cases column" "$(replace "$good" 's/| Test cases |/| Checks |/')" "$plan:13:" 'no "Test cases" column'
 expect fail "PLANLINT-AC17 an empty Files cell" "$(replace "$good" 's/| `src\/features\/invite\/members.ts` |/| |/')" "task 2" "Files cell is empty"
-expect fail "PLANLINT-AC18 test cases that are not named" "$(replace "$good" 's/| `src\/features\/invite\/members.test.ts`: INVITE-AC3: already a member |/| add tests |/')" "$plan:14:" "task 2: name the test cases"
-three=$(replace "$good" 's/^| 2 | member check \(.*\) | 1 | standard |$/| 2 | member check \1 | 3 | standard |\n| 3 | mail copy | `src\/features\/invite\/copy.ts` | INVITE-AC3 | `src\/features\/invite\/copy.test.ts`: INVITE-AC3: the text | – | – |/' 's/^- \[ \] 2 member check$/- [ ] 2 member check\n- [ ] 3 mail copy/')
-expect fail "PLANLINT-AC19 a dependency on a later task" "$three" "$plan:14:" "task 2: depends on task 3; a task depends only on earlier tasks"
-expect fail "PLANLINT-AC20 a dependency on a task that does not exist" "$(replace "$three" 's/| 3 | standard |$/| 7 | standard |/')" "$plan:14:" "task 2: depends on task 7, which does not exist"
-expect fail "PLANLINT-AC27 a Files placeholder" "$(replace "$good" 's/| `src\/features\/invite\/members.ts` |/| <paths> |/')" "$plan:14:" "still holds a placeholder"
+expect fail "PLANLINT-AC18 test cases that are not named" "$(replace "$good" 's/| `src\/features\/invite\/members.test.ts`: INVITE-AC3: already a member |/| add tests |/')" "$plan:16:" "task 2: name the test cases"
+three=$(replace "$good" 's/^| 2 | member check \(.*\) | 1 | standard | A |$/| 2 | member check \1 | 3 | standard | A |\n| 3 | mail copy | `src\/features\/invite\/copy.ts` | INVITE-AC3 | `src\/features\/invite\/copy.test.ts`: INVITE-AC3: the text | – | – | A |/' 's/^- \[ \] 2 member check$/- [ ] 2 member check\n- [ ] 3 mail copy/')
+expect fail "PLANLINT-AC19 a dependency on a later task" "$three" "$plan:16:" "task 2: depends on task 3; a task depends only on earlier tasks"
+expect fail "PLANLINT-AC20 a dependency on a task that does not exist" "$(replace "$three" 's/| 3 | standard | A |$/| 7 | standard | A |/')" "$plan:16:" "task 2: depends on task 7, which does not exist"
+expect fail "PLANLINT-AC27 a Files placeholder" "$(replace "$good" 's/| `src\/features\/invite\/members.ts` |/| <paths> |/')" "$plan:16:" "still holds a placeholder"
 expect fail "PLANLINT-AC36 a table without a row" "$(replace "$good" '/^| [12] |/d' '/^- \[ \] /d')" "no task"
 
 # --- tiers ------------------------------------------------------------------------------
 
-expect fail "PLANLINT-AC21 an unknown tier" "$(replace "$good" 's/| 1 | standard |$/| 1 | opus |/')" "$plan:14:" "fast, standard or deep"
-deep=$(replace "$good" 's/| 1 | standard |$/| 1 | deep |/')
-expect fail "PLANLINT-AC22 a raised tier without its reason line" "$deep" "$plan:14:" 'Task 2 deep:'
-expect pass "PLANLINT-AC23 a raised tier with its reason line" "$(replace "$deep" 's/^## Progress$/Task 2 deep: changes the permission check\n\n## Progress/')"
-expect pass "PLANLINT-AC23 the reason line may be a list item" "$(replace "$deep" 's/^## Progress$/- Task 2 deep: changes the permission check\n\n## Progress/')"
+expect fail "PLANLINT-AC21 an unknown tier" "$(replace "$good" 's/| 1 | standard | A |$/| 1 | opus | A |/')" "$plan:16:" "fast, standard or deep"
+deep=$(replace "$good" 's/| 1 | standard | A |$/| 1 | deep | A |/')
+expect fail "PLANLINT-AC22 a raised tier without its reason line" "$deep" "$plan:16:" 'Task 2 deep:'
+expect pass "PLANLINT-AC23 a raised tier with its reason line" "$(replace "$deep" 's/^## Progress$/Task 2 deep: changes the permission check\nGroup A deep: task 2 changes the permission check\n\n## Progress/')"
+expect pass "PLANLINT-AC23 the reason line may be a list item" "$(replace "$deep" 's/^## Progress$/- Task 2 deep: changes the permission check\n- Group A deep: task 2 changes the permission check\n\n## Progress/')"
 printf 'KIT_SOURCE_PATTERNS="*.ts *.tsx"\nKIT_ROUTE_IMPLEMENT="deep"\n' >.claude/kit.conf
 expect pass "PLANLINT-AC24 the default tier comes from route" "$deep"
-expect fail "PLANLINT-AC24 standard needs a reason when deep is the default" "$good" "$plan:14:" 'Task 2 standard:'
+expect fail "PLANLINT-AC24 standard needs a reason when deep is the default" "$good" "$plan:16:" 'Task 2 standard:'
 printf 'KIT_SOURCE_PATTERNS="*.ts *.tsx"\n' >.claude/kit.conf
-expect pass "PLANLINT-AC37 a – tier is the default" "$(replace "$good" 's/| 1 | standard |$/| 1 | – |/')"
+expect pass "PLANLINT-AC37 a – tier is the default" "$(replace "$good" 's/| 1 | standard | A |$/| 1 | – | A |/')"
 
 # --- new files --------------------------------------------------------------------------
 
 misplaced=$(replace "$good" 's/| `src\/features\/invite\/members.ts` |/| `src\/helpers.ts` |/')
-expect fail "PLANLINT-AC25 a new file outside the Map" "$misplaced" "$plan:14: task 2: src/helpers.ts: no home in the Map"
+expect fail "PLANLINT-AC25 a new file outside the Map" "$misplaced" "$plan:16: task 2: src/helpers.ts: no home in the Map"
 mkdir -p src
 printf 'export const x = 1;\n' >src/helpers.ts
 expect pass "PLANLINT-AC26 an existing file outside the Map" "$misplaced"
@@ -208,9 +210,9 @@ expect_no "PLANLINT-AC40 no Contract line is fine" "$good" "Contract"
 
 # --- progress ---------------------------------------------------------------------------
 
-expect fail "PLANLINT-AC30 a task missing from Progress" "$(replace "$three" 's/| 3 | standard |$/| 1 | standard |/' '/^- \[ \] 3 mail copy$/d')" "task 3 is missing from Progress"
-expect fail "PLANLINT-AC31 a task listed twice" "$(replace "$good" 's/^- \[ \] 2 member check$/- [ ] 1 invite form\n- [ ] 2 member check/')" "$plan:18:" "task 1 is listed twice in Progress"
-expect fail "PLANLINT-AC41 the template line" "$(replace "$good" 's/^- \[ \] 1 invite form$/- [ ] 1 <task>/')" "$plan:17:" "template line"
+expect fail "PLANLINT-AC30 a task missing from Progress" "$(replace "$three" 's/| 3 | standard | A |$/| 1 | standard | A |/' '/^- \[ \] 3 mail copy$/d')" "task 3 is missing from Progress"
+expect fail "PLANLINT-AC31 a task listed twice" "$(replace "$good" 's/^- \[ \] 2 member check$/- [ ] 1 invite form\n- [ ] 2 member check/')" "$plan:20:" "task 1 is listed twice in Progress"
+expect fail "PLANLINT-AC41 the template line" "$(replace "$good" 's/^- \[ \] 1 invite form$/- [ ] 1 <task>/')" "$plan:19:" "template line"
 
 # --- edge cases -------------------------------------------------------------------------
 
@@ -220,6 +222,31 @@ code=$?
 same "$code" 2 "PLANLINT-AC34 no plan: exit 2"
 same "$out" "plan-lint: no plan at .work/12-invite.md" "PLANLINT-AC34 no plan: the message"
 expect fail "PLANLINT-AC35 a fix plan without criteria" "$(replace "$fixgood" '/^## Criteria$/,/^$/d' 's/| LOGINFIX-AC1 |/| – |/')" "## Criteria"
+
+# --- groups (specs/group-sessions.md) ----------------------------------------------------
+
+expect fail "GROUP-AC158 a feature plan without a Group column" "$(replace "$good" 's/ Group |$/|/' 's/-------|$//' 's/ | A |$/ |/')" "$plan:13:" 'no "Group" column'
+covered_fix=$(replace "$good" 's/^## Design$/## Bug\n- Source: pasted report\n\n## Design/' 's/ Group |$/|/' 's/-------|$//' 's/ | A |$/ |/')
+expect pass "GROUP-AC166 a fix of a feature (## Bug) needs no Group column" "$covered_fix"
+expect pass "GROUP-AC166 a fix plan needs no Group column" "$fixgood"
+four=$(replace "$three" 's/^| 3 | mail copy \(.*\) | – | – | A |$/| 3 | mail copy \1 | – | – | A |\n| 4 | mail log | `src\/features\/invite\/log.ts` | INVITE-AC3 | `src\/features\/invite\/log.test.ts`: INVITE-AC3: the log | – | – | A |/' 's/^- \[ \] 3 mail copy$/- [ ] 3 mail copy\n- [ ] 4 mail log/' 's/| 3 | standard | A |$/| 1 | standard | A |/')
+expect fail "GROUP-AC159 a group of 4 tasks" "$four" "$plan:12:" "group A holds 4 tasks; a group takes at most 3 tasks"
+split=$(replace "$three" 's/| 3 | standard | A |$/| 1 | standard | B |/')
+expect fail "GROUP-AC160 a group that is not consecutive" "$split" "group A is not consecutive in plan order"
+expect fail "GROUP-AC161 a task without a group" "$(replace "$good" 's/| 1 | standard | A |$/| 1 | standard | |/')" "task 2 has no group"
+deepgroup=$(replace "$deep" 's/^## Progress$/Task 2 deep: changes the permission check\n\n## Progress/')
+expect fail "GROUP-AC162 a group above the default tier without its reason line" "$deepgroup" "$plan:15:" 'Group A deep:'
+expect pass "GROUP-AC163 a group above the default tier with its reason line" "$(replace "$deepgroup" 's/^## Progress$/Group A deep: task 2 changes the permission check\n\n## Progress/')"
+expect fail "GROUP-AC164 an Approved size placeholder" "$(replace "$good" 's/^## Tasks$/Approved size: <only when this plan stays one PR above the default limit: <n> lines>\n\n## Tasks/')" "$plan:12:" "Approved size line still holds its placeholder"
+expect fail "GROUP-AC164 an Approved size without lines" "$(replace "$good" 's/^## Tasks$/Approved size: about 3000\n\n## Tasks/')" "$plan:12:" '"Approved size: <n> lines"'
+expect pass "GROUP-AC165 an Approved size of n lines" "$(replace "$good" 's/^## Tasks$/Approved size: 3000 lines\n\n## Tasks/')"
+
+# --- the ranked lines (specs/risk-gates.md) ---------------------------------------------
+
+expect fail "RISK-AC20 a feature plan without an Architecture line" "$(replace "$good" '/^- Architecture:/d')" 'Design has no "- Architecture:" line'
+expect fail "RISK-AC21 a feature plan without an Estimate line" "$(replace "$good" '/^- Estimate:/d')" 'Design has no "- Estimate: <n> lines" line'
+expect fail "RISK-AC21 an Estimate that is not a number of lines" "$(replace "$good" 's/^- Estimate: .*/- Estimate: about a day/')" "$plan:10:" '"- Estimate: <n> lines"'
+expect pass "a fix plan needs neither line" "$fixgood"
 
 # --- wiring -----------------------------------------------------------------------------
 

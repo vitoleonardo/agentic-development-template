@@ -45,6 +45,8 @@ Gather:
 3. The rules: read every file in `.claude/rules/`.
 4. A screenshot folder, if you were given one: judge every image as in "Reviewing screenshots" and add its rows to your report. A finding there counts like any other.
 
+For a group review you get a commit range, the group's task rows, their criteria and their Verify log rows. Review that range instead of the whole diff, and report only those criteria: a criterion that belongs only to another group's tasks is not built yet and is not a finding. Check the Verify log rows against the diff and by running the related tests yourself.
+
 Check:
 
 - **Criteria:** for each acceptance criterion, is there code that implements it and a test whose name carries its ID? Does the test actually assert the behaviour, including the edge cases?

@@ -4,13 +4,11 @@
 
 <p align="center">
   <a href="https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml"><img alt="stempel-kit CI" src="https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit-next.yml"><img alt="stempel-kit-next CI" src="https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit-next.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/vitoleonardo/stempel-kit/actions/workflows/repo-check.yml"><img alt="repo-check CI" src="https://github.com/vitoleonardo/stempel-kit/actions/workflows/repo-check.yml/badge.svg?branch=main"></a>
 </p>
 
 <p align="center">
   <a href="./plugins/stempel-kit/"><img alt="stempel-kit version" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitoleonardo%2Fstempel-kit%2Fmain%2Fplugins%2Fstempel-kit%2Fkit%2F.claude%2F.claude-plugin%2Fplugin.json&query=%24.version&label=stempel-kit&labelColor=15110C&color=1F7A4D"></a>
-  <a href="./plugins/stempel-kit-next/"><img alt="stempel-kit-next version" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitoleonardo%2Fstempel-kit%2Fmain%2Fplugins%2Fstempel-kit-next%2Fkit%2F.claude%2F.claude-plugin%2Fplugin.json&query=%24.version&label=stempel-kit-next&labelColor=15110C&color=2E5FA6"></a>
   <a href="./plugins/repo-check/"><img alt="repo-check version" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitoleonardo%2Fstempel-kit%2Fmain%2Fplugins%2Frepo-check%2Fplugin%2F.claude-plugin%2Fplugin.json&query=%24.version&label=repo-check&labelColor=15110C&color=2E5FA6"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/vitoleonardo/stempel-kit?labelColor=15110C&color=E2AE34"></a>
   <a href="https://github.com/vitoleonardo/stempel-kit/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/vitoleonardo/stempel-kit?labelColor=15110C&color=C8302C"></a>
@@ -85,7 +83,6 @@ Mustard is a person, blue an agent in its own context, the hexagons are hard gat
 | | What it is | For |
 |---|---|---|
 | [**stempel-kit**](./plugins/stempel-kit/) | Plugin and installer | Existing projects in any language: spec-driven workflow, permissions, guard and check hooks, subagents, CI gates, onboarding for legacy repositories with a baseline, model routing with token budgets, lead time measurement, an unattended autopilot. Adapters for TypeScript and Python |
-| [**stempel-kit-next**](./plugins/stempel-kit-next/) | Plugin and installer, under test | The kit's next version: one headless session and one stacked pull request per planned group of tasks, e2e and mutation tests once per stack, risk-ranked merges. Install this or the stable kit, never both |
 | [**repo-check**](./plugins/repo-check/) | Plugin or single-file prompt | Any repository: finds where delivery is jammed right now (writing, review or release), by a 10-minute interview or a strictly read-only scan. Sends nothing |
 
 ### Which one do I need?
@@ -297,7 +294,7 @@ Three details matter in practice. The guard decides approval gates itself: it an
 
 ## Features in detail
 
-The stable kit, `plugins/stempel-kit`, as it is installed into a project. The next kit, `plugins/stempel-kit-next`, has everything here plus the parts under [What the next kit adds](#what-the-next-kit-adds).
+The kit, `plugins/stempel-kit`, as it is installed into a project. The parts under [Group sessions, stacks and risk](#group-sessions-stacks-and-risk) came with version 0.4.
 
 ### Skills
 
@@ -383,9 +380,9 @@ Every dispatch carries a model from `.claude/bin/route`, because the Agent tool'
 
 The core is language-neutral: every check is a command in `.claude/kit.conf`. Two adapters fill them in and are tested in CI: TypeScript (presets for Next.js, NestJS and plain Node; jscpd 5 for duplicates) and Python with uv. Another language installs without an adapter and fills in the commands by hand, or lets `/onboard` find them.
 
-### What the next kit adds
+### Group sessions, stacks and risk
 
-`plugins/stempel-kit-next` (0.4.2, under test; install this or the stable kit, never both) keeps the spec and the plan and changes how the build runs:
+Since 0.4 the kit keeps the spec and the plan and changes how the build runs:
 
 | Part | What changes |
 |---|---|
@@ -397,7 +394,7 @@ The core is language-neutral: every check is a command in `.claude/kit.conf`. Tw
 | Steering | `autopilot --steer "<text>"` and `--stop` reach the running build session through the `steer` hook |
 | Cost visibility | `usage cache` shows the cache hit rate per agent and branch, `usage cost <feature>` what the autopilot sessions cost per phase, from Claude Code's own figures; the PR's cost line and the run log carry both, and name a rate below `KIT_CACHE_MIN_PERCENT`. `KIT_EFFORT_<TIER>` sets the reasoning effort of group sessions |
 
-It replaces the stable plugin after two real runs, one small feature and one 13-point sprint. Its [README](./plugins/stempel-kit-next/README.md) and [build log](./plugins/stempel-kit-next/docs/build-log.md) have the details.
+The kit's [README](./plugins/stempel-kit/README.md) and [build log](./plugins/stempel-kit/docs/build-log.md) have the details.
 
 ## How to use it
 
@@ -523,7 +520,6 @@ Files you have not changed are replaced; files both sides changed are kept, with
 .claude-plugin/        marketplace: lists every plugin
 plugins/
   stempel-kit/         kit/ (what gets installed), adapters/, install.sh, tests/, docs/, examples/demo-app/
-  stempel-kit-next/    the kit's next version under test, same layout
   repo-check/          plugin/, the generated single-file prompt repo-check.md, build, tests/, docs/
 .github/workflows/     one CI workflow per product
 ```
@@ -532,8 +528,7 @@ plugins/
 
 Every product has its own CI workflow that runs on each pull request and on `main`; the badges at the top show the current state:
 
-- **stempel-kit:** shellcheck over every script, fourteen test suites (hooks, spec lint, plan lint, installer, checks and baseline, evidence pack, routing and usage, lead time, run records, autopilot, structure map, status, steering, fix-bug skill), and twelve of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
-- **stempel-kit-next:** the same suites plus stacked layers and risk rank, and the demo app gates of the next version.
+- **stempel-kit:** shellcheck over every script, sixteen test suites (hooks, spec lint, plan lint, installer, checks and baseline, evidence pack, routing and usage, lead time, run records, autopilot, structure map, status, steering, fix-bug skill, stacked layers, risk rank), and fourteen of them again under `dash`. The demo app is installed with the kit and must pass spec lint, typecheck, lint, tests, coverage and build.
 - **repo-check:** shellcheck, the read-only hook, the scanner, and a drift test that fails when the single-file prompt or the bundled `leadtime` differs from its source. All under `dash` as well.
 
 What the tests and real end-to-end runs caught while building each product is in its build log: [kit](./plugins/stempel-kit/docs/build-log.md), [repo-check](./plugins/repo-check/docs/build-log.md). The specifications behind them are next to the logs. Every change to the kit after a real run is in its [improvements log](./plugins/stempel-kit/reports/improvements.md), with the metric it should move and the value before, and `/improve-kit` checks each one after three more runs. What the tools cannot do is under the kit's [limits](./plugins/stempel-kit/README.md#limits).

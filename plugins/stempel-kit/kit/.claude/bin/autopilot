@@ -2,17 +2,27 @@
 set -u
 
 usage() {
-  echo "usage: .claude/bin/autopilot [start] [feature-slug ...] | stop | steer <text>" >&2
-  echo "  Builds approved specs one after another, each in fresh headless sessions, on stacked branches." >&2
+  echo "usage: .claude/bin/autopilot [feature-slug ...]" >&2
+  echo "       .claude/bin/autopilot --ship <feature-slug>   build one planned feature on this branch, detached" >&2
+  echo "       .claude/bin/autopilot --stop                  end the running build" >&2
+  echo "       .claude/bin/autopilot --steer <text>          queue a message the running session reads after its next tool call" >&2
+  echo "       .claude/bin/autopilot --ready                 exit 0: can start; 1: a build is running; 2: not set up" >&2
+  echo "  Builds approved specs one after another on stacked branches: a fresh headless session per planned group, then a final one." >&2
   echo "  Without slugs: every row of specs/README.md that is approved, planned, building or in-review, in file order." >&2
-  echo "  start: runs it detached and returns once the run is underway." >&2
-  echo "  stop: ends the running run's session within 5 s and stops the run." >&2
-  echo "  steer: queues a message the running session reads after its next tool call." >&2
   exit 2
 }
-case ${1:-} in -h | --help) usage ;; esac
-command=run
-case ${1:-} in start | stop | steer) command=$1 && shift ;; esac
+
+mode=queue
+run_id=""
+case ${1:-} in
+  -h | --help) usage ;;
+  --ship) mode=ship; shift; [ $# -eq 1 ] || usage ;;
+  --ship-run) mode=ship-run; run_id=${2:-}; shift 2 2>/dev/null || usage; [ $# -eq 1 ] || usage ;;
+  --stop) mode=stop ;;
+  --steer) mode=steer; shift ;;
+  --ready) mode=ready ;;
+  -*) usage ;;
+esac
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 cd "$root" || exit 2
@@ -21,11 +31,23 @@ cd "$root" || exit 2
 # shellcheck source=features.sh
 . "$root/.claude/bin/features.sh"
 budget_from_environment=${KIT_BUDGET_TOKENS:-}
+improve_from_environment=${KIT_IMPROVE:-}
+approval_from_environment=${KIT_APPROVAL:-}
+bot_from_environment=${KIT_BOT_GH_CONFIG:-}
 if [ -f .claude/kit.conf ]; then
   # shellcheck source=/dev/null
   . ./.claude/kit.conf
 fi
 KIT_BUDGET_TOKENS=${budget_from_environment:-${KIT_BUDGET_TOKENS:-}}
+KIT_BOT_GH_CONFIG=${bot_from_environment:-${KIT_BOT_GH_CONFIG:-}}
+# The bot identity (specs/risk-gates.md): gh and git's https pushes use the bot's login, so a person can approve a
+# high-ranked pull request the build opened. git asks gh for the credentials, and only gh.
+if [ -n "${KIT_BOT_GH_CONFIG:-}" ]; then
+  GH_CONFIG_DIR=$KIT_BOT_GH_CONFIG
+  GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=credential.helper GIT_CONFIG_VALUE_0="" GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1="!gh auth git-credential"
+  export GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
+fi
+KIT_IMPROVE=${improve_from_environment:-${KIT_IMPROVE:-}}
 
 max_answers=${AUTOPILOT_MAX_ANSWERS:-2}
 max_session_seconds=${AUTOPILOT_MAX_SESSION_SECONDS:-14400}
@@ -33,102 +55,183 @@ max_idle_seconds=${AUTOPILOT_MAX_IDLE_SECONDS:-1200}
 max_identical_calls=${AUTOPILOT_MAX_IDENTICAL_CALLS:-6}
 max_waits=${AUTOPILOT_MAX_WAITS:-3}
 poll_seconds=${AUTOPILOT_POLL_SECONDS:-60}
-tick_seconds=$((poll_seconds < 2 ? poll_seconds : 2))
-answerable_classes="question plan tier test"
+kill_grace_seconds=${AUTOPILOT_KILL_GRACE_SECONDS:-10}
+answerable_classes="question plan test"
 log_dir=.work/autopilot
-lock=$log_dir/lock
+mkdir -p "$log_dir"
+# shellcheck disable=SC2154 # build_lock comes from features.sh
+lock_dir=$build_lock
 stop_request=$log_dir/stop
 steer_dir=$log_dir/steer
+unfinished_fix=$log_dir/unfinished-fix
+[ -n "$run_id" ] || run_id=$(date +%Y%m%d-%H%M%S)
+run_log=$log_dir/run-$run_id.md
 
-running_run() {
-  [ -f "$lock" ] || return 1
-  read -r _lock_pid _lock_run <"$lock" 2>/dev/null || return 1
-  [ -n "${_lock_pid:-}" ] && kill -0 "$_lock_pid" 2>/dev/null || return 1
-  ps -p "$_lock_pid" -o command= 2>/dev/null | grep -q autopilot || return 1
-  printf '%s %s' "$_lock_pid" "$_lock_run"
+slug="" branch="" state="" base="" session="" sessions="" current="" current_transcript="" current_group=""
+session_model="" session_effort="" answers=0 sequence=0 approved_size="" approved_risk="" stash_changes=""
+_transcript="" _phase="" _kind=""
+
+# --- one build at a time ----------------------------------------------------------
+
+# write_lock: a reader sees the old owner or the new one, never half of it. A stop request left by an earlier build
+# goes, so it never shows for this one.
+write_lock() {
+  { echo $$; process_start $$; echo "$run_id"; } >"$lock_dir/pid.$$" 2>/dev/null && mv "$lock_dir/pid.$$" "$lock_dir/pid" &&
+    rm -f "$stop_request"
+}
+refuse_if_running() {
+  _holder=$(lock_pid)
+  if is_build "$_holder"; then
+    echo "autopilot: a build is already running (pid $_holder). Stop it with .claude/bin/autopilot --stop." >&2
+    exit 2
+  fi
+}
+take_lock() {
+  _lock_waits=0
+  until mkdir "$lock_dir" 2>/dev/null; do
+    refuse_if_running
+    # No pid yet: another starter is about to write it. Only a lock that stays empty is stale.
+    if [ -z "$_holder" ] && [ "$_lock_waits" -lt 5 ]; then
+      sleep 1
+      _lock_waits=$((_lock_waits + 1))
+      continue
+    fi
+    # Stale. A rename lets one starter take it; if another starter's new lock came along instead, it goes back.
+    if mv "$lock_dir" "$lock_dir.$$" 2>/dev/null; then
+      if [ "$(sed -n 1p "$lock_dir.$$/pid" 2>/dev/null)" = "$_holder" ]; then
+        rm -rf "$lock_dir.$$"
+      else
+        mv "$lock_dir.$$" "$lock_dir"
+      fi
+    fi
+  done
+  write_lock || { echo "autopilot: another build took the lock; run again." >&2; exit 2; }
+}
+release_lock() {
+  if [ "$(lock_pid)" = "$$" ]; then rm -rf "$lock_dir" "$stop_request"; fi
 }
 
+# tree_pids <pid>: the process and its descendants; a session or a check runs children a plain kill leaves behind.
+tree_pids() {
+  for _child in $(pgrep -P "$1" 2>/dev/null); do tree_pids "$_child"; done
+  echo "$1"
+}
+# kill_tree <pid>: asks the tree to end, and kills whatever is still there after the grace period.
+kill_tree() {
+  _tree=$(tree_pids "$1")
+  # shellcheck disable=SC2086
+  kill $_tree 2>/dev/null
+  _grace=0
+  while :; do
+    _alive=""
+    for _pid_in_tree in $_tree; do
+      if kill -0 "$_pid_in_tree" 2>/dev/null; then _alive="$_alive $_pid_in_tree"; fi
+    done
+    [ -n "$_alive" ] || return 0
+    if [ "$_grace" -ge "$kill_grace_seconds" ]; then
+      # shellcheck disable=SC2086
+      kill -s KILL $_alive 2>/dev/null
+      return 0
+    fi
+    pause 1
+    _grace=$((_grace + 1))
+  done
+}
+
+# stopped_session <run log>: the last session of the run's stopped row, the one to resume.
 stopped_session() {
   awk -F '|' '/^\|/ { r = $4; gsub(/^[ \t]+/, "", r); if (r ~ /^stopped/) s = $6 }
     END { n = split(s, w, " "); if (n > 0 && w[n] != "–") print w[n] }' "$1" 2>/dev/null
 }
 
-already_running() {
-  echo "autopilot: run ${1#* } is already running (pid ${1%% *}). Stop it with .claude/bin/autopilot stop." >&2
-  exit 2
+stop_build() {
+  _pid=$(lock_pid)
+  if ! is_build "$_pid"; then
+    rm -rf "$lock_dir"
+    echo "autopilot: no build is running."
+    exit 0
+  fi
+  _stopped_run=$(lock_run)
+  : >"$stop_request"
+  kill "$_pid"
+  _tries=0
+  while is_build "$_pid" && [ "$_tries" -lt 30 ]; do
+    sleep 1
+    _tries=$((_tries + 1))
+  done
+  if is_build "$_pid"; then
+    echo "autopilot: the build (pid $_pid) has not ended after 30 s." >&2
+    exit 1
+  fi
+  echo "autopilot: stopped the build (pid $_pid)."
+  _session=$(stopped_session "$log_dir/run-$_stopped_run.md")
+  [ -z "$_session" ] || echo "Resume it with: claude --resume $_session   then run .claude/bin/autopilot again."
+  exit 0
 }
 
-case $command in
-  stop)
-    live=$(running_run) || { echo "autopilot: no run is running." >&2; exit 1; }
-    : >"$stop_request"
-    _waited=0
-    while running_run >/dev/null && [ "$_waited" -lt 15 ]; do
-      sleep 1
-      _waited=$((_waited + 1))
-    done
-    if running_run >/dev/null; then
-      echo "autopilot: asked run ${live#* } to stop; it has not stopped yet."
-      exit 0
+# steer_build <text>: a message for the running build's run, which the steer hook hands to its next session's main
+# agent (specs/kit-steering.md). The name sorts by time, and the pid keeps two messages in one second apart.
+steer_build() {
+  [ -n "$(printf '%s' "$*" | tr -d '[:space:]')" ] || { echo "usage: .claude/bin/autopilot --steer <text>" >&2; exit 2; }
+  _pid=$(lock_pid)
+  _run=$(lock_run)
+  if ! is_build "$_pid" || [ -z "$_run" ]; then
+    echo "autopilot: no build is running." >&2
+    exit 1
+  fi
+  mkdir -p "$steer_dir"
+  _queued=$(find "$steer_dir" -name "$_run-*.md" 2>/dev/null | wc -l | tr -d ' ')
+  _message=$_run-$(date +%s)-$(printf '%04d' $((_queued + 1)))-$$
+  printf '%s\n' "$*" >"$steer_dir/.$_message.tmp" && mv "$steer_dir/.$_message.tmp" "$steer_dir/$_message.md" || exit 2
+  echo "autopilot: message queued; the session reads it after its next tool call."
+  exit 0
+}
+
+valid_budget() {
+  case ${KIT_BUDGET_TOKENS:-} in '' | *[!0-9]*) return 1 ;; esac
+  [ "$KIT_BUDGET_TOKENS" -gt 0 ]
+}
+# stack_note: why layered features open a plain chain of pull requests, when gh stack is missing.
+stack_note() {
+  gh extension list 2>/dev/null | grep -q 'gh-stack' && return 0
+  echo "gh stack is not installed (gh extension install github/gh-stack); a feature with several groups opens a chain of pull requests instead of a stack."
+}
+budget_message="autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, before a build: a whole number above 0, in .claude/kit.conf or the environment."
+# valid_efforts: every KIT_EFFORT_<TIER> in kit.conf is empty or one of the five efforts; the message goes to $effort_message.
+valid_efforts() {
+  for _tier in fast standard deep; do
+    _effort_error=$(.claude/bin/route effort "$_tier" 2>&1 >/dev/null) || { effort_message="autopilot: ${_effort_error#route: }"; return 1; }
+  done
+}
+
+case $mode in
+  stop) stop_build ;;
+  steer) steer_build "$@" ;;
+  ready)
+    _holder=$(lock_pid)
+    if is_build "$_holder"; then
+      echo "autopilot: a build is running (pid $_holder). Run log: $(ls "$log_dir"/run-*.md 2>/dev/null | sort | tail -n 1)"
+      exit 1
     fi
-    echo "autopilot: stopped run ${live#* }."
-    _session=$(stopped_session "$log_dir/run-${live#* }.md")
-    [ -z "$_session" ] || echo "Resume it with: claude --resume $_session   then run .claude/bin/autopilot again."
-    exit 0
-    ;;
-  steer)
-    live=$(running_run) || { echo "autopilot: no run is running." >&2; exit 1; }
-    [ -n "$(printf '%s' "$*" | tr -d '[:space:]')" ] || { echo "usage: .claude/bin/autopilot steer <text>" >&2; exit 2; }
-    mkdir -p "$steer_dir/delivered"
-    _queued=0
-    for _file in "$steer_dir/${live#* }"-*.md "$steer_dir/delivered/${live#* }"-*.md; do
-      [ ! -e "$_file" ] || _queued=$((_queued + 1))
-    done
-    _message=${live#* }-$(date +%s)-$(printf '%04d' $((_queued + 1)))-$$
-    printf '%s\n' "$*" >"$steer_dir/.$_message.tmp" && mv "$steer_dir/.$_message.tmp" "$steer_dir/$_message.md" || exit 2
-    echo "autopilot: message queued; the session reads it after its next tool call."
-    exit 0
-    ;;
-  start)
-    live=$(running_run) && already_running "$live"
-    mkdir -p "$log_dir"
-    if command -v setsid >/dev/null 2>&1; then
-      setsid nohup "$root/.claude/bin/autopilot" "$@" >"$log_dir/autopilot.out" 2>&1 </dev/null &
-    else
-      nohup "$root/.claude/bin/autopilot" "$@" >"$log_dir/autopilot.out" 2>&1 </dev/null &
+    valid_budget || { echo "$budget_message"; exit 2; }
+    valid_efforts || { echo "$effort_message"; exit 2; }
+    _note=$(stack_note)
+    [ -z "$_note" ] || echo "autopilot: warning: $_note" >&2
+    if [ -z "${KIT_BOT_GH_CONFIG:-}" ] && [ "$(.claude/bin/gate level 2>/dev/null)" = autonomous ]; then
+      echo "autopilot: warning: KIT_BOT_GH_CONFIG is not set, so the build pushes as the developer, and the developer cannot approve a high-ranked pull request it opens (docs/customizing.md, \"Merge by risk\")." >&2
     fi
-    _child=$!
-    while kill -0 "$_child" 2>/dev/null; do
-      if live=$(running_run); then
-        echo "autopilot: started run ${live#* }. Run log: $log_dir/run-${live#* }.md"
-        exit 0
-      fi
-      sleep 1
-    done
-    wait "$_child"
-    _code=$?
-    cat "$log_dir/autopilot.out" >&2
-    exit "$_code"
+    exit 0
     ;;
 esac
 
-live=$(running_run) && already_running "$live"
-mkdir -p "$log_dir"
-run_id=$(date +%Y%m%d-%H%M%S)
-run_log=$log_dir/run-$run_id.md
-claude_pid=""
+# --- small helpers ----------------------------------------------------------------
 
 status_of() { feature_row_field "$1" 4; }
 pr_of() { gh pr view "$1" --json url --jq .url 2>/dev/null; }
-phase_done() {
-  case $1 in
-    plan) case $(status_of "$slug") in planned | building | in-review | done) return 0 ;; esac; return 1 ;;
-    build) [ -n "$(pr_of "$branch")" ] ;;
-  esac
-}
 section_rows() { section_lines "$1" "$2" | wc -l | tr -d ' '; }
 last_stop_class() {
   awk '
+    { sub(/\r$/, "") }
     /^## / { inside = ($0 == "## Stops"); next }
     inside && /^- / && !/^- </ { n = split($0, p, "|"); c = (n >= 2) ? p[2] : ""; gsub(/^ +| +$/, "", c) }
     END { print c }
@@ -148,12 +251,14 @@ denied_commands() {
 
 log() { printf '%s\n' "$*" >>"$run_log"; }
 
+session_ids() { printf '%s' "${sessions:-–}"; }
+
 halt() {
   log "| $slug | $branch | stopped: $1 | $2 | $(session_ids) |"
   log ""
   log "Stopped at $slug: $2"
   echo "autopilot: stopped at $slug ($1): $2" >&2
-  if [ -n "${session:-}" ] && [ "$1" = user ]; then
+  if [ -n "${session:-}" ] && [ "$1" = stop ]; then
     echo "Resume it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
   elif [ -n "${session:-}" ]; then
     echo "Answer it with: claude --resume $session   then run .claude/bin/autopilot again." >&2
@@ -162,8 +267,39 @@ halt() {
   exit 1
 }
 
-sessions=""
-session_ids() { printf '%s' "${sessions:-–}"; }
+# A signal ends the session or check in progress, and the run log says the build stopped.
+on_stop() {
+  trap - TERM INT HUP
+  if [ -n "$current" ]; then
+    kill_tree "$current"
+    wait "$current" 2>/dev/null
+    if [ -n "$current_transcript" ]; then
+      .claude/bin/usage add-killed "$current_transcript"
+      # A session ended before its result line still named itself on its first line. The answerer is not resumed:
+      # the session that asked is.
+      _killed=""
+      [ "$current_transcript" = "${_answer_transcript:-}" ] ||
+        _killed=$(json_string "$(grep '"session_id"' "$current_transcript" 2>/dev/null | head -n 1)" session_id)
+      if [ -n "$_killed" ]; then
+        session=$_killed
+        case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
+      fi
+    fi
+  fi
+  if [ -n "$slug" ]; then
+    [ -z "$state" ] || add_line "Decisions to review" "- stopped-by-user | ${_phase:-build} session | $(date '+%d.%m.%Y %H:%M')"
+    halt stop "stopped by .claude/bin/autopilot --stop"
+  fi
+  log ""
+  log "Stopped at the start: stopped by .claude/bin/autopilot --stop"
+  exit 1
+}
+
+# pause <seconds>: a sleep a signal can interrupt, so --stop does not wait out a poll.
+pause() {
+  sleep "$1" &
+  wait $!
+}
 
 unattended_note="This is an unattended .claude/bin/autopilot session: nobody watches it or answers a prompt. Skip steps meant for a person at the screen, such as starting a dev server or opening a browser."
 unattended_tools="Bash(.claude/bin/*),Bash(./.claude/bin/*),Bash($root/.claude/bin/*),Bash(git checkout *),Bash(git switch *),Bash(git restore *),Bash(git stash *),Bash(git commit *),Bash(git push *),Bash(gh pr create *),Bash(gh pr view *)"
@@ -188,29 +324,11 @@ repeated_call() {
 
 # watch <pid> <transcript>: waits for the session and stops it when it runs too long, writes nothing for too long
 # or repeats one tool call; the reason goes into $watchdog.
-end_session() {
-  kill "$1" 2>/dev/null
-  _grace=0
-  while kill -0 "$1" 2>/dev/null && [ "$_grace" -lt 3 ]; do
-    sleep 1
-    _grace=$((_grace + 1))
-  done
-  kill -9 "$1" 2>/dev/null
-  wait "$1" 2>/dev/null
-}
-
 watch() {
-  _started=$(date +%s) _size=-1 _quiet_since=$(date +%s) _checked=$(date +%s)
+  _started=$(date +%s) _size=-1 _quiet_since=$(date +%s)
   while kill -0 "$1" 2>/dev/null; do
-    sleep "$tick_seconds"
+    pause "$poll_seconds"
     _now=$(date +%s)
-    if [ -f "$stop_request" ]; then
-      end_session "$1"
-      stopped_by_user=1
-      return
-    fi
-    [ $((_now - _checked)) -ge "$poll_seconds" ] || continue
-    _checked=$_now
     _new_size=$(wc -c <"$2" | tr -d ' ')
     [ "$_new_size" = "$_size" ] || { _size=$_new_size; _quiet_since=$_now; }
     if [ $((_now - _started)) -gt "$max_session_seconds" ]; then _reason="ran longer than $max_session_seconds s"
@@ -218,7 +336,8 @@ watch() {
     else _reason=$(repeated_call "$2")
     fi
     if [ -n "$_reason" ]; then
-      end_session "$1"
+      kill_tree "$1"
+      wait "$1" 2>/dev/null
       watchdog="watchdog: $_reason"
       return
     fi
@@ -250,87 +369,327 @@ usage_limit_reset() {
     }'
 }
 
+# add_line <section> <line>: the line first under that section of the state file, which it adds when missing.
 add_line() {
-  _state=.work/$branch.md
-  [ -f "$_state" ] || printf '## %s\n' "$1" >"$_state"
-  grep -q "^## $1[[:space:]]*\$" "$_state" || printf '\n## %s\n' "$1" >>"$_state"
-  awk -v section="## $1" -v line="$2" '{ print } $0 == section || $0 ~ "^" section "[ \t]+$" { print line }' "$_state" >"$_state.new" &&
-    mv "$_state.new" "$_state"
+  [ -f "$state" ] || { mkdir -p "$(dirname "$state")"; printf '## %s\n' "$1" >"$state"; }
+  grep -q "^## $1[[:space:]]*\$" "$state" || printf '\n## %s\n' "$1" >>"$state"
+  awk -v section="## $1" -v line="$2" '{ print } $0 == section || $0 ~ "^" section "[ \t]+$" { print line }' "$state" >"$state.new" &&
+    mv "$state.new" "$state"
 }
 
-# add_stop <trigger> <resolution>: a budget stop under Stops in the state file, for /improve-kit.
+# add_stop <class> <trigger> <resolution>: a line under Stops in the state file, for /improve-kit.
 add_stop() {
-  add_line Stops "- autopilot $_phase session | budget | $1 | stopped the session | $2"
+  add_line Stops "- autopilot $_phase session | $1 | $2 | stopped the session | $3"
 }
 
-stop_by_user() {
-  rm -f "$stop_request"
-  add_line "Decisions to review" "- stopped-by-user | $_phase session | $(date '+%d.%m.%Y %H:%M')"
-  halt user "stopped by the user"
+# next_transcript <suffix>: sets $_transcript. A feature's build sessions are numbered, so none overwrites another.
+next_transcript() {
+  if [ "$_phase" = build ] || [ "$_phase" = stack ]; then
+    sequence=$((sequence + 1))
+    _transcript=$log_dir/$run_id-$slug-$_phase-$sequence.jsonl
+  else
+    _transcript=$log_dir/$run_id-$slug-$_phase$1.jsonl
+  fi
 }
 
 run_claude() {
-  _transcript=$1
-  shift
-  [ ! -f "$stop_request" ] || stop_by_user
-  watchdog="" limit_reset="" stopped_by_user=""
+  watchdog="" limit_reset=""
   _session_started=$(date +%s)
-  KIT_APPROVAL=autonomous KIT_IMPROVE=${KIT_IMPROVE:-1} KIT_BASE=$base KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS KIT_AUTOPILOT_RUN=$run_id \
+  [ -z "$session_model" ] || set -- "$@" --model "$session_model"
+  [ -z "$session_effort" ] || set -- "$@" --effort "$session_effort"
+  KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS KIT_AUTOPILOT_RUN=$run_id \
     claude -p "$@" --output-format stream-json --verbose --permission-mode acceptEdits --permission-prompts none \
     --allowedTools "$unattended_tools" --disallowedTools "Bash(*autopilot*)" \
     --append-system-prompt "$unattended_note" \
-    >"$_transcript" 2>&1 </dev/null &
-  claude_pid=$!
-  watch "$claude_pid" "$_transcript"
-  claude_pid=""
+    >"$_transcript" 2>&1 &
+  current=$!
+  current_transcript=$_transcript
+  watch "$current" "$_transcript"
+  current="" current_transcript=""
   limit_reset=$(usage_limit_reset "$_transcript")
   _ended_by=${watchdog:-ended}
-  [ -z "$stopped_by_user" ] || _ended_by=user
   [ -z "$limit_reset" ] || _ended_by="usage limit"
+  [ -z "$watchdog" ] || .claude/bin/usage add-killed "$_transcript"
   record_session "$_transcript" $(($(date +%s) - _session_started)) "$_ended_by"
   result_line=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)
   denials=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | grep -E '"permission_denials"[[:space:]]*:[[:space:]]*\[[[:space:]]*\{' | tail -n 1)
+  _new_session=$(json_string "$result_line" session_id)
+  if [ -n "$_new_session" ]; then
+    session=$_new_session
+    case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
+  fi
 }
 
+# ask_answerer <question>: the reply goes into $_reply. It runs in this shell, so a signal can end it.
 ask_answerer() {
   _question=$1
-  _transcript=$log_dir/$run_id-$slug-answer-$answers.jsonl
-  KIT_BASE=$base claude -p "You answer one question for the product owner of this project, who is away. \
-The source of truth is the approved spec specs/$slug.md; the work so far is in .work/$branch.md. \
+  _answer_transcript=$log_dir/$run_id-$slug-answer-$answers.jsonl
+  claude -p "You answer one question for the product owner of this project, who is away. \
+The source of truth is the approved spec specs/$slug.md; the work so far is in $state. \
 Read both, and the code if needed. Answer only what the spec settles or clearly implies; never widen or narrow its scope, \
 never approve skipping a test, a check or a security rule. Reply with exactly one line: \
 'ANSWER: <the answer and why, one or two sentences>' or 'ESCALATE: <why a human must decide>'. Question: $_question" \
     --output-format stream-json --verbose --allowedTools Read Grep Glob --permission-mode dontAsk --permission-prompts none \
-    >"$_transcript" 2>&1 </dev/null &
-  _answerer=$!
-  while kill -0 "$_answerer" 2>/dev/null; do
-    [ ! -f "$stop_request" ] || end_session "$_answerer"
-    sleep 1
-  done
-  wait "$_answerer"
-  json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_transcript" | tail -n 1)" result
+    >"$_answer_transcript" 2>&1 &
+  current=$!
+  current_transcript=$_answer_transcript
+  wait "$current"
+  current="" current_transcript=""
+  _reply=$(json_string "$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$_answer_transcript" | tail -n 1)" result)
 }
 
+# --- groups -----------------------------------------------------------------------
+
+group_open_tasks() { group_rows "$1" | awk -F '|' '$4 == 1 { printf "%s%s", (n++ ? "," : ""), $1 }'; }
+group_tier() {
+  group_rows "$1" | awk -F '|' -v fallback="$(.claude/bin/route tier implement)" '
+    function rank(t) { return t == "deep" ? 3 : t == "standard" ? 2 : t == "fast" ? 1 : 0 }
+    { t = (rank($3) ? $3 : fallback); if (rank(t) > rank(best)) best = t }
+    END { print best }'
+}
+needs_group_round() { plan_has_groups "$state" && [ "$(group_list | wc -l | tr -d ' ')" -gt 1 ]; }
+group_last_round() { section_lines "$state" Rounds | grep -F -- "- group $1 review " | tail -n 1 | sed 's/[[:space:]]*$//'; }
+group_finished() {
+  [ -z "$(group_open_tasks "$1")" ] || return 1
+  needs_group_round || return 0
+  case $(group_last_round "$1") in *"| pass") return 0 ;; esac
+  return 1
+}
+first_open_group() {
+  group_list | while IFS= read -r _g; do
+    if ! group_finished "$_g"; then printf '%s' "$_g"; break; fi
+  done
+}
+# last_done_group: the group before the first one that is not done, or the last group when all are done.
+last_done_group() {
+  group_list | {
+    _last=""
+    while IFS= read -r _g; do
+      if ! group_finished "$_g"; then break; fi
+      _last=$_g
+    done
+    printf '%s' "$_last"
+  }
+}
+dirty_tree() { [ -n "$(git status --porcelain --untracked-files=no)" ]; }
+approved_size_line() { grep '^Approved size:' "$state" 2>/dev/null | head -n 1; }
+# plan_risk_lines: the plan's Architecture and Estimate lines, which the plan gate ranked (specs/risk-gates.md).
+plan_risk_lines() { grep -E '^- (Architecture|Estimate):' "$state" 2>/dev/null | tr -d '\r'; }
+over_budget() { [ "$(.claude/bin/usage total)" -ge "$KIT_BUDGET_TOKENS" ]; }
+stop_if_over_budget() {
+  if over_budget; then
+    add_stop budget "$(.claude/bin/usage total) tokens of KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS" "halted the run"
+    halt budget "budget reached: $(.claude/bin/usage total) tokens of KIT_BUDGET_TOKENS=$KIT_BUDGET_TOKENS"
+  fi
+}
+# check_size: every stacked layer so far stays within the size limit (specs/stacked-groups.md).
+check_size() {
+  # shellcheck disable=SC2046
+  set -- $(.claude/bin/evidence size 2>/dev/null)
+  [ $# -ge 2 ] || return 0
+  [ "$1" -gt "$2" ] || return 0
+  if [ $# -ge 3 ]; then
+    halt plan "layer $3 (group ${4:-?}) has $1 changed lines, over its size limit of $2. Split the group, or approve a higher limit in the plan's Approved size line."
+  fi
+  halt plan "the branch has $1 changed lines, over its size limit of $2. Split the feature, or approve a higher limit in the plan's Approved size line."
+}
+
+# run_limited <command...>: runs a check under the session time limit, with its output in $check_output.
+run_limited() {
+  "$@" >>"$check_output" 2>&1 &
+  current=$!
+  _waited=0
+  while kill -0 "$current" 2>/dev/null; do
+    pause 1
+    _waited=$((_waited + 1))
+    if [ "$_waited" -gt "$max_session_seconds" ]; then
+      kill_tree "$current"
+      wait "$current" 2>/dev/null
+      current=""
+      add_stop env "a check ran longer than $max_session_seconds s: $*" "halted the run"
+      halt env "a check ran longer than $max_session_seconds s: $*"
+    fi
+  done
+  wait "$current"
+  _code=$?
+  current=""
+  return "$_code"
+}
+check_failed() { case $1 in 0 | 3 | 4) return 1 ;; esac; return 0; }
+
+# group_checks <group>: the build's own typecheck and related tests. Failing related tests count only if the whole
+# suite's comparison with the baseline also fails, where a baseline exists.
+group_checks() {
+  _check_from=$(group_from "$1")
+  check_output=$log_dir/$run_id-$slug-checks.txt
+  : >"$check_output"
+  _red=""
+  if [ -f .claude/baseline.tsv ]; then
+    run_limited .claude/bin/check --against-baseline typecheck
+  else
+    run_limited .claude/bin/check typecheck
+  fi
+  if check_failed $?; then _red=1; fi
+  _ifs=$IFS
+  IFS='
+'
+  # shellcheck disable=SC2046
+  set -- $(git diff --name-only --diff-filter=d "$_check_from" HEAD)
+  IFS=$_ifs
+  if [ $# -gt 0 ]; then
+    run_limited .claude/bin/check test-related "$@"
+    if check_failed $?; then
+      if [ -f .claude/baseline.tsv ]; then
+        run_limited .claude/bin/check --against-baseline test
+        if check_failed $?; then _red=1; fi
+      else
+        _red=1
+      fi
+    fi
+  fi
+  [ -z "$_red" ]
+}
+check_tail() { tail -n 40 "$check_output" 2>/dev/null; }
+
+# stop_uncommitted <what happened>: nothing would redo a finished group's uncommitted changes, so the next build must
+# not stash these files while they stay changed.
+stop_uncommitted() {
+  git diff --name-only HEAD >"$unfinished_fix"
+  add_stop env "$1" "halted the run"
+  halt env "$1; commit or stash them, then run again"
+}
+
+# session_kept_to_plan: a session may not leave the feature's branch or change the size the plan approved.
+session_kept_to_plan() {
+  _on_branch=$(git branch --show-current)
+  [ "$_on_branch" = "$branch" ] || halt env "the $_phase session ended on branch $_on_branch, not $branch"
+  if [ "$_kind" != plan ] && [ "$(approved_size_line)" != "$approved_size" ]; then
+    halt plan "a session changed the plan's Approved size line"
+  fi
+  if [ "$_kind" != plan ] && [ "$(plan_risk_lines)" != "$approved_risk" ]; then
+    halt plan "a session changed the plan's Architecture or Estimate line, which the plan gate ranked"
+  fi
+}
+
+# after_group <group> <tier>: the group session ended on its own with every task ticked.
+after_group() {
+  if dirty_tree; then stop_uncommitted "group $1 ended with its tasks ticked and uncommitted changes"; fi
+  if ! group_finished "$1"; then
+    if [ -n "$(group_last_round "$1")" ]; then
+      halt hotfix "group $1 ended with open high findings after its review rounds"
+    fi
+    add_stop env "group $1 ended without a group review round" "halted the run"
+    halt env "group $1 ended without a group review round"
+  fi
+  check_size
+  if ! group_checks "$1"; then
+    [ -n "$session" ] || halt env "group $1 failed the build's checks and its session left no id to resume; see $check_output"
+    # One tier up, with that tier's effort; a deep group keeps its model and goes to the highest effort.
+    if [ "$2" = deep ]; then
+      session_effort=max
+    else
+      _up=$(.claude/bin/route up "$2")
+      session_model=$(.claude/bin/route "$_up")
+      session_effort=$(.claude/bin/route effort "$_up") || halt env "no effort for tier $_up"
+    fi
+    log "- $slug, group $1: the build's checks failed; resuming the session once on a stronger model or effort"
+    _stops_before=$(section_rows "$state" Stops)
+    next_transcript ""
+    run_claude --resume "$session" "The build's own checks failed after this group. Fix the cause, commit it, and end the session. Do not weaken a test.
+
+$(check_tail)"
+    session_model="" session_effort=""
+    session_kept_to_plan
+    if [ "$(section_rows "$state" Stops)" -gt "$_stops_before" ]; then
+      halt "$(last_stop_class "$state")" "group $1's check repair recorded a stop: $(json_string "$result_line" result)"
+    fi
+    if dirty_tree; then stop_uncommitted "group $1 ended its check repair with uncommitted changes"; fi
+    group_finished "$1" || halt env "group $1 is no longer done after its check repair"
+    stop_if_over_budget
+    check_size
+    if ! group_checks "$1"; then
+      add_stop tier "the build's checks failed again for group $1 after a resume" "halted the run"
+      halt tier "the build's checks failed again for group $1 after a resume; see $check_output"
+    fi
+  fi
+}
+
+# group_prompt: how a fresh session of the current group starts. It names only the tasks still open.
+group_prompt() {
+  _open_tasks=$(group_open_tasks "$current_group")
+  printf '/ship-feature %s --group %s --tasks %s --from %s' "$slug" "$current_group" "${_open_tasks:-none}" "$_group_from"
+  [ -z "$_group_note" ] || printf '\n\n%s' "$_group_note"
+}
+
+# run_group <group> [what to fix]
+run_group() {
+  _group=$1
+  _group_tier=$(group_tier "$_group")
+  session_model=$(.claude/bin/route "$_group_tier") || halt env "no model for tier $_group_tier"
+  session_effort=$(.claude/bin/route effort "$_group_tier") || halt env "no effort for tier $_group_tier"
+  session=""
+  current_group=$_group
+  _group_from=$(group_from "$_group")
+  _group_note=${2:-}
+  run_phase group "$(group_prompt)"
+  after_group "$_group" "$_group_tier"
+  session_model=""
+}
+
+# recheck_last_done_group: a build that stopped during or before these checks must not build on a red group.
+recheck_last_done_group() {
+  _first=$(first_open_group)
+  if [ -n "$_first" ] && [ -n "$(group_rows "$_first" | awk -F '|' '$4 == 0')" ]; then return 0; fi
+  _done=$(last_done_group)
+  [ -n "$_done" ] || return 0
+  group_checks "$_done" && return 0
+  log "- $slug, group $_done: the build's checks fail; starting a session to fix them"
+  run_group "$_done" "The build's own checks fail for this finished group. Fix the cause and commit it. Do not weaken a test.
+
+$(check_tail)"
+}
+
+phase_done() {
+  case $1 in
+    plan) case $(status_of "$slug") in planned | building | in-review | done) return 0 ;; esac; return 1 ;;
+    group) [ -z "$(group_open_tasks "$current_group")" ] ;;
+    final) [ -n "$(pr_of "$branch")" ] ;;
+    stack) [ "$(stack_rounds)" -gt "$_stack_rounds_before" ] && ! dirty_tree ;;
+  esac
+}
+
+session_finished() {
+  phase_done "$_kind" || return 1
+  # A group session stopped by the watchdog or the usage limit may be in its review.
+  if [ "$_kind" = group ] && [ -n "$watchdog$limit_reset" ]; then return 1; fi
+  return 0
+}
+
+fresh_prompt() { if [ "$_kind" = group ]; then group_prompt; else printf '%s' "$_prompt"; fi; }
+
 run_phase() {
-  _phase=$1 _prompt=$2 _restarts=0 _waits=0
-  _stops_before=$(section_rows ".work/$branch.md" Stops)
-  run_claude "$log_dir/$run_id-$slug-$_phase.jsonl" "$_prompt"
+  _kind=$1 _prompt=$2 _restarts=0 _waits=0
+  case $_kind in plan) _phase=plan ;; stack) _phase=stack ;; *) _phase=build ;; esac
+  _stops_before=$(section_rows "$state" Stops)
+  next_transcript ""
+  run_claude "$_prompt"
   while :; do
-    session=$(json_string "$result_line" session_id)
-    [ -n "$session" ] || session=$(json_string "$(grep '"session_id"' "$_transcript" | head -n 1)" session_id)
-    [ -n "$session" ] && case " $sessions " in *" $session "*) ;; *) sessions="${sessions:+$sessions }$session" ;; esac
-    [ -z "$stopped_by_user" ] || stop_by_user
-    phase_done "$_phase" && return 0
+    session_kept_to_plan
+    # A final session that opened its PR leaves nothing for the budget to stop.
+    if [ "$_kind" = final ] && session_finished; then return 0; fi
+    stop_if_over_budget
+    session_finished && return 0
     if [ -n "$watchdog" ]; then
       if [ "$_restarts" -ge 1 ]; then
-        add_stop "$watchdog" "halted the run"
+        add_stop budget "$watchdog" "halted the run"
         halt budget "$watchdog, a second time in the $_phase session; see $_transcript"
       fi
       _restarts=$((_restarts + 1))
-      add_stop "$watchdog" "started a fresh session"
-      log "- $slug, $_phase: $watchdog; started a fresh session, which resumes from .work/$branch.md"
-      _stops_before=$(section_rows ".work/$branch.md" Stops)
-      run_claude "$log_dir/$run_id-$slug-$_phase-restart-$_restarts.jsonl" "$_prompt"
+      add_stop budget "$watchdog" "started a fresh session"
+      log "- $slug, $_phase: $watchdog; started a fresh session, which resumes from $state"
+      _stops_before=$(section_rows "$state" Stops)
+      next_transcript "-restart-$_restarts"
+      run_claude "$(fresh_prompt)"
       continue
     fi
     if [ -n "$limit_reset" ]; then
@@ -338,39 +697,204 @@ run_phase() {
       _waits=$((_waits + 1))
       _until=$(date -d "@$limit_reset" '+%d.%m.%Y %H:%M' 2>/dev/null || date -r "$limit_reset" '+%d.%m.%Y %H:%M')
       log "- $slug, $_phase: waits for the usage limit to reset at $_until"
-      while [ "$(date +%s)" -lt $((limit_reset + 120)) ]; do
-        [ ! -f "$stop_request" ] || stop_by_user
-        sleep "$tick_seconds"
-      done
-      run_claude "$log_dir/$run_id-$slug-$_phase-wait-$_waits.jsonl" "$_prompt"
+      _remaining=$((limit_reset + 120 - $(date +%s)))
+      [ "$_remaining" -le 0 ] || pause "$_remaining"
+      next_transcript "-wait-$_waits"
+      run_claude "$(fresh_prompt)"
       continue
     fi
-    [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $log_dir/$run_id-$slug-$_phase.jsonl"
+    [ -n "$result_line" ] || halt env "the $_phase session ended without a result; see $_transcript"
     _question=$(json_string "$result_line" result)
     if [ -n "$denials" ]; then
       halt permission "denied: $(denied_commands); the session said: $_question"
     fi
     _class=question
-    if [ "$(section_rows ".work/$branch.md" Stops)" -gt "$_stops_before" ]; then
-      _class=$(last_stop_class ".work/$branch.md")
+    if [ "$(section_rows "$state" Stops)" -gt "$_stops_before" ]; then
+      _class=$(last_stop_class "$state")
     fi
     case " $answerable_classes " in *" $_class "*) ;; *) halt "$_class" "$_question" ;; esac
     [ "$answers" -lt "$max_answers" ] || halt "$_class" "more than $max_answers answers needed: $_question"
     answers=$((answers + 1))
-    _reply=$(ask_answerer "$_question")
-    [ ! -f "$stop_request" ] || stop_by_user
+    ask_answerer "$_question"
     case $_reply in
       ANSWER:*) ;;
       *) halt "$_class" "the answerer escalated (${_reply:-no reply}): $_question" ;;
     esac
     log "- $slug, $_phase, answer $answers: Q: $_question A: ${_reply#ANSWER: }"
-    _stops_before=$(section_rows ".work/$branch.md" Stops)
-    run_claude "$log_dir/$run_id-$slug-$_phase-$answers.jsonl" --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
+    stop_if_over_budget
+    _stops_before=$(section_rows "$state" Stops)
+    next_transcript "-$answers"
+    run_claude --resume "$session" "Autopilot answer: ${_reply#ANSWER: } \
 Log it under Decisions to review as 'answered-by-autopilot | <the question> | <the answer>' and continue."
   done
 }
 
-if [ $# -eq 0 ] && [ -f specs/README.md ]; then
+# --- the stack stage (specs/stack-stage.md) --------------------------------------------
+
+stack_rounds() { section_lines "$state" Rounds | grep -c '^- stack '; }
+
+# stack_session <prompt>: one session of the stack stage on the top layer, on the verify role's model.
+stack_session() {
+  session_model=$(.claude/bin/route verify) || halt env "no model for the verify role"
+  session_effort="" session=""
+  _stack_rounds_before=$(stack_rounds)
+  run_phase stack "$1"
+  session_model=""
+}
+
+# run_stack: after the last feature, the slow checks once on the stack's top layer: a red run starts a session that
+# fixes it on the top layer, then only the red e2e tests run again; a green run gets its screenshots reviewed, and
+# the pull requests their screenshots and the mutation score.
+run_stack() {
+  case $(conf_value . KIT_STACK_CHECKS) in off) return 0 ;; esac
+  [ -n "$(pr_of "$branch")" ] || return 0
+  _phase=stack _kind=stack
+  _stage_tests="" _stage_fixes=0
+  while :; do
+    stop_if_over_budget
+    check_output=$log_dir/$run_id-stack-$((_stage_fixes + 1)).txt
+    : >"$check_output"
+    log "- stack: the stack checks on $branch${_stage_tests:+, again: $_stage_tests}"
+    # shellcheck disable=SC2086
+    run_limited .claude/bin/stack checks ${_stage_tests:+--tests "$_stage_tests"}
+    _code=$?
+    case $_code in
+      0)
+        stack_session "/ship-feature $slug --stack review"
+        case $(section_lines "$state" Rounds | grep '^- stack ' | tail -n 1 | sed 's/[[:space:]]*$//') in
+          *"| pass") break ;;
+        esac
+        ;;
+      1)
+        if [ "$_stage_fixes" -ge 2 ]; then
+          add_stop test "the stack stage is still red after 2 fixes" "halted the run"
+          halt test "the stack stage is still red after 2 fixes; see $check_output"
+        fi
+        stack_session "/ship-feature $slug --stack
+
+The stack stage is red. Fix it on this branch, the top layer, as the Stack session says.
+
+$(tail -n 40 "$check_output")"
+        ;;
+      *) halt env "the stack stage cannot run: $(tail -n 2 "$check_output" | tr '\n' ' ')" ;;
+    esac
+    _stage_fixes=$((_stage_fixes + 1))
+    # Only the red e2e tests run again; with none red, the e2e part passed and only the mutation tests repeat.
+    _stage_tests=$(tr '\n' ' ' <".work/$branch/stack/red.txt" 2>/dev/null | sed 's/ *$//')
+    if [ -z "$_stage_tests" ] && grep -Eq '^e2e[[:space:]]+(pass|n/a)' ".work/$branch/stack/data-runs.tsv" 2>/dev/null; then _stage_tests=-; fi
+  done
+  run_limited .claude/bin/stack bodies || halt env "the pull requests did not get the stage's screenshots; see $check_output"
+  log "- stack: green; $(grep '^mutation:' "$check_output" | tail -n 1)"
+  git rev-parse HEAD >".work/$branch/stack/green"
+}
+
+# merge_stack: the stack merges when the merge gate allows it (specs/risk-gates.md); a high-ranked layer without a
+# person's approval stops the build with class approval, and running it again after the approval merges.
+merge_stack() {
+  [ -n "$(pr_of "$branch")" ] || return 0
+  # At strict a person merges, as before: the build ends with the pull requests open.
+  [ "$(.claude/bin/gate level 2>/dev/null)" != strict ] || return 0
+  _merge_why=$log_dir/$run_id-merge-gate.txt
+  _merge=$(.claude/bin/gate merge 2>"$_merge_why")
+  if [ "$_merge" != auto ]; then
+    _waiting=$(sed -n 's/^gate merge: high-ranked layers wait for approval by a person://p' "$_merge_why" | tail -n 1)
+    if [ -z "$_waiting" ]; then
+      # The project merges by hand (KIT_GATE_MERGE="ask"): the build ends with the pull requests open.
+      log "- stack: the merge gate asks ($(grep -v '^gate merge:   ' "$_merge_why" | sed 's/^gate merge: //' | tr '\n' ' ')); a person merges."
+      return 0
+    fi
+    _why=$(grep '^gate merge:   high: ' "$_merge_why" | sed 's/^gate merge:   high: //' | tr '\n' ';' | sed 's/;$//; s/;/; /g')
+    add_stop approval "the pull requests of$_waiting rank high" "user: waiting for approval"
+    halt approval "the pull requests of$_waiting wait for approval by a person: ${_why:-high risk}"
+  fi
+  check_output=$log_dir/$run_id-merge.txt
+  : >"$check_output"
+  run_limited .claude/bin/stack merge || halt env "the merge failed: $(tail -n 2 "$check_output" | tr '\n' ' ')"
+  merged=1
+}
+
+# is_verified: the last verify round passed and the evidence pack was made on this commit.
+is_verified() {
+  case $(section_lines "$state" Rounds | grep '^- verify ' | tail -n 1 | sed 's/[[:space:]]*$//') in
+    *"| pass") ;;
+    *) return 1 ;;
+  esac
+  .claude/bin/status --json 2>/dev/null | grep -q '"evidence":{"current":true'
+}
+
+build_feature() {
+  [ -n "$(plan_rows "$state")" ] || halt env "$state has no tasks under Progress; plan the feature first"
+  if plan_has_groups "$state"; then
+    _problem=$(plan_rows "$state" | plan_shape_problem)
+    [ -z "$_problem" ] || halt plan "$_problem. Correct the Group column in $state"
+  else
+    log "- $slug: the plan has no Group column; grouped by threes."
+  fi
+  check_size
+  recheck_last_done_group
+  while :; do
+    _next=$(first_open_group)
+    [ -n "$_next" ] || break
+    run_group "$_next"
+  done
+  session_model=$(.claude/bin/route verify) || halt env "no model for the verify role"
+  session_effort=""
+  run_phase final "/ship-feature $slug --final"
+  session_model=""
+}
+
+# decide_stash: what a new build does with uncommitted tracked changes. It stashes them only where a fresh session
+# will redo the work: on a queued feature's own branch, with no PR, where the next group has an open task.
+decide_stash() {
+  dirty_tree || return 0
+  _dirty_message="autopilot: commit or stash your changes first."
+  if [ -n "$(git status --porcelain --untracked-files=no -- .claude)" ]; then
+    echo "$_dirty_message" >&2
+    exit 2
+  fi
+  # A finished group's uncommitted fix: nothing would redo it, so it must not go into a stash.
+  if [ -s "$unfinished_fix" ] && git diff --name-only HEAD | grep -Fxq -f "$unfinished_fix"; then
+    echo "$_dirty_message" >&2
+    exit 2
+  fi
+  _current=$(git branch --show-current)
+  _owner=""
+  for _candidate in "$@"; do
+    if [ "$mode" != queue ] || [ "$(feature_branch "$_candidate")" = "$_current" ]; then _owner=$_candidate; break; fi
+  done
+  _usable=""
+  if [ -n "$_owner" ] && [ -z "$(pr_of "$_current")" ]; then
+    state=.work/$_current.md
+    _next=$(first_open_group)
+    if [ -n "$_next" ] && [ -n "$(group_open_tasks "$_next")" ]; then _usable=1; fi
+    state=""
+  fi
+  if [ -z "$_usable" ]; then
+    echo "$_dirty_message" >&2
+    exit 2
+  fi
+  stash_changes=$_owner
+}
+
+preflight() {
+  valid_budget || { echo "$budget_message" >&2; exit 2; }
+  valid_efforts || { echo "$effort_message" >&2; exit 2; }
+  decide_stash "$@"
+  command -v claude >/dev/null 2>&1 || { echo "autopilot: claude is not on PATH." >&2; exit 2; }
+  gh auth status >/dev/null 2>&1 || { echo "autopilot: gh is not logged in; the sessions open the PRs." >&2; exit 2; }
+  case $(claude -p "Reply with OK." --model haiku --max-turns 1 --output-format json 2>&1 >/dev/null) in
+    *"not been trusted"*)
+      echo "autopilot: Claude Code has not trusted $root yet, so headless sessions ignore the allowlist in .claude/settings.json and every check is denied. Run claude here once and accept the trust dialog." >&2
+      exit 2
+      ;;
+  esac
+}
+
+# --- start ------------------------------------------------------------------------
+
+if [ "$mode" != ship-run ]; then refuse_if_running; fi
+
+if [ "$mode" = queue ] && [ $# -eq 0 ] && [ -f specs/README.md ]; then
   # shellcheck disable=SC2046
   set -- $(awk -F '|' "$FEATURE_SPEC_FILE"'
     { s = spec_file($3); t = $4; gsub(/^ +| +$/, "", t) }
@@ -386,26 +910,71 @@ for slug in "$@"; do
     *) echo "autopilot: specs/$slug.md is $(status_of "$slug"), not approved. Approve every queued spec first." >&2; exit 2 ;;
   esac
 done
-[ -n "$KIT_BUDGET_TOKENS" ] || { echo "autopilot: set KIT_BUDGET_TOKENS, the token budget per feature, before an unattended run." >&2; exit 2; }
-[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "autopilot: commit or stash your changes first." >&2; exit 2; }
-command -v claude >/dev/null 2>&1 || { echo "autopilot: claude is not on PATH." >&2; exit 2; }
-gh auth status >/dev/null 2>&1 || { echo "autopilot: gh is not logged in; the sessions open the PRs." >&2; exit 2; }
-case $(claude -p "Reply with OK." --model haiku --max-turns 1 --output-format json 2>&1 >/dev/null) in
-  *"not been trusted"*)
-    echo "autopilot: Claude Code has not trusted $root yet, so headless sessions ignore the allowlist in .claude/settings.json and every check is denied. Run claude here once and accept the trust dialog." >&2
-    exit 2
+slug=""
+
+case $mode in
+  queue)
+    preflight "$@"
+    take_lock
+    trap release_lock EXIT
+    ;;
+  ship)
+    case $(status_of "$1") in
+      planned | building | in-review) ;;
+      *) echo "autopilot: specs/$1.md is $(status_of "$1"), not planned. Approve its plan first." >&2; exit 2 ;;
+    esac
+    preflight "$@"
+    take_lock
+    trap release_lock EXIT
+    _runner_log=$log_dir/$run_id-runner.log
+    if command -v setsid >/dev/null 2>&1; then
+      setsid nohup sh "$root/.claude/bin/autopilot" --ship-run "$run_id" "$1" >>"$_runner_log" 2>&1 </dev/null &
+    else
+      nohup sh "$root/.claude/bin/autopilot" --ship-run "$run_id" "$1" >>"$_runner_log" 2>&1 </dev/null &
+    fi
+    _child=$!
+    _tries=0
+    while [ "$(lock_pid)" = "$$" ] && kill -0 "$_child" 2>/dev/null && [ "$_tries" -lt 20 ]; do
+      sleep 1
+      _tries=$((_tries + 1))
+    done
+    if [ "$(lock_pid)" = "$$" ]; then
+      tail -n 3 "$_runner_log" >&2
+      echo "autopilot: the build did not start; see $_runner_log" >&2
+      exit 2
+    fi
+    trap - EXIT
+    _started_pid=$(lock_pid)
+    echo "autopilot: build started (pid ${_started_pid:-$_child}). Run log: $run_log"
+    echo "Do not edit this checkout until the build ends."
+    exit 0
+    ;;
+  ship-run)
+    # The lock passes to this process only once it will really build, which is what --ship waits for.
+    decide_stash "$@"
+    write_lock || exit 2
+    trap release_lock EXIT
+    # This shell may start from inside a Claude Code session; its sessions must not look like nested ones.
+    unset CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ATTENDED \
+      CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_EXECPATH CLAUDE_CODE_VERSION CLAUDE_PID CLAUDE_EFFORT
     ;;
 esac
+trap on_stop TERM INT HUP
 
-take_lock() { (set -C && printf '%s %s\n' "$$" "$run_id" >"$lock") 2>/dev/null; }
-if ! take_lock; then
-  live=$(running_run) && already_running "$live"
-  rm -f "$lock"
-  take_lock || already_running "$(cat "$lock" 2>/dev/null)"
+# Approval: an unattended queue decides everything. A build /ship-feature started keeps the project's level: the
+# approved plan covers commits, and deps and config unless the project's config asks for them explicitly.
+if [ "$mode" = queue ]; then
+  KIT_APPROVAL=autonomous
+  KIT_IMPROVE=${KIT_IMPROVE:-1}
+  export KIT_APPROVAL
+else
+  KIT_GATE_COMMIT=auto
+  KIT_GATE_DEPS=${KIT_GATE_DEPS:-auto}
+  KIT_GATE_CONFIG=${KIT_GATE_CONFIG:-auto}
+  export KIT_GATE_COMMIT KIT_GATE_DEPS KIT_GATE_CONFIG
+  if [ -n "$approval_from_environment" ]; then KIT_APPROVAL=$approval_from_environment; export KIT_APPROVAL; fi
 fi
-rm -f "$stop_request"
-trap 'rm -f "$lock"' EXIT
-trap '[ -z "$claude_pid" ] || kill "$claude_pid" 2>/dev/null; exit 143' TERM
+export KIT_IMPROVE
 
 base=$(base_ref)
 log "# Autopilot run $(date +%d.%m.%Y\ %H:%M)"
@@ -414,31 +983,71 @@ log "Queue: $*. First base: $base. Budget per feature: $KIT_BUDGET_TOKENS tokens
 log ""
 log "| Feature | Branch | Result | Details | Sessions |"
 log "|---|---|---|---|---|"
+if [ -n "$stash_changes" ]; then
+  _stash_name="autopilot $run_id $(git branch --show-current)"
+  if ! git stash push -q -m "$_stash_name" || dirty_tree; then
+    log ""
+    log "Stopped at the start: could not stash the uncommitted changes; commit or stash them, then run again"
+    echo "autopilot: could not stash the uncommitted changes; commit or stash them, then run again." >&2
+    exit 2
+  fi
+  log "- $stash_changes: stashed uncommitted changes as '$_stash_name'; the next session redoes the task"
+fi
+rm -f "$unfinished_fix"
+_note=$(stack_note)
+[ -z "$_note" ] || log "- $_note"
 
 for slug in "$@"; do
-  branch=$(feature_branch "$slug")
-  sessions="" session="" answers=0
-  if [ "$(status_of "$slug")" = "done" ] || phase_done build; then
+  if [ "$mode" = queue ]; then branch=$(feature_branch "$slug"); else branch=$(git branch --show-current); fi
+  state=.work/$branch.md
+  sessions="" session="" answers=0 sequence=0
+  session_model="" session_effort=""
+  if [ "$(status_of "$slug")" = "done" ] || [ -n "$(pr_of "$branch")" ]; then
     log "| $slug | $branch | skipped, already has a PR or is done | $(pr_of "$branch" || printf '–') | – |"
     git rev-parse -q --verify "refs/heads/$branch" >/dev/null && base=$branch
     continue
   fi
-  if git rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
-    git checkout -q "$branch" || halt env "cannot check out $branch"
-  else
-    git checkout -q -b "$branch" "$base" || halt env "cannot create $branch from $base"
+  if [ "$mode" = queue ]; then
+    if git rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
+      git checkout -q "$branch" || halt env "cannot check out $branch"
+    else
+      git checkout -q -b "$branch" "$base" || halt env "cannot create $branch from $base"
+    fi
   fi
+  KIT_BASE=$base
+  export KIT_BASE
   started=$(date +%s)
+  _phase=build
+  stop_if_over_budget
+  if is_verified && [ "$(.claude/bin/gate push)" = ask ]; then
+    halt push "verified, and the push gate asks before a push. Run /ship-feature in a terminal to approve it"
+  fi
   phase_done plan || run_phase plan "/plan-feature $slug"
-  run_phase build "/ship-feature $slug"
+  if ! git diff --quiet HEAD -- specs/README.md; then
+    git commit -qm "Set $slug to $(status_of "$slug")" -- specs/README.md || halt env "cannot commit the status of $slug"
+  fi
+  approved_size=$(approved_size_line)
+  approved_risk=$(plan_risk_lines)
+  build_feature
   minutes=$((($(date +%s) - started + 59) / 60))
   pr=$(pr_of "$branch")
-  decisions=$(section_rows ".work/$branch.md" "Decisions to review")
-  log "| $slug | $branch | in-review | $pr; ${minutes} min; $(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
+  decisions=$(section_rows "$state" "Decisions to review")
+  cost=$(.claude/bin/usage cost "$slug" 2>/dev/null | sed -n 's/^total //p')
+  log "| $slug | $branch | in-review | $pr; ${minutes} min; ${cost:+$cost; }$(.claude/bin/usage line 2>/dev/null | tr '|' '/'); $decisions decisions to review, $answers answered by autopilot | $(session_ids) |"
   base=$branch
 done
 
+merged=""
+_green=$(cat ".work/$branch/stack/green" 2>/dev/null)
+# A stack whose stage was green on this commit (a rerun after an approval) does not run its stage again.
+if [ -z "$_green" ] || [ "$_green" != "$(git rev-parse HEAD)" ]; then run_stack; fi
+merge_stack
+
 log ""
-log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."
+if [ -n "$merged" ]; then
+  log "Every feature has a PR, and the stack is merged: $*."
+else
+  log "Every feature has a PR. Review the PRs from the bottom of the stack up: $*."
+fi
 .claude/bin/runs report >/dev/null 2>&1
 echo "autopilot: done. Run log: $run_log"

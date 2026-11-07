@@ -13,12 +13,16 @@
       "Bash(.claude/bin/check *)",
       "Bash(.claude/bin/spec-lint *)",
       "Bash(.claude/bin/plan-lint *)",
+      "Bash(.claude/bin/stack layers)",
+      "Bash(.claude/bin/stack chain)",
       "Bash(.claude/bin/route *)",
       "Bash(.claude/bin/usage *)",
-      "Bash(.claude/bin/gate *)"
+      "Bash(.claude/bin/gate *)",
+      "Bash(.claude/bin/autopilot *)"
     ],
     "ask": [
       "Bash(gh pr merge *)",
+      "Bash(gh stack merge *)",
       "Edit(.claude/settings.json)",
       "Edit(.claude/kit.conf)",
       "Edit(**/.claude/kit.conf)",
@@ -28,6 +32,9 @@
       "Edit(.claude/rules/**)"
     ],
     "deny": [
+      "Bash(gh pr review *)",
+      "Bash(gh api *reviews*)",
+      "Read(~/.config/gh/**)",
       "Read(.env)",
       "Read(.env.local)",
       "Read(.env.*.local)",

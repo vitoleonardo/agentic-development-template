@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Write a pull request description from the diff, spec, verify log and evidence pack - what, why, how it was tested, how to review it in five minutes. Does not push or open the PR.
+description: Write a pull request description from the diff, the spec, the verify log and the evidence pack - what, why, how it was tested, and how to review it in five minutes. Does not push or open the PR.
 argument-hint: [base branch, default the state file's Base, else main]
 ---
 
@@ -34,16 +34,30 @@ Gates: <one line from evidence.json, n/a with its reason>. <Legacy and flaky tes
 ## Risks
 <Only if there are migrations, feature flags, deployment config or human-only steps.>
 
-Cost: <the line from `.claude/bin/usage line`, only if the branch has a usage record.>
+Cost: <the line from `.claude/bin/usage line`, only if the branch has a usage record; after an autopilot build, the total from `.claude/bin/usage cost <feature>` as well.>
 ```
 
 Rules:
 
-- Follow `.claude/rules/output.md`. At most 150 words outside the table.
-- Evidence comes from `evidence.json`, the verify log and the test names. A criterion without a test or a recorded red run says so in its row. Never fill a gap with a claim.
-- Without an evidence pack, the table has the columns Criterion, Test and Result, and the PR says verify did not run.
-- Name the screenshot files; CI's sticky comment shows them. Do not attach them.
+- Follow `.claude/rules/output.md`. At most 150 words outside the table. Omit an empty section.
+- Take the evidence from `evidence.json`, the verify log and the test names. If a criterion has no test, or no recorded red run, say so in its row. Never fill a gap with a claim.
+- Without an evidence pack, the table has the columns Criterion, Test and Result, and the PR says that verify did not run.
+- The screenshots appear in CI's sticky comment; name the files here, do not try to attach them.
 
-Copy the state file's Decisions to review section, if any, into the description under that heading, so the reviewer sees every decision no human approved.
+If the state file has a Decisions to review section, copy it into the description under that heading, so the reviewer sees every decision no human approved.
 
-Save it to `.work/<branch>-pr.md` and show it. Then run `.claude/bin/gate push`. With `ask`, do not push or create the PR yourself: offer the command `gh pr create --base <base> --title "<title>" --body-file .work/<branch>-pr.md` for the user to approve. With `auto`, push the branch and run that command.
+## Stacked layers
+
+Run `.claude/bin/stack layers`. It prints one line per layer, bottom to top: `<layer branch> TAB <commit> TAB <group>`. With one line, write the description above. With several, a feature built in groups becomes one pull request per group, stacked on each other (`specs/stacked-groups.md`); write one description per layer, bottom to top:
+
+- Read the layer's own diff: `git diff <the layer below>..<its commit>`, where the first layer's below is the base.
+- Title: the feature's title with `(<n>/<N>)`, n counted from the bottom.
+- Evidence: only the criteria of that layer's group's tasks.
+- Every layer but the top one adds under Review: `Reviewed and verified on the stack top, <branch>. Review the stack from the bottom up.`
+- The top layer, the branch itself, also carries what belongs to the whole feature: Why, Risks, Decisions to review and Cost.
+
+Save a lower layer's description to `.work/<branch>/pr/<group>.md` and the top layer's to `.work/<branch>-pr.md`.
+
+## Open the pull requests
+
+Show the descriptions. Then run `.claude/bin/gate push`. With `ask`, do not push or open anything yourself: offer the command `.claude/bin/stack submit` for the user to approve. With `auto`, run it. It cuts the layer branches, pushes them with their evidence packs, and opens or updates one pull request per layer: linked as a GitHub stack with `gh stack`, or as a chain of pull requests, each based on the one below, when `gh stack` is missing or stacks are off. A feature with one layer gets one pull request, as with `gh pr create --base <base>`. Report the lines it prints.

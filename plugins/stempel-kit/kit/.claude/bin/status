@@ -95,18 +95,20 @@ epoch_key() {
   date -d "@$1" +%Y%m%d%H%M 2>/dev/null || date -r "$1" +%Y%m%d%H%M
 }
 
+# transcript_parts <transcript> <run>: feature, phase and kind of one of the run's transcripts. Group and stack
+# sessions are numbered, so only a plan's numbered transcript is a resumed session.
 transcript_parts() {
   _name=${1##*/}
   _name=${_name%.jsonl}
   case $_name in "$2-"*) ;; *) return 1 ;; esac
   _name=${_name#"$2-"}
-  printf '%s' "$_name" | sed -nE 's/^(.*)-(plan|build|answer)(-(restart|wait)-[0-9]+|-[0-9]+)?$/\1	\2	\4\3/p' |
+  printf '%s' "$_name" | sed -nE 's/^(.*)-(plan|build|stack|answer)(-(restart|wait)-[0-9]+|-[0-9]+)?$/\1	\2	\4\3/p' |
     awk -F '\t' -v OFS='\t' '$1 != "" {
       kind = "session"
       if ($2 == "answer") kind = "answer"
       else if ($3 ~ /^restart/) kind = "restart"
       else if ($3 ~ /^wait/) kind = "wait"
-      else if ($3 ~ /^-[0-9]/) kind = "resumed"
+      else if ($3 ~ /^-[0-9]/ && $2 == "plan") kind = "resumed"
       print $1, $2, kind
     }'
 }
@@ -123,9 +125,7 @@ autopilot_state() {
   ap_current=null
   ap_running=false
   ap_stop=false
-  if [ -f .work/autopilot/lock ] && read -r lock_pid _ <.work/autopilot/lock 2>/dev/null &&
-    [ -n "${lock_pid:-}" ] && kill -0 "$lock_pid" 2>/dev/null &&
-    ps -p "$lock_pid" -o command= 2>/dev/null | grep -q autopilot; then
+  if is_build "$(lock_pid)"; then
     ap_running=true
     ap_active=true
     [ ! -f .work/autopilot/stop ] || ap_stop=true
@@ -222,7 +222,7 @@ tasks_done=0
 tasks_total=0
 task_items=''
 if [ -n "$state" ]; then
-  task_items=$(awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[ xX]\]/ && !/</' "$state")
+  task_items=$(awk '{ sub(/\r$/, "") } /^## / { inside = ($0 == "## Progress"); next } inside && /^- \[[ xX]\]/ && !/^- \[[ xX]\] ([0-9]+[ \t]+)?<[^<>]*>[ \t]*$/' "$state")
   if [ -n "$task_items" ]; then
     tasks_total=$(printf '%s\n' "$task_items" | grep -c .)
     tasks_done=$(printf '%s\n' "$task_items" | grep -c '^- \[[xX]\]')

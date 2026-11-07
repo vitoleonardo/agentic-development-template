@@ -22,6 +22,12 @@ expect() {
   fi
 }
 
+# CORE-AC1: one kit. The plugin lives at plugins/stempel-kit and no path or name keeps the old suffix.
+retired="stempel-kit-""next"
+expect "CORE-AC1: the kit lives at plugins/stempel-kit" test "$(basename "$here")" = stempel-kit
+expect "CORE-AC1: no file in the kit names $retired" sh -c "! grep -rq -- '$retired' '$here' --exclude-dir=node_modules --exclude-dir=.next"
+expect "CORE-AC1: no sibling plugin folder $retired" test ! -e "$here/../$retired"
+
 "$here/install.sh" "$full" --adapter typescript --preset nextjs >/dev/null || echo "FAIL: full install exited $?"
 "$here/install.sh" "$plugin" --adapter typescript --plugin >/dev/null || echo "FAIL: plugin install exited $?"
 
