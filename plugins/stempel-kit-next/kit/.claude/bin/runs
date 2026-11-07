@@ -5,8 +5,9 @@
 #   .claude/bin/runs record   write reports/runs/<branch>.tsv from the usage record and the state file's Stops
 #   .claude/bin/runs report   write reports/runs.md over all reports/runs/*.tsv
 # A record has kind-prefixed, TAB-separated rows:
-#   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main> <dispatched>
-#        tasks: numbered items ticked under "## Progress", at least dispatched; dispatched: "task <n>" subagents.
+#   run  <date> <feature> <branch> <tasks> <escalations> <review rounds> <tokens> <fast> <standard> <deep> <main> <dispatched> <cache hit rate>
+#        tasks: numbered items ticked under "## Progress", at least dispatched; dispatched: "task <n>" subagents;
+#        cache hit rate: the branch's, in whole percent, or – when nothing was sent.
 #   setup <text>   (one per line under "## Run setup": how this run differed from the normal flow)
 #   stop <step> <class> <trigger> <what was tried> <resolution>   (one per line under "## Stops" in .work/<branch>.md)
 #   round <review|verify> <n> <full|delta> <commit range> <result>   (one per line under "## Rounds")
@@ -45,7 +46,7 @@ case ${1:-} in
     mkdir -p reports/runs
     {
       printf '%s\n' "$usage" | awk -F '\t' -v d="${RUNS_TODAY:-$(date -u +%Y-%m-%d)}" -v f="${feature:-–}" -v b="$branch" -v ticked="${ticked:-0}" \
-        '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", d, f, b, (ticked > $9 ? ticked : $9), $8, $7, $1, $2, $3, $4, $5, $9 }'
+        '{ printf "run\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", d, f, b, (ticked > $9 ? ticked : $9), $8, $7, $1, $2, $3, $4, $5, $9, ($10 == "" ? "–" : $10) }'
       .claude/bin/usage reviews | sed 's/^/review	/'
       [ -f "$state" ] && awk -v classes="$classes" '
         BEGIN { n = split(classes, c, " "); for (i = 1; i <= n; i++) known[c[i]] = 1 }
@@ -81,6 +82,7 @@ case ${1:-} in
       $1 == "run" {
         r = ++runs; date[r] = $2; feat[r] = $3; tasks[r] = $5; esc[r] = $6; rounds[r] = $7; tok[r] = $8; mainr[r] = $12
         disp[r] = ($13 == "" ? $5 : $13)
+        cache[r] = $14
         stopsr[r] = 0; interv[r] = 0; cur = r
         all_tasks += $5; all_esc += $6
         roundv[r] = $7; escv[r] = $6
@@ -107,6 +109,7 @@ case ${1:-} in
         for (r = 1; r <= runs; r++) {
           if (setupr[r]) continue
           tokv[++ntok] = tok[r]
+          if (cache[r] ~ /^[0-9]+$/) cachev[++ncache] = cache[r] + 0
           if (tasks[r] > 0) pertask[++npt] = tok[r] / tasks[r]
           if (tok[r] > 0 && disp[r] >= tasks[r]) share[++nsh] = mainr[r] * 100 / tok[r]
         }
@@ -119,6 +122,7 @@ case ${1:-} in
         if (ntok) printf "| Tokens per run | %d | %d | %d |\n", med(tokv, ntok), p75(tokv, ntok), ntok
         if (npt) printf "| Tokens per task | %d | %d | %d |\n", med(pertask, npt), p75(pertask, npt), npt
         if (nsh) printf "| Main-session share of tokens (%%) | %.0f | %.0f | %d |\n", med(share, nsh), p75(share, nsh), nsh
+        if (ncache) printf "| Cache hit rate (percent) | %s | %s | %d |\n", med(cachev, ncache), p75(cachev, ncache), ncache
         printf "| Review rounds | %s | %s | %d |\n", med(roundv, runs), p75(roundv, runs), runs
         printf "| Escalations per run | %s | %s | %d |\n", med(escv, runs), p75(escv, runs), runs
         for (r = 1; r <= runs; r++) intervv[r] = interv[r]

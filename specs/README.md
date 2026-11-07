@@ -16,5 +16,5 @@ Status values: `draft` (spec being written) · `approved` (spec approved) · `pl
 | Risk gates | `risk-gates.md` | in-review | next-risk-gates | 0 |
 | Independent acceptance tests | `independent-tests.md` | draft | – | 1 |
 | Kit greenfield MVP | `kit-greenfield-mvp.md` | draft | – | 5 |
-| Cost visibility | `cost-visibility.md` | draft | – | 2 |
+| Cost visibility | `cost-visibility.md` | in-review | next-cost-visibility | 0 |
 | Kit core split | `kit-core-split.md` | approved | spec-kit-core-split | 0 |

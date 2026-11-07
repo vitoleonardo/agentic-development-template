@@ -364,7 +364,7 @@ Every dispatch carries a model from `.claude/bin/route`, because the Agent tool'
 | `structure <files>` | Every new source file sits in a home of the Map in `.claude/rules/structure.md`; no file named `utils`, `helpers`, `common` or `misc` |
 | `gate <name>`, `gate level`, `gate round` | The approval decisions above |
 | `route <role\|tier>`, `route up`, `route check` | The model for a dispatch; one tier up; a warning when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides routing |
-| `usage report\|line\|adopt\|tsv` | Tokens per agent, the PR's cost line, moving a branch's record, the raw table |
+| `usage report\|line\|adopt\|tsv` | Tokens per agent, the PR's cost line, moving a branch's record, the raw table. The next kit adds `cache` and `cost` |
 | `baseline record` | Every configured test, lint, typecheck and coverage command per package; test IDs from the JUnit report, errors per file |
 | `evidence gates\|data\|matrix\|screenshots\|scope\|json\|push` | The verify steps, each one a script decision; `scope` says whether a later review round can be a delta |
 | `status [--json] [--session <id>]` | `invite-users · build · tasks 3/7 · 1 red · budget 42%`, or the same as JSON with criteria, Stops, Rounds, decisions, evidence and the autopilot run. Writes nothing; Stempel Kit Pro's cockpit draws it |
@@ -385,7 +385,7 @@ The core is language-neutral: every check is a command in `.claude/kit.conf`. Tw
 
 ### What the next kit adds
 
-`plugins/stempel-kit-next` (0.4.1, under test; install this or the stable kit, never both) keeps the spec and the plan and changes how the build runs:
+`plugins/stempel-kit-next` (0.4.2, under test; install this or the stable kit, never both) keeps the spec and the plan and changes how the build runs:
 
 | Part | What changes |
 |---|---|
@@ -395,6 +395,7 @@ The core is language-neutral: every check is a command in `.claude/kit.conf`. Tw
 | Risk rank (`risk`, `risk.yml`) | Ranks the plan and every layer. At the default `KIT_APPROVAL=autonomous` the build merges a low-ranked stack itself; a high rank (architecture change, auth or migration files, the build's own checks, very complex work) waits for you, and the `Risk` check holds the merge until you approve |
 | E2e map | E2e tests are selected by a map from source paths to tests, not only by criterion IDs |
 | Steering | `autopilot --steer "<text>"` and `--stop` reach the running build session through the `steer` hook |
+| Cost visibility | `usage cache` shows the cache hit rate per agent and branch, `usage cost <feature>` what the autopilot sessions cost per phase, from Claude Code's own figures; the PR's cost line and the run log carry both, and name a rate below `KIT_CACHE_MIN_PERCENT`. `KIT_EFFORT_<TIER>` sets the reasoning effort of group sessions |
 
 It replaces the stable plugin after two real runs, one small feature and one 13-point sprint. Its [README](./plugins/stempel-kit-next/README.md) and [build log](./plugins/stempel-kit-next/docs/build-log.md) have the details.
 

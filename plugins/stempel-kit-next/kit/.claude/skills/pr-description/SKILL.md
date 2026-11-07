@@ -34,7 +34,7 @@ Gates: <one line from evidence.json, n/a with its reason>. <Legacy and flaky tes
 ## Risks
 <Only if there are migrations, feature flags, deployment config or human-only steps.>
 
-Cost: <the line from `.claude/bin/usage line`, only if the branch has a usage record.>
+Cost: <the line from `.claude/bin/usage line`, only if the branch has a usage record; after an autopilot build, the total from `.claude/bin/usage cost <feature>` as well.>
 ```
 
 Rules:
