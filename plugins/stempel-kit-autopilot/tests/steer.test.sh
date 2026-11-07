@@ -1,10 +1,11 @@
 #!/bin/sh
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
 project=$(mktemp -d)
 trap 'rm -rf "$project"' EXIT
 cp -R "$here/kit/." "$project/"
+cp "$here/../stempel-kit-autopilot/plugin/hooks/steer" "$project/.claude/hooks/"
 cd "$project" || exit 1
 git init -q -b 12-export
 export CLAUDE_PROJECT_DIR="$project"

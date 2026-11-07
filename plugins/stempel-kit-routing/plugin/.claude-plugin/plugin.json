@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-routing",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: model routing per dispatched agent (route), the token usage record per branch and the token budget (usage and its hook). Install into a project with install.sh --extension routing.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit"]
+}

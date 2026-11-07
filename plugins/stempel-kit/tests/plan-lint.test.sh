@@ -179,6 +179,8 @@ expect fail "PLANLINT-AC22 a raised tier without its reason line" "$deep" "$plan
 expect pass "PLANLINT-AC23 a raised tier with its reason line" "$(replace "$deep" 's/^## Progress$/Task 2 deep: changes the permission check\nGroup A deep: task 2 changes the permission check\n\n## Progress/')"
 expect pass "PLANLINT-AC23 the reason line may be a list item" "$(replace "$deep" 's/^## Progress$/- Task 2 deep: changes the permission check\n- Group A deep: task 2 changes the permission check\n\n## Progress/')"
 printf 'KIT_SOURCE_PATTERNS="*.ts *.tsx"\nKIT_ROUTE_IMPLEMENT="deep"\n' >.claude/kit.conf
+# The default tier comes from route when stempel-kit-routing is installed.
+cp "$here/../stempel-kit-routing/plugin/bin/route" .claude/bin/
 expect pass "PLANLINT-AC24 the default tier comes from route" "$deep"
 expect fail "PLANLINT-AC24 standard needs a reason when deep is the default" "$good" "$plan:16:" 'Task 2 standard:'
 printf 'KIT_SOURCE_PATTERNS="*.ts *.tsx"\n' >.claude/kit.conf

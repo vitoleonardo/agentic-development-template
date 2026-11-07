@@ -1,17 +1,17 @@
 #!/bin/sh
 # Tests for the status command (.claude/bin/status): the short line, the JSON object and the autopilot part.
-# Run: sh plugins/stempel-kit/tests/status.test.sh
+# Run: sh plugins/stempel-kit-autopilot/tests/status.test.sh
 # The JSON checks need python3 (json module); mtimes are set with touch -t.
 set -u
 
-here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")/../../stempel-kit" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 project=$work/project
 mkdir -p "$project" "$work/pristine"
 cp -R "$here/kit/." "$project/"
 # The extensions these scripts call.
-cp "$here"/../stempel-kit-onboard/plugin/bin/* "$here"/../stempel-kit-evidence/plugin/bin/* "$project/.claude/bin/"
+cp "$here"/../stempel-kit-*/plugin/bin/* "$project/.claude/bin/"
 cp "$project/specs/README.md" "$work/pristine/README.md"
 cp "$project/.claude/kit.conf" "$work/pristine/kit.conf"
 cd "$project" || exit 1

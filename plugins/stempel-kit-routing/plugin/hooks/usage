@@ -8,8 +8,12 @@
 # No hook input carries token counts, so they come from the transcripts. A message is written there several
 # times while it streams; the last line per message ID counts. Lines are replaced, never appended, because
 # the transcripts are cumulative.
-. "$(dirname -- "$0")/lib.sh"
-[ -x .claude/bin/usage ] || exit 0
+# The hook runs from the extension's plugin folder, so its helpers come from the project: the core's
+# .claude/bin/json.sh and the .claude/bin/usage that install.sh --extension routing copied there.
+[ -x "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/usage" ] && [ -f "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh" ] || exit 0
+# shellcheck source=/dev/null
+. "${CLAUDE_PROJECT_DIR:-.}/.claude/bin/json.sh"
+kit_hook_start
 
 branch=$(git branch --show-current 2>/dev/null)
 dir=.work/${branch:-detached}

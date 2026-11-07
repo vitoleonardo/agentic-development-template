@@ -795,7 +795,7 @@ merge_stack() {
   # At strict a person merges, as before: the build ends with the pull requests open.
   [ "$(.claude/bin/gate level 2>/dev/null)" != strict ] || return 0
   _merge_why=$log_dir/$run_id-merge-gate.txt
-  _merge=$(.claude/bin/gate merge 2>"$_merge_why")
+  _merge=$(.claude/bin/stack gate 2>"$_merge_why")
   if [ "$_merge" != auto ]; then
     _waiting=$(sed -n 's/^gate merge: high-ranked layers wait for approval by a person://p' "$_merge_why" | tail -n 1)
     if [ -z "$_waiting" ]; then

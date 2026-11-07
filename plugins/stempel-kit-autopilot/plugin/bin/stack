@@ -13,6 +13,7 @@
 #   .claude/bin/stack base      the base of the stack's bottom layer
 #   .claude/bin/stack merge     merge the whole stack through its top pull request (KIT_MERGE_METHOD, default squash):
 #                               gh stack merge, or without it each pull request from the bottom up
+#   .claude/bin/stack gate      the merge gate: prints ask or auto, the reasons on stderr as "gate merge: ..."
 # The feature is the current branch; its plan is .work/<branch>.md. Exit codes: 0 done, 1 refused, 2 not set up.
 set -u
 
@@ -304,7 +305,60 @@ merge_stack() {
   echo "stack: merged the stack up to $branch (#$_top_pr, $_method)"
 }
 
+# merge_gate: the build merges a stack itself once its stage is green on the top layer's head and no layer ranks
+# high (.claude/bin/risk of stempel-kit-risk), or every high layer has an approval on its head by someone other than
+# its author. KIT_GATE_MERGE="ask" or "auto" decides alone; at strict a person merges.
+merge_gate() {
+  _override=${KIT_GATE_MERGE:-$(conf_value . KIT_GATE_MERGE)}
+  case $_override in
+    ask | auto) echo "$_override"; return 0 ;;
+    '') ;;
+    *) echo "gate merge: KIT_GATE_MERGE='$_override' is not ask or auto; ignoring it." >&2 ;;
+  esac
+  if [ "$("$root/.claude/bin/gate" level 2>/dev/null)" = strict ]; then echo ask; return 0; fi
+  (
+    cd "$root" || exit 1
+    branch=$(git branch --show-current 2>/dev/null)
+    stage=$(conf_value . KIT_STACK_CHECKS)
+    if [ "${stage:-ci}" != off ] && [ "$(cat ".work/$branch/stack/green" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
+      echo "gate merge: the stack stage is not green on $(git rev-parse --short HEAD)." >&2
+      echo ask
+      exit 0
+    fi
+    if [ ! -x .claude/bin/risk ]; then
+      echo "gate merge: no risk rank (stempel-kit-risk is not installed); a person merges." >&2
+      echo ask
+      exit 0
+    fi
+    ranked=$(.claude/bin/risk stack 2>&1)
+    case $? in
+      0) echo auto; exit 0 ;;
+      1) ;;
+      *) printf '%s\n' "$ranked" | sed 's/^/gate merge: /' >&2; echo ask; exit 0 ;;
+    esac
+    waiting=""
+    for layer in $(printf '%s\n' "$ranked" | awk '$1 == "layer" && $4 == "high" { print $2 }'); do
+      approved=$(gh pr view "$layer" --json number,headRefOid,author \
+        --jq '"\(.number) \(.headRefOid) \(.author.login)"' 2>/dev/null | {
+        read -r number head author
+        [ -n "${number:-}" ] || exit 0
+        gh api "repos/{owner}/{repo}/pulls/$number/reviews" --paginate \
+          --jq "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$head\" and .user.login != \"$author\")] | length" 2>/dev/null
+      })
+      [ "${approved:-0}" -gt 0 ] 2>/dev/null || waiting="$waiting $layer"
+    done
+    if [ -n "$waiting" ]; then
+      printf '%s\n' "$ranked" | sed 's/^/gate merge: /' >&2
+      echo "gate merge: high-ranked layers wait for approval by a person:$waiting" >&2
+      echo ask
+    else
+      echo auto
+    fi
+  )
+}
+
 case ${1:-} in
+  gate) merge_gate ;;
   layers) layers ;;
   chain) chain ;;
   submit) submit ;;
@@ -312,5 +366,5 @@ case ${1:-} in
   bodies) bodies ;;
   base) stack_base; echo ;;
   merge) merge_stack ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

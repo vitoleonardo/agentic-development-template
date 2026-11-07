@@ -1,0 +1,9 @@
+{
+  "name": "stempel-kit-autopilot",
+  "version": "0.1.0",
+  "description": "Stempel Kit extension: unattended builds (autopilot, one headless session per planned group), stacked pull requests per group (stack), the build status (status), steering a running build and the turn summary hooks. Install into a project with install.sh --extension autopilot.",
+  "author": { "name": "Viktor Krawutschke" },
+  "license": "MIT",
+  "requires": ["sh"],
+  "extends": ["stempel-kit", "stempel-kit-routing"]
+}
