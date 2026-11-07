@@ -1,7 +1,9 @@
 # Evidence for every pull request: /verify-feature pushes its pack to the kit-evidence branch under
-# <pr-N|branch>/<head sha>/. This job fails when the PR's head commit has no pack (stale evidence counts as no
-# evidence), reruns the deterministic parts (seed, e2e, screenshots) so they do not depend on one machine,
-# uploads them, and keeps one comment on the PR with the gate table, the matrix summary and the screenshots.
+# <pr-N|branch>/<head sha>/ (a stacked layer's under its own branch). This job fails when the PR's head commit has no
+# pack (stale evidence counts as no evidence), uploads it, and keeps one comment on the PR with the gate table, the
+# matrix summary and the screenshots. With a stack stage (KIT_STACK_CHECKS ci or local, the default) the seed, e2e and
+# screenshots run once per stack in stack-checks.yml, not here; with KIT_STACK_CHECKS="off" this job reruns them so
+# they do not depend on one machine.
 # A pull request runs only the e2e tests its change affects (see KIT_E2E_RELATED in kit.conf); after every merge the
 # "Full e2e" job runs the whole suite on the default branch, so a test the selection skipped fails there.
 # Pull requests opened by bots (Dependabot, Renovate) are skipped, and a pull request from a fork gets no comment
@@ -51,12 +53,18 @@ jobs:
           git archive "origin/kit-evidence" "$key/$HEAD_SHA" | tar -x -C "$RUNNER_TEMP/pack" --strip-components=2
           echo "dir=$RUNNER_TEMP/pack" >>"$GITHUB_OUTPUT"
 
+      - name: Stack stage or not
+        id: stage
+        run: echo "where=$(sh -c '. .claude/kit.conf >/dev/null 2>&1; printf "%s" "${KIT_STACK_CHECKS:-ci}"')" >>"$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v7
+        if: steps.stage.outputs.where == 'off'
         with:
           node-version: lts/*
           package-manager-cache: false
 
       - name: Install dependencies
+        if: steps.stage.outputs.where == 'off'
         run: |
           if [ -f pnpm-lock.yaml ]; then
             version=$(node -p "(require('./package.json').packageManager || 'pnpm@10').split('@')[1].split('+')[0]")
@@ -71,6 +79,7 @@ jobs:
 
       - name: Seed, e2e and screenshots in CI
         id: rerun
+        if: steps.stage.outputs.where == 'off'
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/ci-evidence
         run: |
@@ -95,8 +104,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          ci_data=""
+          [ ! -f "$RUNNER_TEMP/ci-evidence/data-runs.tsv" ] || ci_data="--ci-data $RUNNER_TEMP/ci-evidence/data-runs.tsv"
+          # shellcheck disable=SC2086
           .claude/bin/evidence comment --dir "${{ steps.pack.outputs.dir }}" --repo "$REPO" \
-            --key "${{ steps.pack.outputs.key }}" --ci-data "$RUNNER_TEMP/ci-evidence/data-runs.tsv" >"$RUNNER_TEMP/comment.md"
+            --key "${{ steps.pack.outputs.key }}" $ci_data >"$RUNNER_TEMP/comment.md"
           id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '[.[] | select(.body | startswith("<!-- kit-evidence -->"))][0].id // empty')
           if [ -n "$id" ]; then

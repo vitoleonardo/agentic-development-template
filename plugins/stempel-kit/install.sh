@@ -1,11 +1,15 @@
 #!/bin/sh
 # Install the kit into a project, or update an installed kit.
 # Usage: ./install.sh <project-dir> [--adapter <name>] [--preset <name>]... [--plugin] [--force | --update]
+#        ./install.sh <project-dir> --extension <name | plugin dir>
 #   --adapter  stack adapter from adapters/ (for example typescript)
 #   --preset   stack preset from the adapter's presets/ (for example nextjs); repeatable
 #   --plugin   the skills, agents and hooks come from the stempel-kit plugin; install only the project files
 #   --force    overwrite files that already exist in the project
 #   --update   replace the kit files the project has not changed; stage the kit's version of changed ones in .work/kit-update/
+#   --extension <name>  add an extension to a project that has the core: its scripts go to .claude/bin/ and its
+#              kit.conf.part becomes the section "# extension: <name> <script>" at the end of .claude/kit.conf.
+#              The name resolves to ../stempel-kit-<name>/plugin next to this kit; a path with a slash is used as is.
 # Existing project files are never overwritten without --force; they are listed for a manual merge.
 # Without --adapter, --preset and --plugin, the options of the last install (in .claude/kit.manifest) are used.
 set -eu
@@ -17,6 +21,7 @@ presets=""
 plugin=0
 force=0
 update=0
+extension=""
 options=""
 tab=$(printf '\t')
 
@@ -28,6 +33,7 @@ parse_options() {
       --plugin) plugin=1; options="$options --plugin"; shift ;;
       --force) force=1; shift ;;
       --update) update=1; shift ;;
+      --extension) extension=${2:?--extension needs a name or a plugin dir}; shift 2 ;;
       -h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       -*) echo "install: unknown option $1" >&2; exit 2 ;;
       *) target=$1; shift ;;
@@ -36,11 +42,59 @@ parse_options() {
 }
 parse_options "$@"
 
-[ -n "$target" ] || { echo "usage: ./install.sh <project-dir> [--adapter <name>] [--preset <name>]... [--plugin] [--force | --update]" >&2; exit 2; }
+[ -n "$target" ] || { echo "usage: ./install.sh <project-dir> [--adapter <name>] [--preset <name>]... [--plugin] [--force | --update] | --extension <name>" >&2; exit 2; }
 [ -d "$target" ] || { echo "install: $target is not a directory" >&2; exit 2; }
 [ "$force" -eq 1 ] && [ "$update" -eq 1 ] && { echo "install: use either --force or --update" >&2; exit 2; }
 target=$(CDPATH='' cd -- "$target" && pwd)
 manifest=$target/.claude/kit.manifest
+# A project on the retired next plugin: say so and change nothing (CORE-AC31).
+retired="stempel-kit-""next"
+if grep -qs -- "$retired" "$target/.claude/settings.json" "$target/.claude/kit.manifest"; then
+  echo "install: $retired is retired. Install stempel-kit and the extensions that replaced its parts:" >&2
+  echo "  stempel-kit-evidence stempel-kit-onboard stempel-kit-routing stempel-kit-autopilot stempel-kit-improve stempel-kit-risk" >&2
+  echo "  /plugin uninstall $retired@stempel-kit, then /plugin install stempel-kit@stempel-kit and each extension, then rerun install.sh --plugin." >&2
+  exit 2
+fi
+
+# --extension: add one extension to a project that has the core installed (CORE-AC19, CORE-AC20, CORE-AC33).
+if [ -n "$extension" ]; then
+  case $extension in
+    */*) ext_dir=$(CDPATH='' cd -- "$extension" 2>/dev/null && pwd) || { echo "install: $extension is not a directory" >&2; exit 2; }
+         ext_name=$(basename -- "$(dirname -- "$ext_dir")"); ext_name=${ext_name#stempel-kit-} ;;
+    *) ext_dir=$kit/../stempel-kit-$extension/plugin; ext_name=$extension
+       [ -d "$ext_dir" ] || { echo "install: unknown extension '$extension'. Available: $(cd "$kit/.." && ls -d stempel-kit-*/plugin 2>/dev/null | sed 's|^stempel-kit-||; s|/plugin$||' | tr '\n' ' ')" >&2; exit 2; } ;;
+  esac
+  conf=$target/.claude/kit.conf
+  [ -f "$conf" ] || { echo "install: $target has no .claude/kit.conf; install the core first." >&2; exit 2; }
+  part=$ext_dir/kit.conf.part
+  [ -f "$part" ] || { echo "install: $ext_dir has no kit.conf.part." >&2; exit 2; }
+  script=$(cd "$ext_dir" && ls bin 2>/dev/null | head -n 1)
+  [ -n "$script" ] || { echo "install: $ext_dir has no bin/ script." >&2; exit 2; }
+  header="# extension: $ext_name bin/$script"
+  # Every KIT_ variable the part defines must be new: not in the core part of kit.conf, not in another section.
+  awk -v name="$ext_name" -v part="$part" '
+    FNR == NR { if ($0 ~ /^KIT_[A-Z0-9_]*=/) { sub(/=.*/, ""); mine[$0] = 1 }; next }
+    /^# extension: / { owner = $3; next }
+    /^KIT_[A-Z0-9_]*=/ { v = $0; sub(/=.*/, "", v); if ((v in mine) && owner != name) { printf "install: %s is already defined by %s; extension %s cannot define it too.\n", v, (owner == "" ? "the core" : "extension " owner), name; bad = 1 } }
+    END { exit bad }
+  ' "$part" "$conf" >&2 || exit 2
+  mkdir -p "$target/.claude/bin"
+  for f in "$ext_dir"/bin/*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$target/.claude/bin/$(basename -- "$f")"
+    [ -x "$f" ] && chmod +x "$target/.claude/bin/$(basename -- "$f")"
+  done
+  # Replace the extension's own section if there is one, then append the part under its header.
+  tmp=$(mktemp)
+  awk -v name="$ext_name" '
+    /^# extension: / { skip = ($3 == name) }
+    !skip { print }
+  ' "$conf" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' >"$tmp"
+  { cat "$tmp"; printf '\n%s\n' "$header"; cat "$part"; } >"$conf"
+  rm -f "$tmp"
+  echo "Installed extension $ext_name: .claude/bin/$script and the section '$header' in .claude/kit.conf."
+  exit 0
+fi
 old_manifest=/dev/null
 [ -f "$manifest" ] && old_manifest=$manifest
 if [ -z "$options" ]; then

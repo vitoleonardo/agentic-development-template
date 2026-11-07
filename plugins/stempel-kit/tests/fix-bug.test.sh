@@ -61,7 +61,7 @@ has "FIXBUG-AC33 a plan with a Bug section resumes" "$skill" 'has a `## Bug` sec
 
 # --- review, verify, PR ---------------------------------------------------------------
 has "FIXBUG-AC19 the reviewer is dispatched as review round n" "$skill" 'Dispatch the `reviewer` agent with the Agent tool (description `review round <n>`)'
-has "FIXBUG-AC19 later rounds follow /ship-feature step 5" "$skill" "as in step 5 of \`/ship-feature\`"
+has "FIXBUG-AC19 later rounds follow /ship-feature" "$skill" "as in \"Independent review\" of \`/ship-feature\`"
 has "FIXBUG-AC20 a wrong product is gate round hotfix" "$skill" '`.claude/bin/gate round hotfix <n>`'
 has "FIXBUG-AC21 the Why links the report" "$skill" "The Why links the report's source"
 

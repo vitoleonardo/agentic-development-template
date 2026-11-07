@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests for .claude/bin/risk (specs/risk-gates.md). Run: sh plugins/stempel-kit-next/tests/risk.test.sh
+# Tests for .claude/bin/risk (specs/risk-gates.md). Run: sh plugins/stempel-kit/tests/risk.test.sh
 set -u
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)

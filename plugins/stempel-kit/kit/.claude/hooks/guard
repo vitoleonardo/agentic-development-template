@@ -228,6 +228,8 @@ command_gates=""
 uses "${git}push([[:space:]]|$)" && command_gates="$command_gates push"
 uses "(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)" && command_gates="$command_gates push"
 uses "\.claude/bin/evidence[[:space:]]+push([[:space:]]|$)" && command_gates="$command_gates push"
+uses "\.claude/bin/stack[[:space:]]+submit([[:space:]]|$)" && command_gates="$command_gates push"
+uses "(^|[^[:alnum:]_-])gh[[:space:]]+stack[[:space:]]+(link|submit|push|sync)([[:space:]]|$)" && command_gates="$command_gates push"
 if uses "${git}commit([[:space:]]|$)"; then
   case $(git branch --show-current 2>/dev/null) in
     main | master) command_gates="$command_gates commit-main" ;;

@@ -72,6 +72,13 @@ test_patterns() {
   printf '%s' "${_patterns:-*.test.* *.spec.* *_test.* test_*.* __tests__/* test/* tests/* e2e/* spec/*}"
 }
 
+# numstat_total: the changed lines of a --numstat diff on stdin, without lockfiles, test snapshots and drizzle's
+# generated migration snapshots.
+numstat_total() {
+  awk '$3 !~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|uv\.lock)$|\.snap$|^drizzle\/meta\/[0-9]+_snapshot\.json$/ {
+    total += ($1 == "-" ? 0 : $1) + ($2 == "-" ? 0 : $2) } END { print total + 0 }'
+}
+
 # matches_any <file> <space-separated shell patterns>: true if the file matches one of them.
 matches_any() {
   set -f

@@ -106,5 +106,87 @@ code=$?
 out=$(KIT_BUDGET_TOKENS=100000 hook "$pre" 2>&1)
 same "$?:$out" "0:" "the budget from the environment wins over kit.conf (autopilot sets it per run)"
 
+
+# --- cache hit rate (specs/cost-visibility.md) ----------------------------------------
+
+cache=$project/cache
+mkdir -p "$cache" "$project/empty"
+printf 'a1\tclaude-sonnet-5-5\t100\t0\t800\t100\nmain:s9\tclaude-opus-5-5\t100\t0\t0\t900\n' >"$cache/usage.tsv"
+out=$(USAGE_DIR=$cache .claude/bin/usage cache)
+contains() { case $1 in *"$2"*) ok ;; *) fail "$3: '$2' not in '$1'" ;; esac; }
+contains "$out" "| a1 | claude-sonnet-5-5 | 80% |" "COST-AC1: an agent's rate is its cache reads over everything it was sent"
+contains "$out" "| main | claude-opus-5-5 | 0% |" "COST-AC3: a session line is labelled main"
+same "$(printf '%s\n' "$out" | tail -n 1)" "| branch | – | 40% |" "COST-AC2: the last line is the branch's rate"
+out=$(USAGE_DIR=$project/empty .claude/bin/usage cache)
+same "$?:$out" "0:No usage recorded for 7-routing yet." "COST-AC4: no record, no rate, exit 0"
+printf 'a1\tm\t1\t0\t2\t0\na2\tm\t0\t7\t0\t0\n' >"$cache/usage.tsv"
+out=$(USAGE_DIR=$cache .claude/bin/usage cache)
+contains "$out" "| a1 | m | 66% |" "COST-AC26: the rate is rounded down"
+contains "$out" "| a2 | m | – |" "COST-AC27: nothing sent gives no rate"
+
+same "$(sh -c '. ./.claude/kit.conf && printf %s "$KIT_CACHE_MIN_PERCENT"')" 90 "COST-AC9: the shipped kit.conf names 90 percent"
+printf 'a1\tclaude-sonnet-5-5\t100\t0\t800\t100\n' >"$cache/usage.tsv"
+printf 'KIT_CACHE_MIN_PERCENT=""\n' >>.claude/kit.conf
+line=$(USAGE_DIR=$cache .claude/bin/usage line)
+case $line in *"Escalations: 0. Cache hit rate: 80%.") ok ;; *) fail "COST-AC5: the line ends with the rate: $line" ;; esac
+printf 'KIT_CACHE_MIN_PERCENT="90"\n' >>.claude/kit.conf
+line=$(USAGE_DIR=$cache .claude/bin/usage line)
+case $line in *"Cache hit rate: 80%, below 90%.") ok ;; *) fail "COST-AC6: a rate under the minimum is named: $line" ;; esac
+printf 'a1\tclaude-sonnet-5-5\t100\t0\t900\t0\n' >"$cache/usage.tsv"
+line=$(USAGE_DIR=$cache .claude/bin/usage line)
+case $line in *"Cache hit rate: 90%.") ok ;; *) fail "COST-AC7: a rate at the minimum is not below it: $line" ;; esac
+printf 'a1\tclaude-sonnet-5-5\t0\t5\t0\t0\n' >"$cache/usage.tsv"
+line=$(USAGE_DIR=$cache .claude/bin/usage line)
+case $line in *"Cache hit rate"*) fail "COST-AC8: nothing sent, no sentence: $line" ;; *) ok ;; esac
+printf 'a1\tclaude-sonnet-5-5\t100\t0\t800\t100\n' >"$cache/usage.tsv"
+printf 'KIT_CACHE_MIN_PERCENT="abc"\n' >>.claude/kit.conf
+line=$(USAGE_DIR=$cache .claude/bin/usage line 2>"$project/err")
+case $line in *"below"*) fail "COST-AC28: an invalid minimum names nothing as below: $line" ;; *"Cache hit rate: 80%."*) ok ;; *) fail "COST-AC28: the rate still shows: $line" ;; esac
+contains "$(cat "$project/err")" "KIT_CACHE_MIN_PERCENT" "COST-AC28: the invalid minimum is reported on stderr"
+printf 'KIT_CACHE_MIN_PERCENT="90"\n' >>.claude/kit.conf
+same "$(USAGE_DIR=$cache .claude/bin/usage tsv | cut -f 10)" 80 "COST-AC22: the tsv line's tenth field is the branch's rate"
+same "$(USAGE_DIR=$project/empty .claude/bin/usage tsv | cut -f 10)" "–" "no record, no rate in the tsv line"
+
+# --- session cost (specs/cost-visibility.md) -------------------------------------------
+
+out=$(.claude/bin/usage cost invite)
+same "$?:$out" "0:No session costs recorded for invite." "COST-AC13: no sessions.tsv, no cost, exit 0"
+mkdir -p .work/autopilot
+{
+  printf 'date\tfeature\tphase\ttranscript\tminutes\tturns\tcost_usd\tresult lines\tended by\n'
+  printf '04.11.2026 10:00\tinvite\tplan\tx-plan.jsonl\t3\t4\t1.50\t1\tended\n'
+  printf '04.11.2026 10:10\tinvite\tbuild\tx-build-1.jsonl\t12\t20\t2.25\t1\tended\n'
+  printf '04.11.2026 11:00\tother\tbuild\ty-build-1.jsonl\t5\t2\t9.00\t1\tended\n'
+  printf '04.11.2026 11:30\tinvite-2\tbuild\tz-build-1.jsonl\t5\t2\t4.00\t1\tended\n'
+} >.work/autopilot/sessions.tsv
+out=$(.claude/bin/usage cost invite)
+same "$(printf '%s\n' "$out" | tail -n 1)" "total 3.75 USD" "COST-AC10, COST-AC30: the total holds the feature's own rows only"
+same "$(printf '%s\n' "$out" | head -n 2 | tr '\n' ';')" "plan 1.50 USD;build 2.25 USD;" "COST-AC11: one line per phase before the total"
+out=$(.claude/bin/usage cost other)
+same "$out" "build 9.00 USD
+total 9.00 USD" "another feature gets its own total"
+printf '04.11.2026 12:00\tinvite\tbuild\tx-build-2.jsonl\t1\t1\t–\t1\twatchdog: no output\n' >>.work/autopilot/sessions.tsv
+out=$(.claude/bin/usage cost invite)
+same "$(printf '%s\n' "$out" | tail -n 1)" "total 3.75 USD" "COST-AC12: a row without a cost does not change the total"
+contains "$out" "1 session without a cost" "COST-AC12: it is counted"
+printf '04.11.2026 12:05\tinvite\tbuild\tx-build-3.jsonl\t1\t1\tn/a\t1\tended\n' >>.work/autopilot/sessions.tsv
+out=$(.claude/bin/usage cost invite)
+same "$(printf '%s\n' "$out" | tail -n 1)" "total 3.75 USD" "COST-AC29: a cost that is not a number does not count"
+contains "$out" "2 sessions without a cost" "COST-AC29: it is counted as a session without a cost"
+
+# --- effort per tier (specs/cost-visibility.md) ----------------------------------------
+
+printf 'KIT_EFFORT_STANDARD="medium"\n' >>.claude/kit.conf
+same "$(.claude/bin/route effort standard)" medium "route effort prints the tier's effort"
+same "$(.claude/bin/route effort fast)" "" "an empty effort is the session's default"
+out=$(CLAUDE_CODE_EFFORT_LEVEL=high .claude/bin/route check)
+code=$?
+[ "$code" -eq 1 ] && case $out in *"CLAUDE_CODE_EFFORT_LEVEL"*) true ;; *) false ;; esac && ok || fail "COST-AC21: the environment's effort overrides the tier efforts: $code $out"
+.claude/bin/route check >/dev/null && ok || fail "route check passes with a tier effort and no override"
+printf 'KIT_EFFORT_DEEP="turbo"\n' >>.claude/kit.conf
+out=$(.claude/bin/route effort deep 2>&1)
+code=$?
+[ "$code" -eq 2 ] && case $out in *"KIT_EFFORT_DEEP='turbo' is not an effort"*) true ;; *) false ;; esac && ok || fail "an effort outside the five is refused: $code $out"
+
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

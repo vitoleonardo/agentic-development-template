@@ -367,6 +367,11 @@ same "$(jx '[d["autopilot"]["active"], d["autopilot"]["current"]]')" '[true, {"f
 same "$(jx 'd["autopilot"]["features"]')" '[{"feature": "a", "branch": "a-branch", "result": "in-review"}]' "COCKPIT-AC18: an active run lists the finished row"
 
 rm -f "$autopilot_dir"/*.jsonl
+transcript invite-stack-3 5
+ap
+same "$(jx 'd["autopilot"]["current"]')" '{"feature": "invite", "phase": "stack"}' "STAGE-AC36: a stack session reports phase stack"
+
+rm -f "$autopilot_dir"/*.jsonl
 transcript a-plan 600
 transcript b-build 5
 ap
@@ -460,61 +465,59 @@ printf '\nStopped at a: old\n' >"$autopilot_dir/run-20250101-100000.md"
 ap
 same "$(jx 'd["autopilot"]["features"][0]["feature"]')" '"a"' "COCKPIT-AC19: the newest run log by name is used"
 
+# Steering (GROUP-AC174 to GROUP-AC177): the lock, the messages, the sessions and the session to resume.
 rm -rf "$autopilot_dir"
 run_log
-sh -c 'sleep 60; :' autopilot-holder &
+mkdir -p "$autopilot_dir/lock"
+sleep 60 &
 holder=$!
-printf '%s %s\n' "$holder" "$run" >"$autopilot_dir/lock"
+{ echo "$holder"; LC_ALL=C TZ=UTC ps -p "$holder" -o lstart=; echo "$run"; } >"$autopilot_dir/lock/pid"
 ap
-same "$(jx '[d["autopilot"]["running"], d["autopilot"]["active"], d["autopilot"]["stop_requested"]]')" "[true, true, false]" "STEER-AC20: a live lock is running and active"
+same "$(jx '[d["autopilot"]["running"], d["autopilot"]["active"], d["autopilot"]["stop_requested"]]')" "[true, true, false]" "GROUP-AC174: a live build is running and active"
 : >"$autopilot_dir/stop"
 ap
-same "$(jx 'd["autopilot"]["stop_requested"]')" "true" "STEER-AC21: a requested stop is shown"
+same "$(jx 'd["autopilot"]["stop_requested"]')" "true" "GROUP-AC174: a requested stop is shown"
+printf '%s\nMon Jan  1 00:00:00 2001\n%s\n' "$holder" "$run" >"$autopilot_dir/lock/pid"
+ap
+same "$(jx '[d["autopilot"]["running"], d["autopilot"]["stop_requested"]]')" "[false, false]" "GROUP-AC174: a reused pid is not running"
+{ echo "$holder"; LC_ALL=C TZ=UTC ps -p "$holder" -o lstart=; echo "$run"; } >"$autopilot_dir/lock/pid"
 kill "$holder"
 wait "$holder" 2>/dev/null
 ap
-same "$(jx '[d["autopilot"]["running"], d["autopilot"]["stop_requested"]]')" "[false, false]" "STEER-AC20: a dead lock is not running"
-sleep 60 &
-reused=$!
-printf '%s %s\n' "$reused" "$run" >"$autopilot_dir/lock"
+same "$(jx 'd["autopilot"]["running"]')" "false" "GROUP-AC174: a dead build is not running"
+rm -rf "$autopilot_dir/lock" "$autopilot_dir/stop"
 ap
-same "$(jx 'd["autopilot"]["running"]')" "false" "STEER-AC20: a lock whose process is no autopilot is not running"
-kill "$reused"
-wait "$reused" 2>/dev/null
-rm -f "$autopilot_dir/lock" "$autopilot_dir/stop"
-ap
-same "$(jx 'd["autopilot"]["running"]')" "false" "STEER-AC20: no lock is not running"
+same "$(jx 'd["autopilot"]["running"]')" "false" "GROUP-AC174: no lock is not running"
 
 mkdir -p "$autopilot_dir/steer/delivered"
-printf 'keep the "CSV" columns\n' >"$autopilot_dir/steer/delivered/$run-1793600000-0001.md"
-printf 'skip dark mode\n' >"$autopilot_dir/steer/$run-1793600009-0002.md"
-printf 'from another run\n' >"$autopilot_dir/steer/20251231-090000-1793500000-0001.md"
+printf 'keep the "CSV" columns\n' >"$autopilot_dir/steer/delivered/$run-1793600000-0001-11.md"
+printf 'skip dark mode\n' >"$autopilot_dir/steer/$run-1793600009-0002-12.md"
+printf 'from another run\n' >"$autopilot_dir/steer/20251231-090000-1793500000-0001-13.md"
 ap
-same "$(jx 'd["autopilot"]["messages"]')" '[{"text": "keep the \"CSV\" columns", "delivered": true}, {"text": "skip dark mode", "delivered": false}]' "STEER-AC22: the run's messages, oldest first, delivered or not"
+same "$(jx 'd["autopilot"]["messages"]')" '[{"text": "keep the \"CSV\" columns", "delivered": true}, {"text": "skip dark mode", "delivered": false}]' "GROUP-AC175: the run's messages, oldest first, delivered or not"
 
-transcript a-plan 40
-transcript a-build 30
-transcript a-build-restart-1 20
+transcript a-plan 50
+transcript a-build-1 40
+transcript a-build-2 30
+transcript a-plan-restart-1 20
 transcript a-answer-1 10
-transcript a-build-wait-1 5
-rm -f "$autopilot_dir/$run-a-build-wait-1.jsonl"
 : >"$autopilot_dir/20251231-090000-a-plan.jsonl"
 ap
-same "$(jx '[[s["feature"], s["phase"], s["kind"]] for s in d["autopilot"]["sessions"]]')" '[["a", "plan", "session"], ["a", "build", "session"], ["a", "build", "restart"], ["a", "answer", "answer"]]' "STEER-AC23: the run's sessions, oldest first, with their kinds"
-same "$(jx 'd["autopilot"]["sessions"][0]["file"]')" "\".work/autopilot/$run-a-plan.jsonl\"" "STEER-AC23: the file is relative to the project"
-transcript a-build-2 1
-transcript a-build-wait-1 0
+same "$(jx '[[s["feature"], s["phase"], s["kind"]] for s in d["autopilot"]["sessions"]]')" '[["a", "plan", "session"], ["a", "build", "session"], ["a", "build", "session"], ["a", "plan", "restart"], ["a", "answer", "answer"]]' "GROUP-AC176: the run's sessions, oldest first, with their kinds"
+same "$(jx 'd["autopilot"]["sessions"][0]["file"]')" "\".work/autopilot/$run-a-plan.jsonl\"" "GROUP-AC176: the file is relative to the project"
+transcript a-plan-1 5
+transcript a-stack-3 0
 ap
-same "$(jx '[s["kind"] for s in d["autopilot"]["sessions"]][-2:]')" '["resumed", "wait"]' "STEER-AC23: resumed and wait sessions"
-same "$(jx 'd["autopilot"]["resume"]')" "null" "STEER-AC24: a run without a stop has nothing to resume"
+same "$(jx '[s["kind"] for s in d["autopilot"]["sessions"]][-2:]')" '["resumed", "session"]' "a plan resumed after an answer, and a numbered stack session"
+same "$(jx 'd["autopilot"]["resume"]')" "null" "GROUP-AC177: a run without a stop has nothing to resume"
 
 cat >>"$autopilot_dir/run-$run.md" <<'EOF'
-| b | b | stopped: user | stopped by the user | s1 s3 |
+| b | b | stopped: stop | stopped by .claude/bin/autopilot --stop | s1 s3 |
 
-Stopped at b: stopped by the user
+Stopped at b: stopped by .claude/bin/autopilot --stop
 EOF
 ap
-same "$(jx 'd["autopilot"]["resume"]')" '"s3"' "STEER-AC24: the stopped row's last session is resumed"
+same "$(jx 'd["autopilot"]["resume"]')" '"s3"' "GROUP-AC177: the stopped row's last session is resumed"
 rm -rf "$autopilot_dir"
 
 

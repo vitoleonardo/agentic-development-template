@@ -117,7 +117,7 @@ For now the gate only warns, so existing projects do not break; `/improve-kit` d
 
 `/plan-feature` runs `.claude/bin/plan-lint .work/<branch>.md` before it asks for approval and fixes every finding first; `/fix-bug` does the same for a fix plan. The script reads the plan's title (`# Plan: <feature> (spec: specs/<feature>.md)`, or `# Plan: <slug> (fix)`), the spec and the `## Tasks` table, and prints one `<plan>:<line>: <message>` per problem. Exit codes: 0 pass, 1 findings, 2 no plan.
 
-It finds: a criterion without a task, or a task naming an ID the spec does not have (a `## Criteria` section in the plan replaces the spec's set, as in a fix); a fix criterion that does not read like a spec's, or whose prefix a spec owns; an empty Files cell or one still holding `<paths>`; test cases that are only `add tests`; a dependency on a later task; a tier that is not `fast`, `standard` or `deep`, or a raised tier without its `Task <n> <tier>: <reason>` line (the default tier is `.claude/bin/route tier implement`); a new file outside the Map, through `.claude/bin/structure` (without a Map it says so on stderr and checks no path); a Design line still holding its placeholder, or no `Side effects`, `Reused` or `Approved dependencies` line; a Progress section that does not list every task once. `Base:` is never checked; `/ship-feature` fills it.
+It finds: a criterion without a task, or a task naming an ID the spec does not have (a `## Criteria` section in the plan replaces the spec's set, as in a fix); a fix criterion that does not read like a spec's, or whose prefix a spec owns; an empty Files cell or one still holding `<paths>`; test cases that are only `add tests`; a dependency on a later task; a tier that is not `fast`, `standard` or `deep`, or a raised tier without its `Task <n> <tier>: <reason>` line (the default tier is `.claude/bin/route tier implement`); a new file outside the Map, through `.claude/bin/structure` (without a Map it says so on stderr and checks no path); a Design line still holding its placeholder, or no `Side effects`, `Reused` or `Approved dependencies` line; a Progress section that does not list every task once. `Base:` is never checked; `/ship-feature` fills it. In a feature plan it also checks the group rules autopilot builds by: a Group column, a group for every task, at most 3 consecutive tasks per group, a `Group <id> <tier>: <reason>` line for a group above the default tier, and an `Approved size:` line that reads `<n> lines`. A fix plan, or a plan with a `## Bug` section, needs no Group column.
 
 ## Fix a bug
 
@@ -141,6 +141,8 @@ KIT_MODEL_DEEP="opus"        KIT_ROUTE_TESTS="standard"
 
 The Agent tool sets the model per dispatch but not the effort, so effort lives in the agent's frontmatter. The `reviewer` runs at `effort: high`: it is the gate that catches what the implementer missed, and a shallow review costs a verify round later. The implementer and the test-writer use the session's effort. `CLAUDE_CODE_EFFORT_LEVEL` overrides every one of them.
 
+Autopilot's group sessions take a reasoning effort per tier: `KIT_EFFORT_FAST`, `KIT_EFFORT_STANDARD` and `KIT_EFFORT_DEEP` in `kit.conf`, each `low`, `medium`, `high`, `xhigh` or `max`, or empty for the session's own default. A group starts with its tier's effort (`.claude/bin/route effort <tier>`). A group whose checks fail resumes one tier up with that tier's effort, and a deep group resumes at `max`, whatever `KIT_EFFORT_DEEP` says. `autopilot --ready` refuses a value outside the five. `CLAUDE_CODE_EFFORT_LEVEL` in the environment overrides all three, and `route check` warns about it. The final and stack sessions keep the session default.
+
 If `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set, Claude Code runs every subagent on one model and ignores the routing; `/ship-feature` warns about it.
 
 ## Token usage and budget
@@ -149,11 +151,15 @@ The `usage` hook keeps `.work/<branch>/usage.tsv` (tokens per agent and model, r
 
 `KIT_BUDGET_TOKENS` sets a budget per branch, counted as input, output and cache writes (cache reads are cheap and would dwarf everything else). At 80 percent the hook tells Claude to report it; at 100 percent it blocks the next dispatch, and `/ship-feature` stops and asks.
 
+`.claude/bin/usage cache` shows the cache hit rate per agent and for the branch: cache reads over everything sent (input, cache reads and cache writes), as a whole percent rounded down, `–` when nothing was sent. `usage line` ends with the branch's rate, so it lands in the PR's Cost line and the run log, and names it when it is below `KIT_CACHE_MIN_PERCENT` (default `90`; empty shows the rate without a minimum). A rate below 90 usually means a session that rewrites its prompt every turn, or subagents dispatched with a context too different from the last one. It only names the rate; it never fails a build.
+
+`.claude/bin/usage cost <feature>` sums what the feature's autopilot sessions cost, from the `cost_usd` column of `.work/autopilot/sessions.tsv`: one line per phase (`plan 1.50 USD`), a count of sessions without a cost, and `total 3.75 USD` last. The figure is Claude Code's own `total_cost_usd`; the kit keeps no price table. Autopilot writes the same total into the feature's row of the run log.
+
 ## See where a feature stands
 
 `.claude/bin/status` reads the current branch's row in `specs/README.md`, its spec and `.work/<branch>.md`, and prints one line: `invite-users · build · tasks 3/7 · 1 red · budget 42%`. The stage is the first rule that matches: `done` (status), `pr` (a saved PR description), `verify` (a verify round, or status `in-review`), `review` (a review round, or every task ticked), `build` (a ticked task, or status `building`), `plan` (a state file, or status `planned`), `spec` (a row). `--session <id>` adds the checks that are red in that session's turn.
 
-`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes. The output is the public interface for such tools: [Stempel Kit Pro](https://vito.koeln/)'s cockpit draws it as a status line and a `/cockpit` pane, and the `COCKPIT-` test IDs in `tests/status.test.sh` come from its spec.
+`--json` prints the same line plus the criteria (green, red or open from the Verify log), the tasks, Stops, Rounds, Decisions to review, the evidence pack and whether it was made on the current commit, the budget, and the latest autopilot run (`active` while its newest transcript changed within `AUTOPILOT_MAX_IDLE_SECONDS`, or while it waits for a usage limit). It writes nothing, so a status line or a pane can run it as often as it likes.
 
 ## Measure lead time
 
@@ -177,29 +183,30 @@ Off by default. Set `KIT_IMPROVE="1"` in `.claude/kit.conf` to turn it on.
 
 Every retry and stop in `/ship-feature` gets a line under Stops in `.work/<branch>.md`, whether this is on or not: `- <step> | <class> | <trigger> | <what was tried> | <resolution>`, with one of the classes `spec`, `plan`, `tier`, `test`, `hotfix`, `kit`, `env`, `budget`. Verify rounds also get a line under Rounds (`- verify <n> | full | <range> | pass` or `fail: <classes>`), which `runs report` counts per run and by cause. `/ship-feature` describes how each class is fixed.
 
-With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before the gates and commits `reports/runs/<branch>.tsv` together with the `in-review` status, so the evidence pack stays valid for that commit. The record holds: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
+With `KIT_IMPROVE` on, `/verify-feature` runs `.claude/bin/runs record` before the gates and commits `reports/runs/<branch>.tsv` together with the `in-review` status, so the evidence pack stays valid for that commit. The record holds: one `run` row (date, feature, branch, tasks, escalations, review rounds, tokens in total, per tier and in the main session, dispatched tasks and the branch's cache hit rate, from `.claude/bin/usage tsv`) and one `stop` row per Stops line. One file per branch, so parallel PRs never conflict. Turned off, `runs record` writes nothing.
 
-`.claude/bin/runs report` combines all records into `reports/runs.md`: median and p75 of tokens per run, tokens per task, the main session's share and review rounds, the escalation rate, and the stops by class with their text. Below five runs it says the numbers are not reliable. Cost is shown as tokens per tier, not money.
+`.claude/bin/runs report` combines all records into `reports/runs.md`: median and p75 of tokens per run, tokens per task, the main session's share, the cache hit rate and review rounds, the escalation rate, and the stops by class with their text. Runs with a different setup, and runs without a rate, stay out of the token and cache rows. Below five runs it says the numbers are not reliable. Cost is shown as tokens per tier, not money.
 
 `/improve-kit` is the optional retrospective on top. It reads that report, `leadtime` when `gh` works, and `reports/improvements.md`, checks whether earlier changes moved their metric, and applies fixed rules: escalations above 25 % of tasks, no escalations over ten tasks, more than one review round in the median, the same `kit` stop twice, repeated `spec` or `plan` stops, any `env` or `budget` stop, a rising main-session share. Each rule has a minimum sample. It writes proposals to `.work/improve/<date>.md` and changes nothing until you approve; approved changes go on a `kit-improve-<date>` branch, with a test for every hook or check change, and an entry in `reports/improvements.md` naming the metric to judge them by.
 
 ## Choose how often the agent asks
 
-`KIT_APPROVAL` decides which approval gates stop for you. Set it in `.claude/kit.conf`, or for one session in the environment, which wins: `KIT_APPROVAL=autonomous claude`.
+`KIT_APPROVAL` decides which approval gates stop for you. Set it in `.claude/kit.conf`, or for one session in the environment, which wins: `KIT_APPROVAL=strict claude`. The default is `autonomous`: the kit runs on its own and a risk rank decides where a person looks (see "Merge by risk").
 
-| Gate | What it covers | `strict` (default) | `standard` | `autonomous` |
+| Gate | What it covers | `strict` | `standard` | `autonomous` (default) |
 |---|---|---|---|---|
 | `spec` | approving the spec, and again after an amendment | ask | ask | auto |
-| `plan` | approving the plan | ask | ask | auto |
+| `plan` | approving the plan | ask | ask | ask when `.claude/bin/risk plan` is high, else auto |
 | `split` | splitting a change past `KIT_MAX_CHANGED_LINES` into several PRs | ask | auto | auto |
 | `deps` | new dependencies, package installs, lockfiles | ask | auto | auto |
 | `config` | `.github/`, `.gitlab-ci.yml`, Dockerfiles, compose files, `migrations/`, `infra/`, `terraform/` | ask | auto | auto |
 | `commit` | `git commit` on a feature branch | ask | auto | auto |
-| `push` | `git push`, `gh pr create`, `.claude/bin/evidence push` | ask | auto | auto |
+| `push` | `git push`, `gh pr create`, `.claude/bin/stack submit`, `.claude/bin/evidence push` | ask | auto, ask for `KIT_PUSH_ASK_PATTERNS` | auto |
+| `merge` | the build merging a stack | ask | by risk | by risk |
 
 `KIT_GATE_<NAME>="ask"` or `"auto"` overrides one gate, for example `KIT_APPROVAL="autonomous"` with `KIT_GATE_PUSH="ask"`. `.claude/bin/gate <name>` prints the answer; `.claude/bin/gate level` prints the level.
 
-`push` also asks at `standard` and `autonomous` when the branch changes a file in `KIT_PUSH_ASK_PATTERNS`. The adapters set it to auth and migrations (`auth/* *auth.* *.guard.* migrations/* *.migration.*` for TypeScript), so a person approves pushing those changes while a new route or UI change still goes out alone. `gate push` names the file on stderr. In an autopilot run that push stops the feature for you. Empty the variable, or set `KIT_GATE_PUSH="auto"`, to turn it off.
+`push` also asks at `standard` when the branch changes a file in `KIT_PUSH_ASK_PATTERNS`. The adapters set it to auth and migrations (`auth/* *auth.* *.guard.* migrations/* *.migration.*` for TypeScript). At `autonomous` those files no longer stop the push; they make the layer high at the merge, where the person sees the finished, checked stack.
 
 At an `auto` gate the agent decides and writes one line under `## Decisions to review` in `.work/<branch>.md`. `/pr-description` copies that section into the PR, so the reviewer sees every decision nobody approved.
 
@@ -209,21 +216,36 @@ Some things are never optional, at every level:
 
 - The guard still blocks secrets and `.env` files, protected paths, force push, `git reset --hard`, `git clean -f`, deleting branches, destructive SQL and network commands.
 - The `permissions.deny` rules still apply.
-- `gh pr merge`, and edits to `.claude/` and `kit.conf`, always ask. So the agent cannot raise its own level.
+- A session's `gh pr merge` and `gh stack merge`, and edits to `.claude/` and `kit.conf`, always ask, and `gh pr review` and `gh api` calls on reviews are denied. So the agent can neither raise its own level nor approve its own pull request; only the build's script merges, after the merge gate.
 - A commit on `main` or `master` always asks.
 - Failure stops still ask: a task that fails twice, review rounds that do not converge, a used-up token budget, a wrong spec, a missing credential.
 - Verify failures are classified by cause, and `.claude/bin/gate round <class> <n>` decides whether round n continues. `kit` (a false positive of the kit) never counts as a round. `test` (the test or its setup) and `hotfix` (a product fix that keeps the spec) continue up to `KIT_VERIFY_ROUNDS` (default `test:3 hotfix:2`), and at `autonomous` past it. `spec` always asks. The same failure coming back after two fixes stops at every level.
 
+## Merge by risk
+
+`.claude/bin/risk` ranks a plan before any code is written, and each layer of a stack before it merges (`specs/risk-gates.md`). It is a script, so the same plan or diff always gets the same rank: `risk <score> <low|medium|high>` and one reason per line.
+
+- **High whatever the score**: a file in `KIT_PUSH_ASK_PATTERNS` (auth, migrations) or `KIT_ARCHITECTURE_PATTERNS` (module boundaries, shared core, ADRs), a change to the build's own checks (`.github/`, `.claude/`, the e2e map, the mutation exceptions), and a plan whose `Architecture:` line is not `none`.
+- **Scored**: changed lines (or the plan's `Estimate:`) over `KIT_MAX_CHANGED_LINES` (+2) or twice it (+4), a public contract in `KIT_CONTRACT_PATTERNS` (+3), a change spread over 3 or 5 areas (+2, +3), dependencies (+2), deep-tier tasks, 4 or more groups and an approved size (plan only), and the run's own signals: retries a tier higher that failed, review rounds that ended with high findings, hotfix verify rounds, three or more decisions nobody approved.
+- **High** from `KIT_RISK_HUMAN` (default 8), medium from half of it.
+
+At `autonomous`, `gate plan` asks for a high plan: a person approves the spec and the plan together, before any code. In an autopilot build the plan session stops there with class `approval`. After the stack stage is green, `gate merge` lets the build merge the stack itself (`.claude/bin/stack merge`, `gh stack merge` with `KIT_MERGE_METHOD`, default squash) when no layer ranks high, or every high layer has an approval on its head commit by someone other than its author. Otherwise the build stops with class `approval` and names the pull requests; run it again after the approval, and it merges without running the stage again. `KIT_GATE_MERGE="ask"` keeps merging manual: the build then ends with the pull requests open, as at `strict`.
+
+The server enforces the same rule. The adapter's `risk.yml` runs on `pull_request_target`, so the workflow, the script and `kit.conf` come from the base branch and a pull request cannot change the rules it is judged by; it only reads the pull request's commits. It fails a high-ranked pull request until someone with write access other than its author approves its head commit, and a review reruns it. Make `Risk` a required status check.
+
+GitHub does not let an author approve their own pull request, so the build pushes as its own account: set `KIT_BOT_GH_CONFIG` to a `GH_CONFIG_DIR` logged in as a GitHub App or a machine user (`GH_CONFIG_DIR=~/.config/gh-kit-bot gh auth login`). Autopilot exports it for every session and has git push over https through `gh auth git-credential`. A session still runs as your operating-system user; the deny rules keep it from approving reviews, but full isolation needs a separate user or a container.
+
 ## Run a backlog unattended
 
-`.claude/bin/autopilot` builds several approved specs one after another without you. Each feature gets fresh headless sessions, so the context never holds more than one feature:
+`.claude/bin/autopilot` builds several approved specs one after another without you. Each group of tasks gets a fresh headless session, so the context never holds more than one group. `/ship-feature` uses the same build for one feature (see "A build started by /ship-feature"):
 
 | Level | Holds | Lives for |
 |---|---|---|
 | `autopilot` (shell, no model) | the queue, branch names, results | the whole run |
 | `claude -p "/plan-feature <slug>"` | spec, code exploration, plan | planning one feature |
-| `claude -p "/ship-feature <slug>"` | spec, plan, state file | building one feature |
-| subagents | one task | one task |
+| `claude -p "/ship-feature <slug> --group <id> ..."` | the group's tasks and code, on the group's highest tier | one group: at most 3 tasks |
+| `claude -p "/ship-feature <slug> --final"` | the whole branch, on the verify role's tier | the full review, verify and the PR |
+| subagents | simplify, review, a retry a tier higher, a final-session fix | one step |
 
 Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the usage record. A stopped feature resumes from them.
 
@@ -232,35 +254,90 @@ Files carry the state between them: `specs/README.md`, `.work/<branch>.md`, the 
 3. Start `claude` interactively in the project once and accept the trust dialog. Headless sessions ignore the allowlist in `.claude/settings.json` in a folder that was never trusted, so every check is denied. Trust is per folder: a new clone or worktree needs it again. Autopilot checks this first with a one-turn haiku session and refuses to start without it.
 4. Run `.claude/bin/autopilot` for every approved row in file order, or `.claude/bin/autopilot export invite` for a chosen order.
 
-For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. The first one starts from `KIT_BASE` or `main`. Then it runs the plan session and the build session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+For each feature it creates the branch from the previous feature's branch, so the PRs form a stack. Each feature's groups add their own layers to that stack (see "Stacked pull requests per group"). The first one starts from `KIT_BASE` or `main`. Then it runs the plan session, one session per group and the final session with `KIT_APPROVAL=autonomous`, `KIT_IMPROVE=1` and `--permission-prompts none`. Besides the allowlist in `settings.json`, the sessions may run the kit's own commands (`.claude/bin/*`, also by absolute path) and the git and `gh` steps of a build: `checkout`, `switch`, `restore`, `stash`, `commit`, `push`, `gh pr create` and `gh pr view`. The guard still runs before each of them, so force pushes, protected paths and the other mandatory asks still stop the session. Anything else that would prompt is denied. Add commands your project needs unattended to the allowlist in `settings.json`.
+
+After each group the build runs the typecheck and the related tests itself; a failing related test counts only if the whole suite's comparison with the baseline also fails, where a baseline exists. On a failure it resumes that session once, a tier higher, or at effort `max` when it already runs on deep. A second failure stops the build. It also stops when the budget is reached (reaching it is enough) or a group takes the branch over its size limit: the plan's `Approved size: <n> lines` if it has one, else twice `KIT_MAX_CHANGED_LINES`.
+
+A plan without a Group column, written before this version, is grouped by threes in plan order and needs no group review rounds.
+
+A rerun continues at the first group that is not done, and re-checks the last done group if nothing has built on it yet. Uncommitted tracked changes on the feature's own branch go into a stash named `autopilot <run> <branch>`, and the run log says so, when an open task will redo the work. Otherwise, on another branch, for changes under `.claude/`, and after a finished group left uncommitted changes, the build refuses and changes nothing.
+
+Only one build runs per checkout. A second one is refused; `.claude/bin/autopilot --stop` ends the running build and its session, and `.claude/bin/autopilot --ready` exits with 0 when one can start, 1 while one is running, and 2 when the budget is not set.
+
+**Steer a running build.** `.work/autopilot/lock/pid` names the build's process and its run.
+
+- `.claude/bin/autopilot --steer "<text>"` queues a message. The kit's `steer` hook hands it to the session after the main agent's next tool call, and the session logs what it did under Decisions to review as `steered-by-user`. While a subagent works, the message waits for its end. A message queued at a session's end goes to the build's next session. The answer session never gets one.
+- `.claude/bin/autopilot --stop` writes `stopped-by-user` under Decisions to review and prints `claude --resume <session id>` for the session it stopped; resume it there, then run `autopilot` again.
+- `.claude/bin/status --json` shows whether the build runs, its sessions with their transcripts, the messages and whether they were delivered, and the session to resume after a stop.
+
+Steering messages and user stops count as interventions in `reports/runs.md`, next to stops the user resolved.
 
 A feature is done when its PR exists (`gh pr view <branch>`). The row says `in-review` earlier, before the verify gates run, so that status alone does not count. Features with a PR, and rows marked `done`, are skipped, so running it again resumes. A feature that is `in-review` without a PR resumes at verify.
 
 **Questions.** Headless, nothing can wait for you. A question ends the session, and its text is the session's last message. Autopilot then asks a separate read-only session (Read, Grep, Glob only) to answer from the approved spec. The reply is either `ANSWER: …` or `ESCALATE: …`. On an answer, it resumes the session with it, and the session logs the answer under Decisions to review, so it lands in the PR. Only plain questions and stops of the classes `plan`, `tier` and `test` are answered, at most `AUTOPILOT_MAX_ANSWERS` (default 2) per feature. Autopilot stops the run instead, and never answers, when:
 
 - an action was denied (`permission_denials`): everything in the list above stays yours. The stop names the denied commands.
-- the stop class is `spec`, `hotfix`, `kit`, `env` or `budget`
+- the stop class is `spec`, `tier`, `hotfix`, `kit`, `env`, `budget` or `push`
 - the answerer escalates
 - the cap is reached
 
 Later features wait, because they build on the stopped one. Answer with the printed `claude --resume <session id>`, then run `autopilot` again.
 
-**Watchdog and usage limit.** Autopilot watches each session and stops it when it runs longer than `AUTOPILOT_MAX_SESSION_SECONDS` (default 14400, four hours), writes nothing for `AUTOPILOT_MAX_IDLE_SECONDS` (default 1200), or one agent makes the same tool call `AUTOPILOT_MAX_IDENTICAL_CALLS` times in a row (default 6). The stop goes under Stops with class `budget`, and a fresh session starts once; it resumes from `.work/<branch>.md` like any `/ship-feature` run. A second watchdog stop for the same phase halts the run. A session the usage limit stopped (a rejected `rate_limit_event`) is not counted: autopilot waits until two minutes after the reset and starts the phase again, at most `AUTOPILOT_MAX_WAITS` times (default 3).
+**Watchdog and usage limit.** Autopilot watches each session and stops it when it runs longer than `AUTOPILOT_MAX_SESSION_SECONDS` (default 14400, four hours), writes nothing for `AUTOPILOT_MAX_IDLE_SECONDS` (default 1200), or one agent makes the same tool call `AUTOPILOT_MAX_IDENTICAL_CALLS` times in a row (default 6). A session or check it stops gets `AUTOPILOT_KILL_GRACE_SECONDS` (default 10) to end before it is killed. The stop goes under Stops with class `budget`, and a fresh session starts once; it resumes from `.work/<branch>.md` like any `/ship-feature` run. A second watchdog stop for the same phase halts the run. A session the usage limit stopped (a rejected `rate_limit_event`) is not counted: autopilot waits until two minutes after the reset and starts the phase again, at most `AUTOPILOT_MAX_WAITS` times (default 3).
 
 **Sessions.** `.work/autopilot/sessions.tsv` gets one row per session: date, feature, phase, transcript, minutes, turns, cost in USD, result lines and what ended it (`ended`, `watchdog: …`, `usage limit`). A session writes one `result` line per segment, because it resumes after background tasks. `num_turns` counts only that segment, so the turns are summed. `total_cost_usd` covers the whole session, so the last one is the cost.
 
-**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the usage line, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript (with `-restart-<n>`, `-wait-<n>` or the answer number for later sessions of the phase). With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
-
-**Watch and steer a run.** One run at a time: `.work/autopilot/lock` holds its process and run ID, and a second `autopilot` refuses to start beside it.
-
-- `.claude/bin/autopilot start [slug ...]` runs the same checks, then detaches the run and returns once it is underway. The run's output goes to `.work/autopilot/autopilot.out`.
-- `.claude/bin/autopilot steer "<text>"` queues a message. The kit's `steer` hook hands it to the session after the main agent's next tool call, and the session logs what it did under Decisions to review as `steered-by-user`. While a subagent works, the message waits for its end. A message queued at a session's end goes to the run's next session.
-- `.claude/bin/autopilot stop` ends the session within 5 seconds and stops the run like any other stop, with `stopped-by-user` under Decisions to review. Resume it with the printed `claude --resume <session id>`, then run `autopilot` again.
-
-Steering messages and user stops count as interventions in `reports/runs.md`, next to stops the user resolved.
+**What is recorded.** `.work/autopilot/run-<time>.md` has one row per feature: branch, result or stop class, PR, minutes, the sessions' cost in USD, the usage line with the cache hit rate, the number of Decisions to review, the answers given by autopilot, and the session ids. `.work/autopilot/<run time>-<slug>-<phase>.jsonl` holds each session's full transcript (with `-restart-<n>`, `-wait-<n>` or the answer number for later sessions of the phase). With `KIT_IMPROVE` on, each PR also commits `reports/runs/<branch>.tsv`, and autopilot writes `reports/runs.md` at the end. Review in this order: the run log, then each PR's Decisions to review from the bottom of the stack up, then `reports/runs.md` and `/improve-kit`.
 
 If you change a lower PR during review, rebase the branches above it. Autopilot does not do that.
+
+### A build started by /ship-feature
+
+After you approve the plan, `/ship-feature` commits the spec and the status and runs `.claude/bin/autopilot --ship <feature>`. That is the same build for one feature, on the current branch and its `Base:`, detached, so it goes on when the terminal closes. Leave the checkout alone until it ends.
+
+It keeps the project's `KIT_APPROVAL` and `KIT_IMPROVE`. The approved plan covers commits, in every session. It covers `deps` and `config` too, unless `kit.conf` sets `KIT_GATE_DEPS` or `KIT_GATE_CONFIG`; a session that needs one of those then stops the build. If `.claude/bin/gate push` says `ask`, the final session stops before the push, and running `/ship-feature` again in a terminal asks you and pushes.
+
+Implementation tokens now show under `main` in `.claude/bin/usage`, not per tier, because the sessions themselves implement.
 - `/onboard` and `/improve-kit` stay human-started (`disable-model-invocation`). The pipeline skills can be started by the agent when you ask for a feature in plain words.
+
+## Stacked pull requests per group
+
+A feature with several groups reaches review as one pull request per group, stacked on each other with GitHub's stacked pull requests (`specs/stacked-groups.md`). The build itself is unchanged: one branch, one state file and one usage record per feature. At the PR step the final session runs `.claude/bin/stack submit`:
+
+1. `.claude/bin/stack layers` cuts the layers from the branch's history: every group but the last ends at the commit before the next group's first task commit, as branch `<branch>-g<group>`; the last group and the final session's review fixes stay on `<branch>`. A plan with one group, without a Group column, or whose history does not show where a group starts, is one layer.
+2. The evidence pack is pushed once more per layer, under `<layer>/<layer sha>/` on `kit-evidence`, with `stack_top` naming the commit it was verified on. CI's `Evidence` job then finds a pack for every layer's head.
+3. The layers are pushed and linked bottom to top: `gh stack link --base <stack base> <layers>`. An autopilot run continues the stack of the feature below, so the next feature's first pull request sits on the previous feature's top one.
+4. Each layer's pull request gets its own description (`/pr-description`, "Stacked layers"): the criteria of that group, `(n/N)` in the title, and the top layer for the whole feature.
+
+Install the extension with `gh extension install github/gh-stack` (`gh` 2.0 and git 2.36 or newer). Without it, or with stacked pull requests turned off for the repository, the same pull requests open as a chain, each based on the one below; `.claude/bin/autopilot --ready` and the run log say so. A pushed layer never moves: a fix after the submit goes on the top layer, because a commit on a lower one would rebase every layer above it.
+
+The size limit applies per layer, because a reviewer reads one layer at a time: each layer is measured against the one below, and the plan's `Approved size` lifts the limit for every layer. The build stops as soon as a layer passes it, and names the group.
+
+## The stack stage
+
+The slow checks run once per stack, on its top layer, as the last check before it merges (`specs/stack-stage.md`), not on every pull request and push. A feature's verify defers the seed, the e2e tests and the screenshots (`deferred: stack stage` in its data runs, and on e2e cases in its matrix); its pull requests' CI runs only the fast gates and the evidence check. After the last feature of a build, autopilot runs `.claude/bin/stack checks` on the top layer:
+
+- **e2e**: the tests the stack's changes select (`evidence e2e-select` against the stack's base, with the map), in one Playwright run that also takes the screenshots.
+- **mutation**: `KIT_MUTATION` on the stack's changed lines; below `KIT_MUTATION_THRESHOLD` (default 60) the stage is red.
+
+`KIT_STACK_CHECKS` says where: `ci` (the default) dispatches `.github/workflows/stack-checks.yml` on the top branch, waits for it and downloads its results; the workflow posts the statuses `kit/e2e` and `kit/mutation` on every layer head itself. `local` runs both in this checkout and posts the statuses as the build's account. `off` has no stage: verify runs the seed and the e2e tests itself, as before. `workflow_dispatch` only works once the workflow is on the default branch, so merge it there first. Make `kit/e2e` and `kit/mutation` required status checks.
+
+A red stage starts a session on the top layer (`/ship-feature --stack`): red e2e tests are classified and fixed as in verify, and surviving mutants go to the `test-writer` as a worklist. Then only the red e2e files run again (and the mutation tests), at most twice. A green stage gets its screenshots reviewed (`/ship-feature --stack review`), and `.claude/bin/stack bodies` puts each layer's criteria's screenshots and the mutation score into its pull request, between `<!-- kit-stage -->` markers. The whole suite still runs after the merge on the default branch.
+
+The e2e tests write the screenshots themselves, into `$KIT_SCREENSHOT_DIR` when it is set, named `<AC-ID>-<step>-<project>.png`. With Playwright:
+
+```ts
+import type { Page, TestInfo } from '@playwright/test';
+
+export async function shot(page: Page, testInfo: TestInfo, criterion: string, step: string) {
+  const name = `${criterion}-${step}-${testInfo.project.name}.png`;
+  const path = process.env.KIT_SCREENSHOT_DIR ? `${process.env.KIT_SCREENSHOT_DIR}/${name}` : testInfo.outputPath(name);
+  await page.screenshot({ path });
+  await testInfo.attach(`${criterion}-${step}`, { path, contentType: 'image/png' });
+}
+```
+
+Mutation tests with the TypeScript adapter use Stryker: add `@stryker-mutator/core` and `@stryker-mutator/vitest-runner` as devDependencies, and the adapter sets `KIT_MUTATION` and `KIT_MUTATION_FILES`. Only the mutants on the stack's changed lines count. An equivalent mutant (one no test can tell from the code) goes into `.kit/mutation-exceptions.tsv` as `<file> TAB <line> TAB <mutator> TAB <reason>`; a person adds it, because the build may not lower its own bar. For Java, PIT's `scmMutationCoverage` goal fits the same two commands.
 
 ## Block more commands
 
@@ -278,7 +355,7 @@ The hooks are in `.claude/hooks/` and registered in `.claude/settings.json`:
 |---|---|---|
 | `PreToolUse` (Bash, Read, Edit, Write, Grep, Glob) | `guard` | before every command and file access; exit 2 blocks it, and gated commands get `ask` or `allow` per `KIT_APPROVAL` |
 | `PostToolUse` (Edit, Write) | `record-edit` | after every edit; only notes the file, because it runs in parallel |
-| `PostToolUse` (every tool) | `steer` | only in autopilot sessions: hands the main agent the messages queued with `autopilot steer` |
+| `PostToolUse` (every tool) | `steer` | only in autopilot sessions: hands the main agent the messages queued with `autopilot --steer` |
 | `PostToolBatch` | `check-edits` | once per batch of tool calls: spec lint, format, typecheck, related tests |
 | `Stop` | `summary`, `usage` | when Claude wants to end the turn |
 | `PreToolUse`, `PostToolUse` (Agent), `SubagentStop` | `usage` | token record per agent, and the budget check before each dispatch |
@@ -289,11 +366,31 @@ Hook scripts receive JSON on stdin. `lib.sh` has helpers to read it without `jq`
 
 ## Run only the affected e2e tests
 
-A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), `/verify-feature` and the CI `evidence` job run only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
+A whole e2e suite on every pull request is slow. With `KIT_E2E_RELATED` set (the TypeScript adapter sets it when the project has a Playwright config), the e2e run (the stack stage, or `/verify-feature` and the CI `evidence` job with `KIT_STACK_CHECKS="off"`) runs only the e2e tests a change affects. `.claude/bin/evidence e2e-select` prints the selection and why:
 
-- **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
-- **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), or code changed that no e2e test maps to.
-- **none**: only tests and docs changed.
+- **related**: the e2e files the change touches (`KIT_E2E_PATTERNS`), the e2e tests the map names for the changed source files (below), plus the e2e files that name a feature whose criterion IDs the diff adds. A diff that adds `SPLIT-AC5` runs every e2e file that mentions `SPLIT-AC…`. This is why test names start with their criterion.
+- **all**: a file in `KIT_E2E_FULL_PATTERNS` changed (lockfile, `package.json`, Playwright config, shared fixtures), code changed that no e2e test maps to, or the map itself changed.
+- **none**: only tests and docs changed, or the map says no e2e test covers the changed files.
+
+A changed e2e file is checked first, so it runs alone even when a full pattern also matches it.
+
+### Select e2e tests with a map
+
+Criterion IDs only help when the diff names them; a refactor or a fix in shared code names none, and then the whole suite runs. A map says which e2e tests cover which source paths. Write it outside `.claude/`, so a plan's task can add a row, and name it in `kit.conf` (the TypeScript adapter picks up `.kit/e2e-map.tsv` when it exists):
+
+```text
+# <source pattern> TAB <e2e test patterns | all | ->
+src/invoices/pdf/*	e2e/pdf-*
+src/invoices/*	e2e/invoice-* e2e/import*
+src/db/schema.ts	-
+src/layout/*	all
+```
+
+- The first row whose source pattern matches a changed file wins, so put narrower rows first. Patterns are shell patterns; `*` also matches `/`.
+- `-` means no e2e test covers the path (integration tests do); `all` runs the whole suite.
+- A changed source file without a row runs the whole suite, so a gap in the map costs time, never a test. `KIT_E2E_FULL_PATTERNS` wins over the map.
+- The verify gate `e2e-map` fails while a row's source pattern matches no file or one of its e2e patterns matches no e2e test, so a renamed folder or test is found at the next verify.
+- `/plan-feature` adds a row in the task that adds an e2e test for a new area.
 
 The selection can miss a feature whose code a change breaks without naming it. The `Full e2e` job in `evidence.yml` covers that: it runs `evidence data --all` after every merge to `main`, one run per merge, so a failure points at the merge that caused it. Add files your e2e tests share (helpers, page objects, global setup) to `KIT_E2E_FULL_PATTERNS`. For other runners, set `KIT_E2E_RELATED` to a command that takes test files as arguments (`uv run pytest`, `cypress run --spec` needs a comma list, so wrap it in a script).
 

@@ -54,6 +54,7 @@ KIT_MAX_CHANGED_LINES="20"
 KIT_SEED="echo seeding; echo 'seed: fixtures-v2'"
 KIT_E2E="echo e2e ok"
 KIT_TEST_MOCKED="n/a: the app calls no external service"
+KIT_STACK_CHECKS="off"
 EOF
 printf '{\n  "name": "shop",\n  "dependencies": {\n    "zod": "4.0.0"\n  }\n}\n' >package.json
 printf 'export const total = 0;\n' >src/total.ts
@@ -162,6 +163,17 @@ expect_code 0 "above the size limit is a warning" .claude/bin/evidence gates
 expect_out "warning: 32 changed lines" "the size warning is shown"
 seq 1 50 | sed 's/^/export const y/;s/$/ = 1;/' >>src/lib/many.ts
 expect_code 1 "above twice the size limit fails" .claude/bin/evidence gates
+branch_now=$(git branch --show-current)
+mkdir -p ".work/$(dirname "$branch_now")"
+kept_plan=$(cat ".work/$branch_now.md" 2>/dev/null)
+changed_now=$(.claude/bin/evidence size | cut -d ' ' -f 1)
+printf '%s\nApproved size: %s lines\n' "$kept_plan" "$changed_now" >".work/$branch_now.md"
+same_size=$(.claude/bin/evidence size)
+if [ "$same_size" = "$changed_now $changed_now" ]; then echo "ok" >/dev/null; else echo "FAIL: evidence size reads the approved limit: $same_size"; failed=$((failed + 1)); fi
+expect_code 0 "GROUP-AC152: exactly the approved size passes" .claude/bin/evidence gates
+printf '%s\nApproved size: %s lines\n' "$kept_plan" "$((changed_now - 1))" >".work/$branch_now.md"
+expect_code 1 "GROUP-AC153: one line over the approved size fails" .claude/bin/evidence gates
+printf '%s\n' "$kept_plan" >".work/$branch_now.md"
 rm -r src/lib
 
 sed -i 's/^KIT_DUPLICATES=.*/KIT_DUPLICATES="echo \\"1 new clones\\"; exit 1"/' .claude/kit.conf
@@ -293,7 +305,7 @@ cat >bin/fake-e2e <<'EOF'
 #!/bin/sh
 printf '%s\n' "${*:-ALL}" >>"$E2E_LOG"
 [ -n "${BASE_HINT:-}" ] && printf 'env:%s\n' "$BASE_HINT" >>"$E2E_LOG"
-if [ -z "${KIT_SCREENSHOT_DIR:-}" ]; then
+if [ -z "${KIT_SCREENSHOT_DIR:-}" ] || [ -n "${KIT_STAGE_RUN:-}" ]; then
   mkdir -p .work
   failure=""
   [ -n "${E2E_FAIL:-}" ] && failure='<failure message="x"/>'
@@ -405,6 +417,228 @@ out=$(.claude/bin/evidence e2e-select 2>&1)
 expect_out "all: KIT_E2E_RELATED is not set" "without a related command the whole suite runs"
 git checkout -q .claude/kit.conf
 
+# --- e2e map (specs/e2e-map.md) ------------------------------------------------------
+
+# The full patterns hold the e2e folder too; a changed e2e test still runs alone.
+branch_with sel-full-e2e "printf 'test(\"CART-AC3: x\", () => {});\n' >>e2e/cart.spec.ts"
+sed -i 's|^KIT_E2E_FULL_PATTERNS=.*|KIT_E2E_FULL_PATTERNS="package.json e2e/*.ts"|' .claude/kit.conf
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "related: 1 e2e test files" "E2EMAP-AC9: a changed e2e test runs alone though a full pattern matches it"
+case $out in *shop.spec.ts*) fail "E2EMAP-AC9: only the changed e2e test: $out" ;; *) ok ;; esac
+git checkout -q .claude/kit.conf
+
+# On main: areas, their e2e tests, and the map.
+git checkout -q main
+main_before_map=$(git rev-parse HEAD)
+mkdir -p src/invoices/pdf src/time src/db src/layout "src/my area" .kit
+for f in src/invoices/total.ts src/invoices/pdf/render.ts src/time/entry.ts src/db/schema.ts src/layout/nav.tsx "src/my area/x.ts"; do
+  printf 'export const v = 1;\n' >"$f"
+done
+for f in invoice-list invoice-edit pdf-render time-entry; do printf 'test("%s", () => {});\n' "$f" >"e2e/$f.spec.ts"; done
+printf '# areas\nsrc/invoices/pdf/*\te2e/pdf-*\nsrc/invoices/*\te2e/invoice-*\nsrc/time/*\te2e/time-*\n\nsrc/db/schema.ts\t-\nsrc/layout/*\tall\nsrc/my area/*\te2e/time-*\npackage.json\t-\n' >.kit/e2e-map.tsv
+printf 'KIT_E2E_MAP=".kit/e2e-map.tsv"\n' >>.claude/kit.conf
+g add -A
+g commit -qm "e2e map"
+# A second base whose map has CRLF line endings: the same rows.
+git checkout -qb main-crlf
+sed 's/$/\r/' .kit/e2e-map.tsv >.kit/crlf && mv .kit/crlf .kit/e2e-map.tsv
+g commit -qam "crlf map"
+git checkout -q main
+
+branch_with map-one "printf 'export const v = 2;\n' >src/invoices/total.ts"
+expect_out "related: 2 e2e test files" "E2EMAP-AC1: the map row's e2e tests run"
+expect_out "e2e/invoice-edit.spec.ts" "E2EMAP-AC1: every e2e test of the row"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC1: every e2e test of the row"
+case $out in *pdf-render*|*time-entry*|*shop.spec*) fail "E2EMAP-AC1: no other e2e test: $out" ;; *) ok ;; esac
+
+branch_with map-two "printf 'export const v = 2;\n' >src/invoices/total.ts; printf 'export const v = 2;\n' >src/time/entry.ts"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC2: the first row's tests"
+expect_out "e2e/time-entry.spec.ts" "E2EMAP-AC2: the second row's tests"
+
+branch_with map-none "printf 'export const v = 2;\n' >src/db/schema.ts"
+expect_out "none:" "E2EMAP-AC3: a row with - runs no e2e test"
+expect_out "src/db/schema.ts" "E2EMAP-AC3: the reason names the file"
+
+branch_with map-all "printf 'export const v = 2;\n' >src/layout/nav.tsx"
+expect_out "all:" "E2EMAP-AC4: a row with all runs the whole suite"
+expect_out "src/layout/nav.tsx" "E2EMAP-AC4: the reason names the file"
+
+branch_with map-unknown "printf 'export const other = 3;\n' >src/other.ts"
+expect_out "all:" "E2EMAP-AC5: a file without a row runs the whole suite"
+expect_out "src/other.ts" "E2EMAP-AC5: the reason names the file"
+expect_out ".kit/e2e-map.tsv" "E2EMAP-AC5: the reason names the map"
+
+branch_with map-first "printf 'export const v = 2;\n' >src/invoices/pdf/render.ts"
+expect_out "e2e/pdf-render.spec.ts" "E2EMAP-AC6: the first matching row wins"
+case $out in *invoice-*) fail "E2EMAP-AC6: no test of a later row: $out" ;; *) ok ;; esac
+
+branch_with map-criteria "printf 'export const v = 2;\n' >src/invoices/total.ts; printf 'it(\"SHOP-AC4: rounds\", () => {});\n' >>src/total.test.ts"
+expect_out "e2e/shop.spec.ts" "E2EMAP-AC7: the e2e tests of the criteria the diff names still run"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC7: and the map row's tests"
+
+branch_with map-full "printf '{\"name\": \"shop2\"}\n' >package.json"
+expect_out "all: package.json changed" "E2EMAP-AC8: KIT_E2E_FULL_PATTERNS wins over a map row"
+
+git checkout -q main-crlf
+git checkout -qb map-crlf
+printf 'export const v = 2;\n' >src/invoices/total.ts
+g commit -qam "crlf change"
+out=$(KIT_BASE=main-crlf .claude/bin/evidence e2e-select 2>&1)
+expect_out "related: 2 e2e test files" "E2EMAP-AC10: CRLF, comments and empty lines select the same tests"
+expect_out "e2e/invoice-list.spec.ts" "E2EMAP-AC10: the row's tests"
+
+branch_with map-space "printf 'export const v = 2;\n' >'src/my area/x.ts'"
+expect_out "e2e/time-entry.spec.ts" "E2EMAP-AC19: a source pattern with a space is read up to the TAB"
+
+branch_with map-changed "printf 'src/new/*\te2e/time-*\n' >>.kit/e2e-map.tsv"
+expect_out "all: the e2e map .kit/e2e-map.tsv changed" "E2EMAP-AC20: a change to the map runs the whole suite"
+
+git checkout -q map-one
+sed -i 's|^KIT_E2E_MAP=.*|KIT_E2E_MAP=".kit/missing.tsv"|' .claude/kit.conf
+out=$(.claude/bin/evidence e2e-select 2>&1)
+expect_out "all: KIT_E2E_MAP names .kit/missing.tsv, which does not exist" "E2EMAP-AC12: a missing map runs the whole suite"
+git checkout -q .claude/kit.conf
+
+# The e2e-map gate.
+map_gate() {
+  .claude/bin/evidence gates --only e2e-map >/dev/null 2>&1
+  out=$(grep "^e2e-map${tab}" ".work/$(git branch --show-current)/evidence/gates.tsv")
+}
+map_gate
+expect_out "e2e-map${tab}pass" "E2EMAP-AC13: a map whose rows all match passes"
+printf 'src/time/*\te2e/billing-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC14: a target that matches no e2e test fails"
+expect_out "e2e/billing-*" "E2EMAP-AC14: the gate names the target"
+expect_out ".kit/e2e-map.tsv:10:" "E2EMAP-AC14: and the row's line"
+git checkout -q .kit/e2e-map.tsv
+printf 'src/billing/*\te2e/time-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC15: a source pattern that matches no file fails"
+expect_out "src/billing/*" "E2EMAP-AC15: the gate names the pattern"
+git checkout -q .kit/e2e-map.tsv
+printf 'src/time/* e2e/time-*\n' >>.kit/e2e-map.tsv
+map_gate
+expect_out "e2e-map${tab}fail" "E2EMAP-AC16: a row without a TAB fails"
+expect_out ".kit/e2e-map.tsv:10:" "E2EMAP-AC16: the gate names the row's line"
+git checkout -q .kit/e2e-map.tsv
+sed -i 's|^KIT_E2E_MAP=.*|KIT_E2E_MAP=""|' .claude/kit.conf
+map_gate
+expect_out "e2e-map${tab}n/a" "E2EMAP-AC17: without a map the gate is n/a"
+git checkout -q .claude/kit.conf
+
+grep -q 'KIT_E2E_MAP' "$here/kit/.claude/skills/plan-feature/SKILL.md" && ok || fail "E2EMAP-AC18: /plan-feature adds a map row for a new area"
+
+# Back to main without the map, for the sections below.
+git checkout -q main
+git reset -q --hard "$main_before_map"
+
+# --- the stack stage (specs/stack-stage.md) -------------------------------------------
+
+git checkout -q main
+main_before_stage=$(git rev-parse HEAD)
+git checkout -qb stage
+printf 'export const total = 9;\n' >src/total.ts
+printf 'test("SHOP-AC1: the total updates in the browser", () => {});\n' >>e2e/shop.spec.ts
+g commit -qam "stage change"
+sed -i 's/^KIT_STACK_CHECKS=.*/KIT_STACK_CHECKS="ci"/' .claude/kit.conf
+: >"$E2E_LOG"
+expect_code 0 "STAGE-AC2: data defers the e2e run to the stage" .claude/bin/evidence data
+grep -q "^e2e${tab}n/a${tab}0${tab}n/a: deferred: stack stage" .work/stage/evidence/data-runs.tsv && ok || fail "STAGE-AC2: the e2e row reads deferred: $(cat .work/stage/evidence/data-runs.tsv)"
+expect_code 0 "STAGE-AC1: screenshots wait for the stage" .claude/bin/evidence screenshots
+[ ! -s "$E2E_LOG" ] && ok || fail "STAGE-AC1: no e2e or screenshot command runs at verify: $(cat "$E2E_LOG")"
+.claude/bin/evidence gates >/dev/null 2>&1
+cat >.work/stage/evidence/edge-cases.md <<'EOF'
+| Criterion | Case | Input | Expected | Test | Result |
+|-----------|------|-------|----------|------|--------|
+| SHOP-AC1 | in the browser | add an item | the total updates | SHOP-AC1: the total updates in the browser | |
+EOF
+expect_code 0 "STAGE-AC43: an e2e case that has not run waits for the stage" .claude/bin/evidence matrix
+expect_out "deferred: stack stage" "STAGE-AC43: the case reads deferred"
+
+stage_dir=$work/stage-run
+expect_code 0 "the stage's e2e run passes" .claude/bin/evidence stage-e2e --dir "$stage_dir"
+[ -f "$stage_dir/screenshots/SHOP-AC1-1-desktop.png" ] && ok || fail "STAGE-AC15: the e2e run's screenshots are in the stage folder: $(ls "$stage_dir/screenshots" 2>&1)"
+[ "$(grep -c . "$E2E_LOG")" -eq 1 ] && ok || fail "STAGE-AC16: one run took the tests and the screenshots: $(cat "$E2E_LOG")"
+grep -q "^e2e${tab}pass" "$stage_dir/data-runs.tsv" && ok || fail "the stage records its e2e run: $(cat "$stage_dir/data-runs.tsv")"
+[ ! -s "$stage_dir/red.txt" ] && ok || fail "a green run has no red files: $(cat "$stage_dir/red.txt")"
+expect_code 0 "the stage's results go into the pack" .claude/bin/evidence stage-results --dir "$stage_dir"
+[ -f .work/stage/evidence/screenshots/SHOP-AC1-1-desktop.png ] && ok || fail "the screenshots join the pack"
+expect_code 0 "STAGE-AC44: with the stage's results the case passes" .claude/bin/evidence matrix
+expect_out "pass" "STAGE-AC44: the case reads pass"
+E2E_FAIL=1 expect_code 1 "a red stage run fails" .claude/bin/evidence stage-e2e --dir "$work/stage-red"
+[ "$(cat "$work/stage-red/red.txt")" = "e2e/shop.spec.ts" ] && ok || fail "STAGE-AC17: the red file is named: $(cat "$work/stage-red/red.txt" 2>&1)"
+: >"$E2E_LOG"
+expect_code 0 "STAGE-AC17: a rerun runs only the red files" .claude/bin/evidence stage-e2e --dir "$work/stage-rerun" --tests "e2e/shop.spec.ts"
+[ "$(head -n 1 "$E2E_LOG")" = "e2e/shop.spec.ts" ] && ok || fail "STAGE-AC17: KIT_E2E_RELATED gets only the red files: $(cat "$E2E_LOG")"
+
+# Mutation tests on the changed lines.
+git checkout -q main
+seq 1 20 | sed 's/^/export const m/;s/$/ = 1;/' >src/m.ts
+g add -A; g commit -qm "m"
+git checkout -qb mutate
+awk 'NR >= 10 && NR <= 14 { sub(/= 1;/, "= 2;") } { print }' src/m.ts >src/m.new && mv src/m.new src/m.ts
+printf 'it("x", () => {});\n' >>src/total.test.ts
+g commit -qam "mutate"
+out=$(.claude/bin/evidence mutation-scope 2>&1)
+[ "$out" = "src/m.ts:10-14" ] && ok || fail "STAGE-AC22: the scope is the changed lines of source files: $out"
+cat >bin/fake-mutation <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MUTATION_LOG"
+EOF
+chmod +x bin/fake-mutation
+mutants() { printf '%s\n' "$@" | tr '|' '\t' >"$work/mutants.tsv"; }
+printf 'KIT_MUTATION="%s"\nKIT_MUTATION_FILES="cat %s"\n' "'$project/bin/fake-mutation'" "'$work/mutants.tsv'" >>.claude/kit.conf
+export MUTATION_LOG="$work/mutation.log"
+mutants 'src/m.ts|10|A|Killed' 'src/m.ts|11|A|Killed' 'src/m.ts|11|B|Killed' 'src/m.ts|12|A|Killed' 'src/m.ts|12|B|Killed' \
+  'src/m.ts|13|A|Killed' 'src/m.ts|13|B|Killed' 'src/m.ts|14|A|Timeout' 'src/m.ts|14|B|Survived' 'src/m.ts|10|C|NoCoverage' 'src/m.ts|2|A|Survived'
+expect_code 0 "STAGE-AC23: 8 of 10 mutants on the changed lines pass the threshold" .claude/bin/evidence mutation --dir "$work/mut"
+[ "$(cat "$work/mut/mutation.txt")" = "score 80 threshold 60 killed 8 survived 2 mutants 10" ] && ok || fail "STAGE-AC23: the score is 80: $(cat "$work/mut/mutation.txt")"
+[ "$(cat "$MUTATION_LOG")" = "src/m.ts:10-14" ] && ok || fail "STAGE-AC22: KIT_MUTATION gets the changed ranges: $(cat "$MUTATION_LOG")"
+grep -q "^src/m.ts${tab}14${tab}B${tab}Survived" "$work/mut/survivors.tsv" && ok || fail "the survivors are listed: $(cat "$work/mut/survivors.tsv")"
+grep -q "${tab}2${tab}" "$work/mut/mutation.tsv" && fail "a mutant outside the changed lines does not count" || ok
+mutants 'src/m.ts|10|A|Killed' 'src/m.ts|10|B|Killed' 'src/m.ts|11|A|Killed' 'src/m.ts|11|B|Killed' 'src/m.ts|12|A|Killed' \
+  'src/m.ts|12|B|Survived' 'src/m.ts|13|A|Survived' 'src/m.ts|13|B|Survived' 'src/m.ts|14|A|Survived' 'src/m.ts|14|B|Survived'
+expect_code 1 "STAGE-AC25: a score of 50 fails the threshold of 60" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "Survivors" "STAGE-AC25: the survivors are printed for the test-writer"
+mkdir -p .kit
+printf '# equivalent mutants\nsrc/m.ts\t14\tA\tequivalent\nsrc/m.ts\t14\tB\tequivalent\n' >.kit/mutation-exceptions.tsv
+expect_code 0 "STAGE-AC24: listed exceptions do not count" .claude/bin/evidence mutation --dir "$work/mut"
+[ "$(cut -d' ' -f2 "$work/mut/mutation.txt")" = 62 ] && ok || fail "STAGE-AC24: the score is 62: $(cat "$work/mut/mutation.txt")"
+rm .kit/mutation-exceptions.tsv
+sed -i 's|^KIT_MUTATION=.*|KIT_MUTATION="n/a: a library without tests worth mutating"|' .claude/kit.conf
+expect_code 0 "STAGE-AC27: n/a passes" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "n/a: a library" "STAGE-AC27: with its reason"
+sed -i 's|^KIT_MUTATION=.*|KIT_MUTATION=""|' .claude/kit.conf
+expect_code 1 "STAGE-AC28: an empty KIT_MUTATION fails" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "KIT_MUTATION" "STAGE-AC28: and names it"
+git checkout -q .claude/kit.conf
+git checkout -q main
+git checkout -qb mutate-none
+printf 'it("y", () => {});\n' >>src/total.test.ts
+g commit -qam "tests only"
+printf 'KIT_MUTATION="%s"\nKIT_MUTATION_FILES="cat %s"\n' "'$project/bin/fake-mutation'" "'$work/mutants.tsv'" >>.claude/kit.conf
+expect_code 0 "STAGE-AC39: no changed source line passes" .claude/bin/evidence mutation --dir "$work/mut"
+expect_out "mutants 0" "STAGE-AC39: with no mutant"
+git checkout -q .claude/kit.conf
+
+# The statuses on every layer head.
+cat >"$work/fakebin/gh" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$GH_LOG"
+EOF
+chmod +x "$work/fakebin/gh"
+export GH_LOG="$work/gh.log"
+: >"$GH_LOG"
+printf 'score 59 threshold 60 killed 59 survived 41 mutants 100\n' >"$work/mut/mutation.txt"
+PATH=$work/fakebin:$PATH expect_code 0 "stage-status posts the statuses" .claude/bin/evidence stage-status --dir "$work/mut" --repo o/r --url https://ci/run --e2e success --mutation failure aaa111 bbb222
+grep -q "repos/o/r/statuses/aaa111 -f state=success -f context=kit/e2e" "$GH_LOG" && ok || fail "STAGE-AC10: kit/e2e success on the first layer: $(cat "$GH_LOG")"
+grep -q "repos/o/r/statuses/bbb222 -f state=success -f context=kit/e2e" "$GH_LOG" && ok || fail "STAGE-AC10: and on the second"
+grep -q "repos/o/r/statuses/bbb222 -f state=failure -f context=kit/mutation -f description=score 59 threshold 60" "$GH_LOG" && ok || fail "STAGE-AC11: kit/mutation failure with the score: $(cat "$GH_LOG")"
+rm -f "$work/fakebin/gh" bin/fake-mutation
+git checkout -q main
+git reset -q --hard "$main_before_stage"
+
 # --- red: criterion tests must fail without the change -----------------------------
 
 git checkout -q main
@@ -467,6 +701,25 @@ expect_out "| dependencies | pass |" "the dependency from m4 is not this branch'
 expect_out "| size | pass | 0s | 2 changed lines" "the size counts only this branch"
 grep -q "base m4" .work/m5/evidence/gates.md && ok || fail "gates.md names the base: $(head -n 3 .work/m5/evidence/gates.md)"
 KIT_BASE=main expect_code 1 "KIT_BASE wins over the state file" .claude/bin/evidence gates
+
+# --- the size limit per stacked layer (specs/stacked-groups.md) -------------------
+
+git checkout -q main
+git checkout -qb layers-size
+lines() { seq 1 "$2" | sed "s/^/export const $1/;s/\$/ = 1;/"; }
+printf '# Plan: Total (spec: specs/total.md)\nBase: main\n\n## Tasks\n| # | Task | Files | Criteria | Test cases | Depends on | Tier | Group |\n|---|---|---|---|---|---|---|---|\n| 1 | a | f | c | c | - | standard | A |\n| 2 | b | f | c | c | - | standard | B |\n\n## Progress\n- [x] 1 a\n- [x] 2 b\n' >.work/layers-size.md
+lines a 30 >src/layer-a.ts; g add -A; g commit -qm "task 1: a"
+lines b 30 >src/layer-b.ts; g add -A; g commit -qm "task 2: b"
+expect_code 0 "STACK-AC21: two layers each under twice the limit pass" .claude/bin/evidence gates --only size
+expect_out "layers: layers-size-gA 30, layers-size 30" "STACK-AC21: the gate lists each layer"
+[ "$(.claude/bin/evidence size)" = "30 40 layers-size B" ] && ok || fail "evidence size names the largest layer and its group: $(.claude/bin/evidence size)"
+lines b 45 >src/layer-b.ts; g commit -qam "task 2: more"
+expect_code 1 "STACK-AC22: a layer over twice the limit fails" .claude/bin/evidence gates --only size
+expect_out "in layer layers-size " "STACK-AC22: the failure names the layer"
+printf 'Approved size: 50 lines\n' >>.work/layers-size.md
+expect_code 0 "STACK-AC23: an approved size lifts the limit per layer" .claude/bin/evidence gates --only size
+mkdir -p vendor/ee && lines z 100 >vendor/ee/big.ts && g add -A && g commit -qm "task 2: vendor"
+expect_code 0 "STACK-AC31: protected paths stay out of a layer's size" .claude/bin/evidence gates --only size
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

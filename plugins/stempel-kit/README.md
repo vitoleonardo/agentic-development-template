@@ -1,6 +1,6 @@
-# Stempel Kit for Claude Code
+# Stempel Kit for Claude Code (next)
 
-[![CI](https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml/badge.svg?branch=main)](https://github.com/vitoleonardo/stempel-kit/actions/workflows/stempel-kit.yml) [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitoleonardo%2Fstempel-kit%2Fmain%2Fplugins%2Fstempel-kit%2Fkit%2F.claude%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&labelColor=15110C&color=1F7A4D)](../../README.md) [![License: MIT](https://img.shields.io/github/license/vitoleonardo/stempel-kit?labelColor=15110C&color=E2AE34)](../../LICENSE)
+> **Version 0.4.2, under test.** This is the next version of [stempel-kit](../stempel-kit/), which stays the stable one. It builds a feature in one fresh headless session per planned group of tasks and opens one pull request per group, linked as a GitHub stack. The e2e and mutation tests run once per stack, as the last check before the merge, and the build merges a stack itself unless its risk rank says a person approves it ([build log](docs/build-log.md)). A project installs only one of the two plugins: with both, every hook runs twice. It replaces the stable plugin after two real runs, one small feature and one 13-point sprint.
 
 Claude Code writes code fast, but out of the box nothing makes it write down what "done" means, test before it builds, or keep away from `.env` and `git push --force`. Teams end up re-explaining the same rules in every session and reviewing diffs that were never checked against a requirement. This kit puts the rules, the workflow and the checks into the repository, so every session and every developer works the same way and the CI enforces what the agent promised.
 
@@ -68,22 +68,24 @@ The duplicates gate needs `KIT_DUPLICATES`, `KIT_DUPLICATES_RELATED` and `KIT_SI
 
 ## How a feature flows
 
-The [diagram in the repository README](../../README.md#how-it-works) shows this flow with every gate and who sets it.
-
 ```text
 /ship-feature Invite colleagues to a team by email
   1. Spec       specs/invite.md: user flow, INVITE-AC1..n, edge cases, out of scope
                 spec-lint + reviewer check it                    -> you approve*
   2. Plan       .work/<branch>.md: design, tasks, test per criterion   -> you approve*
-  3. Build      implementer subagents, one task each: test red, code, test green
-  4. Review     read-only reviewer: verdict per criterion, findings by severity
-  5. PR         description with criteria and evidence           -> you push*
-  6. Accept     you check it and set the status to done
+  3. Build      starts on its own, and goes on if you close the terminal
+                per group of tasks, one headless session on the group's tier:
+                test red, code, test green, a commit per task, simplify, review
+                the build checks each group itself and stops on the budget
+  4. Final      one session: full-diff review, verify, one PR per group, stacked
+  5. Stage      once per stack: the selected e2e tests with screenshots, and mutation tests
+  6. Merge      the build merges a low-ranked stack; a high-ranked layer waits for you*
+  7. Accept     you check it and set the status to done
 ```
 
-\* With `KIT_APPROVAL=standard` the agent pushes and opens the PR itself, unless the branch changes auth or migration files (`KIT_PUSH_ASK_PATTERNS`). With `autonomous` it also approves the spec and the plan. Every decision it makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#choose-how-often-the-agent-asks).
+\* At the default `KIT_APPROVAL=autonomous` the agent approves the spec and the plan, pushes and merges itself, unless `.claude/bin/risk` ranks the plan or a layer high: an architecture change, auth or migration files, the build's own checks, or very complex work. Then you approve, and the `Risk` check holds the merge until you do. `standard` asks for the spec and the plan; `strict` asks at every gate and leaves the merge to you. Every decision the agent makes is listed under "Decisions to review" in the PR. See [docs/customizing.md](docs/customizing.md#merge-by-risk).
 
-To build a backlog of approved specs unattended, one fresh headless session per feature on stacked branches, run `.claude/bin/autopilot`, or `.claude/bin/autopilot start` to detach it. `autopilot steer "<text>"` sends the running session a message and `autopilot stop` stops the run. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
+A build needs a token budget (`KIT_BUDGET_TOKENS`), and leave its checkout alone while it runs. To build a backlog of approved specs unattended, on stacked branches, run `.claude/bin/autopilot`; `.claude/bin/autopilot --steer "<text>"` sends the running session a message and `.claude/bin/autopilot --stop` ends a build. See [docs/customizing.md](docs/customizing.md#run-a-backlog-unattended).
 
 Every step leaves a file, so a new session continues where the last one stopped. The steps also run on their own: `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/pr-description`. Bug fixes go through `/fix-bug`: no spec, but a red test before the fix, then the same review, verify and PR.
 
@@ -94,18 +96,21 @@ Every step leaves a file, so a new session continues where the last one stopped.
 | Project guide | `CLAUDE.md` | Project facts, the flow above, working agreements ("ask, don't fill gaps", "stop after two failed fixes") |
 | Rules | `.claude/rules/*.md` | Structure (the Map of where code lives), architecture, testing, security, code style, git, output (short answers and PRs). Stack rules load only for matching files |
 | Permissions | `.claude/settings.json` | Read-only git and the checks run without asking. Installs, pushes, CI, lockfiles, migrations and infra ask. Secrets, `rm -rf`, force push, network tools are denied |
-| Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. It also blocks writing a new source file outside the Map. `record-edit` and `check-edits` run format, typecheck, related tests and the duplicates check after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red |
+| Hooks | `.claude/hooks/` | `guard` blocks destructive commands and secret files and keeps agents in scope. It also blocks writing a new source file outside the Map. `record-edit` and `check-edits` run format, typecheck, related tests and the duplicates check after each batch of edits. `summary` lists changed files and check results, and holds the turn once while a check is red. `steer` hands an autopilot session the messages queued with `--steer` |
 | Skills | `.claude/skills/` | `/ship-feature`, `/fix-bug`, `/spec-feature`, `/plan-feature`, `/write-tests`, `/review-diff`, `/verify-feature`, `/pr-description`, `/onboard`, and the optional `/improve-kit` |
-| Subagents | `.claude/agents/` | `implementer` (one task, test first), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
+| Subagents | `.claude/agents/` | `implementer` (a retry a tier higher, a simplify, a fix in the final session), `test-writer` (may only edit test files), `reviewer` (read-only, specs and diffs) |
 | Status | `.claude/bin/status` | The current branch's feature in one line (stage, tasks, red checks, budget) or as JSON with criteria, sections, evidence and the autopilot run with its sessions and messages. Writes nothing |
 | Lead time | `.claude/bin/leadtime` | Lead time, cycle time, time to first review, review rounds, spec to merge, rework and PR size from GitHub, before and after the kit, without names by default |
-| Model routing | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`; tokens per agent and an optional budget per branch |
+| Model routing and cost | `.claude/bin/route`, `.claude/bin/usage`, `hooks/usage` | Each dispatched agent runs on a tier (fast, standard, deep) from `kit.conf`, and a group session with its tier's reasoning effort; tokens per agent, the cache hit rate per agent and branch, the sessions' cost per feature, and an optional budget per branch |
 | Run records (optional) | `.claude/bin/runs`, `/improve-kit` | Off until `KIT_IMPROVE` is set. One record per feature in `reports/runs/` (tokens per tier, escalations, review rounds, every stop with its cause); `/improve-kit` turns them into proposed changes to the kit, applied only after approval |
 | Check runner | `.claude/bin/check`, `.claude/kit.conf` | One entry point for typecheck, lint, test, related tests, coverage, format, build, duplicates and similar functions. The adapter fills in the commands; a package in a monorepo can have its own config |
 | Baseline | `.claude/bin/baseline`, `.claude/baseline.tsv` | `check --against-baseline` blocks only new failures: tests by ID, lint and type errors per file, coverage. `/onboard` records it for existing repositories |
 | Structure | `.claude/bin/structure`, `.claude/rules/structure.md` | Hard gate: every new source file sits in a home of the Map, and no file is named `utils`, `helpers`, `common` or `misc`. `/onboard` writes the Map from the repository |
 | Spec lint | `.claude/bin/spec-lint` | Hard gate for acceptance criteria: IDs, Given/when/then, one result per criterion, no vague words, required sections, no open questions once approved |
 | Plan lint | `.claude/bin/plan-lint` | Hard gate for the plan: every criterion in a task, no unknown IDs, named test cases, a reason per raised tier, dependency order, new files in the Map, no placeholder left |
+| Stacked PRs | `.claude/bin/stack` | One pull request per group, stacked with `gh stack` (or a chain without it), each with its own evidence pack and description; the size limit applies per layer |
+| Stack stage | `.claude/bin/stack checks`, `stack-checks.yml` | The selected e2e tests with their screenshots and mutation tests on the changed lines, once per stack before the merge, in CI or locally; screenshots and the mutation score go into each layer's pull request |
+| Risk rank | `.claude/bin/risk`, `risk.yml` | Ranks a plan and each layer of a stack: at the default `autonomous` level a person approves only a high plan and a high layer; the build merges the rest itself after the stack stage. CI enforces it on `pull_request_target` |
 | CI | `.github/workflows/quality-gates.yml` (each adapter) | Spec lint, typecheck, lint, tests, coverage of the changed files (70%), build, duplicates, structure, diff size warning, all against the baseline |
 | MCP example | `.mcp.example.json` | GitHub (read-only tools) and a database through a read-only user. Not active until you rename it |
 | Demo | `examples/demo-app/` | A small Next.js 16 app with a spec and tests to try everything on |
@@ -135,4 +140,4 @@ MIT. See [LICENSE](../../LICENSE).
 
 ---
 
-Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln). Teams that book a package also get Stempel Kit Pro: a cockpit in Claude Code, playbooks and updates, on top of this kit.
+Need this tailored to your codebase, your stack and your team? Run [repo-check](../repo-check/) first: ten questions, nothing sent, and it ends with an email draft. Or [book a free 20-minute call](https://calendar.app.google/N14WVsxK4fdqBhZv6), or write to [hi@vito.koeln](mailto:hi@vito.koeln).

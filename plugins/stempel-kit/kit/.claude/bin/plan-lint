@@ -7,7 +7,10 @@
 # non-empty Files, named test cases, dependencies on earlier tasks and a tier of fast, standard or deep with a
 # "Task <n> <tier>: <reason>" line when it is not the default (.claude/bin/route tier implement); new files sit
 # in a home of the Map (.claude/bin/structure); Design keeps no placeholder and names Side effects, Reused and
-# Approved dependencies; Progress lists every task once.
+# Approved dependencies; Progress lists every task once. A feature plan (one without a ## Bug section) has a Group
+# column: every task has a group, a group holds at most 3 consecutive tasks (features.sh plan_shape_problem), and a
+# group above the default tier has a "Group <id> <tier>: <reason>" line. An "Approved size:" line reads "<n> lines".
+# A feature plan's Design names its Architecture (none, or what changes) and an "Estimate: <n> lines" (the risk rank).
 # Prints <plan>:<line>: <problem> per finding. Exit codes: 0 pass, 1 findings, 2 no plan.
 set -u
 
@@ -16,6 +19,8 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd) || exit 2
 cd "$root" || exit 2
 # shellcheck source=criteria.sh
 . "$root/.claude/bin/criteria.sh"
+# shellcheck source=features.sh
+. "$root/.claude/bin/features.sh"
 
 if [ $# -gt 0 ]; then
   plan=$1
@@ -62,6 +67,7 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
       for (i = 1; i <= n; i++) if (tok[i] ~ /\/|\./) path_out(line, num, tok[i])
     }
   }
+  function rank(t) { return t == "deep" ? 3 : t == "standard" ? 2 : t == "fast" ? 1 : 0 }
   function ids_of(cell, out,    s, n) {
     n = 0; s = cell
     while (match(s, /[A-Z][A-Z0-9]*-AC[0-9]+/)) { out[++n] = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) }
@@ -103,6 +109,12 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
 
   /^## / { section = trim(substr($0, 4)); seen[section] = 1; heading[section] = FNR; next }
 
+  /^Approved size:/ {
+    if ($0 ~ /^Approved size:[[:space:]]*</) problem(FNR, "the Approved size line still holds its placeholder; write \"Approved size: <n> lines\", or delete the line.")
+    else if ($0 !~ /^Approved size:[[:space:]]*[0-9]+ lines[[:space:]]*$/) problem(FNR, "write the Approved size line as \"Approved size: <n> lines\".")
+    next
+  }
+
   section == "Criteria" && /^- \*\*/ {
     id = $0; sub(/^- \*\*/, "", id); sub(/\*\*.*$/, "", id)
     rest = $0; sub(/^- \*\*[^*]+\*\*/, "", rest); sub(/^:[[:space:]]*/, "", rest)
@@ -124,6 +136,7 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
     name = $0; sub(/^- /, "", name); sub(/:.*$/, "", name)
     value = $0; sub(/^- [^:]*:[[:space:]]*/, "", value)
     design_seen[name] = 1
+    if (name == "Estimate") { estimate = trim(value); estimate_line = FNR }
     if (value ~ /^</) problem(FNR, "Design line \"" name "\" still holds its placeholder; write the value, or none.")
     next
   }
@@ -170,6 +183,23 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
       if (tier != "fast" && tier != "standard" && tier != "deep") problem(FNR, "task " num ": Tier \"" tier "\" is not a tier; use fast, standard or deep.")
       else if (tier != default_tier) need_reason[num] = tier
     }
+    if ("Group" in col) {
+      grp = trim(cell[col["Group"]])
+      if (grp ~ /^</) problem(FNR, "task " num ": the Group cell still holds a placeholder (" grp ").")
+      else if (grp != "") {
+        if (!(grp in group_line)) { group_line[grp] = FNR; group_order[++ngroups] = grp }
+        t = (rank(tier) ? tier : default_tier)
+        if (rank(t) > rank(group_tier[grp])) group_tier[grp] = t
+      }
+    }
+    next
+  }
+
+  section == "Tasks" && header_line && /^(- )?Group [^[:space:]]+ (fast|standard|deep):/ {
+    s = $0; sub(/^(- )?Group /, "", s)
+    split(s, w, " ")
+    r = w[2]; sub(/:$/, "", r)
+    group_reason[w[1]] = r
     next
   }
 
@@ -229,6 +259,18 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
       if ((num in need_reason) && reason[num] != need_reason[num])
         problem(task_line[num], "task " num ": tier " need_reason[num] " is not the default (" default_tier "); add the line \"Task " num " " need_reason[num] ": <reason>\" under the table.")
     }
+    if (kind == "feature" && !("Bug" in seen) && ("Design" in seen)) {
+      if (!("Architecture" in design_seen)) problem(heading["Design"], "Design has no \"- Architecture:\" line; write none, or what changes in the architecture.")
+      if (!("Estimate" in design_seen)) problem(heading["Design"], "Design has no \"- Estimate: <n> lines\" line.")
+      else if (estimate !~ /^[0-9]+ lines$/) problem(estimate_line, "write the Estimate line as \"- Estimate: <n> lines\".")
+    }
+    if (kind == "feature" && !("Bug" in seen) && header_ok && !("Group" in col))
+      problem(header_line, "the Tasks table has no \"Group\" column; every task of a feature plan has a group.")
+    for (j = 1; j <= ngroups; j++) {
+      grp = group_order[j]
+      if (rank(group_tier[grp]) > rank(default_tier) && group_reason[grp] != group_tier[grp])
+        problem(group_line[grp], "group " grp " runs on " group_tier[grp] ", above the default (" default_tier "); add the line \"Group " grp " " group_tier[grp] ": <reason>\" under the table.")
+    }
     if (!("Design" in seen)) problem(NR, "missing the \"## Design\" section.")
     else for (i = 1; i <= nneed; i++) if (!(design_need[i] in design_seen)) problem(heading["Design"], "Design has no \"- " design_need[i] ":\" line.")
     if (!("Progress" in seen)) problem(NR, "missing the \"## Progress\" section.")
@@ -240,6 +282,15 @@ awk -v plan="$plan" -v planfile="$file" -v default_tier="$default_tier" -v paths
   }
 ' "$@" "$file"
 status=$?
+
+# The group rules autopilot also checks before a build: a group per task, at most 3 tasks, consecutive.
+if plan_has_groups "$file"; then
+  shape=$(plan_rows "$file" | plan_shape_problem)
+  if [ -n "$shape" ]; then
+    printf '%s:%s: %s.\n' "$plan" "$(grep -n '^## Tasks' "$file" | head -n 1 | cut -d: -f1)" "$shape"
+    status=1
+  fi
+fi
 
 # New paths go to the structure gate; a misplaced one is a finding on its task row.
 set --

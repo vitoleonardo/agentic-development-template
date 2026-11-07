@@ -22,6 +22,12 @@ expect() {
   fi
 }
 
+# CORE-AC1: one kit. The plugin lives at plugins/stempel-kit and no path or name keeps the old suffix.
+retired="stempel-kit-""next"
+expect "CORE-AC1: the kit lives at plugins/stempel-kit" test "$(basename "$here")" = stempel-kit
+expect "CORE-AC1: no file in the kit names $retired" sh -c "! grep -rq -- '$retired' '$here' --exclude-dir=node_modules --exclude-dir=.next"
+expect "CORE-AC1: no sibling plugin folder $retired" test ! -e "$here/../$retired"
+
 "$here/install.sh" "$full" --adapter typescript --preset nextjs >/dev/null || echo "FAIL: full install exited $?"
 "$here/install.sh" "$plugin" --adapter typescript --plugin >/dev/null || echo "FAIL: plugin install exited $?"
 
@@ -127,6 +133,53 @@ expect "legacy update: a changed file is kept" sh -c "tail -n 1 '$legacy/.claude
 expect "legacy update: the kit's version is staged" test -f "$legacy/.work/kit-update/.claude/settings.json"
 expect "legacy update: a manifest is written" test -f "$legacy/.claude/kit.manifest"
 rm -rf "$legacy"
+
+# CORE-AC2, CORE-AC31: the marketplace lists one kit, and a project on the retired plugin is told so and left alone.
+marketplace=$here/../../.claude-plugin/marketplace.json
+expect "CORE-AC2: the marketplace lists stempel-kit and repo-check" sh -c "grep -q '\"name\": \"stempel-kit\"' '$marketplace' && grep -q '\"name\": \"repo-check\"' '$marketplace'"
+expect "CORE-AC2: the marketplace lists no $retired" sh -c "! grep -q -- '$retired' '$marketplace'"
+expect "CORE-AC2: no description says never both" sh -c "! grep -qi 'never both' '$marketplace'"
+old=$(mktemp -d)
+mkdir -p "$old/.claude"
+printf '{ "enabledPlugins": { "%s@stempel-kit": true } }\n' "$retired" >"$old/.claude/settings.json"
+before=$(cd "$old" && find . -type f -exec cksum {} + | sort)
+out=$("$here/install.sh" "$old" --plugin 2>&1)
+code=$?
+after=$(cd "$old" && find . -type f -exec cksum {} + | sort)
+expect "CORE-AC31: a project on $retired is refused with exit 2" test "$code" -eq 2
+expect "CORE-AC31: the message says $retired is retired" sh -c "echo \"\$1\" | grep -q -- '$retired is retired'" sh "$out"
+expect "CORE-AC31: the message names the extensions" sh -c "echo \"\$1\" | grep -q 'stempel-kit-evidence' && echo \"\$1\" | grep -q 'stempel-kit-autopilot'" sh "$out"
+expect "CORE-AC31: no file changed" test "$before" = "$after"
+rm -rf "$old"
+
+# CORE-AC19, CORE-AC20, CORE-AC33: install.sh --extension copies the extension's scripts and appends its
+# kit.conf.part as one section; a second install keeps one section; two parts with one variable stop the install.
+ext=$(mktemp -d)
+mkdir -p "$ext/evidence/plugin/bin" "$ext/other/plugin/bin"
+printf '#!/bin/sh\necho evidence\n' >"$ext/evidence/plugin/bin/evidence"
+chmod +x "$ext/evidence/plugin/bin/evidence"
+printf '# Seeds the database.\nKIT_SEED=""\nKIT_E2E=""\n' >"$ext/evidence/plugin/kit.conf.part"
+printf '#!/bin/sh\necho other\n' >"$ext/other/plugin/bin/other"
+printf 'KIT_OTHER=""\nKIT_E2E="dup"\n' >"$ext/other/plugin/kit.conf.part"
+proj=$(mktemp -d)
+"$here/install.sh" "$proj" --adapter typescript --plugin >/dev/null || echo "FAIL: core install for extensions exited $?"
+core_before=$(sed '/^# extension: /,$d' "$proj/.claude/kit.conf")
+"$here/install.sh" "$proj" --extension "$ext/evidence/plugin" >/dev/null || echo "FAIL: extension install exited $?"
+expect "CORE-AC19: the extension's script is in .claude/bin" test -x "$proj/.claude/bin/evidence"
+expect "CORE-AC19: kit.conf gains the section header" grep -q '^# extension: evidence bin/evidence$' "$proj/.claude/kit.conf"
+section=$(sed -n '/^# extension: evidence /,/^# extension: /p' "$proj/.claude/kit.conf" | grep '^KIT_' | cut -d= -f1 | tr '\n' ' ')
+expect "CORE-AC19: the section holds exactly the part's variables" test "$section" = "KIT_SEED KIT_E2E "
+expect "CORE-AC19: the core variables are unchanged" test "$(sed '/^# extension: /,$d' "$proj/.claude/kit.conf")" = "$core_before"
+"$here/install.sh" "$proj" --extension "$ext/evidence/plugin" >/dev/null || echo "FAIL: second extension install exited $?"
+expect "CORE-AC20: a second install keeps one section" test "$(grep -c '^# extension: evidence ' "$proj/.claude/kit.conf")" -eq 1
+out=$("$here/install.sh" "$proj" --extension "$ext/other/plugin" 2>&1)
+code=$?
+expect "CORE-AC33: a part that redefines a variable stops the install" test "$code" -eq 2
+expect "CORE-AC33: the message names both extensions and the variable" sh -c "echo \"\$1\" | grep -q 'KIT_E2E' && echo \"\$1\" | grep -q 'evidence' && echo \"\$1\" | grep -q 'other'" sh "$out"
+expect "CORE-AC33: nothing of the refused extension was installed" test ! -e "$proj/.claude/bin/other" -a "$(grep -c '^# extension: ' "$proj/.claude/kit.conf")" -eq 1
+expect "extension: an unknown name is refused" sh -c "! '$here/install.sh' '$proj' --extension no-such-extension >/dev/null 2>&1"
+expect "extension: a project without the core is refused" sh -c "d=\$(mktemp -d); ! '$here/install.sh' \"\$d\" --extension '$ext/evidence/plugin' >/dev/null 2>&1"
+rm -rf "$ext" "$proj"
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

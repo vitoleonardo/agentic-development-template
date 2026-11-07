@@ -1,4 +1,0 @@
-{
-  "files": { "includes": ["packages/web/**/*.ts"] },
-  "linter": { "enabled": true }
-}
