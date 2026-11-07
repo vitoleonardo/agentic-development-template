@@ -144,6 +144,14 @@ marketplace=$here/../../.claude-plugin/marketplace.json
 expect "CORE-AC2: the marketplace lists stempel-kit and repo-check" sh -c "grep -q '\"name\": \"stempel-kit\"' '$marketplace' && grep -q '\"name\": \"repo-check\"' '$marketplace'"
 expect "CORE-AC2: the marketplace lists no $retired" sh -c "! grep -q -- '$retired' '$marketplace'"
 expect "CORE-AC2: no description says never both" sh -c "! grep -qi 'never both' '$marketplace'"
+for ext in "$here"/../stempel-kit-*/; do
+  ext=$(basename "$ext")
+  expect "CORE-AC2: the marketplace lists $ext with its plugin folder" sh -c "grep -q '\"name\": \"$ext\"' '$marketplace' && grep -q '\"source\": \"./plugins/$ext/plugin\"' '$marketplace'"
+done
+expect "CORE-AC3: the core's plugin.json has version 1.0.0" grep -q '"version": "1.0.0"' "$here/kit/.claude/.claude-plugin/plugin.json"
+for ext in "$here"/../stempel-kit-*/; do
+  expect "every extension's plugin.json has version 0.1.0 ($(basename "$ext"))" grep -q '"version": "0.1.0"' "$ext/plugin/.claude-plugin/plugin.json"
+done
 old=$(mktemp -d)
 mkdir -p "$old/.claude"
 printf '{ "enabledPlugins": { "%s@stempel-kit": true } }\n' "$retired" >"$old/.claude/settings.json"
