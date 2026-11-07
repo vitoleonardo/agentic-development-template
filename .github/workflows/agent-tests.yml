@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# One run at a time: a workflow_dispatch during the weekly run would double the spend.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   agent-tests:
     name: Agent tests within the budget
@@ -20,13 +25,27 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       KIT_TEST_BUDGET_USD: ${{ vars.KIT_TEST_BUDGET_USD }}
       NO_COLOR: "1"
+      KIT_TEST_TRANSCRIPTS: ${{ runner.temp }}/transcripts
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           package-manager-cache: false
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+      - uses: astral-sh/setup-uv@v7
+      # The runners' tools: Claude Code for every run, pnpm and uv for the onboard fixtures, the Playwright
+      # Chromium build of the demo app for the fix-bug and verify runs.
+      - name: Install Claude Code and pnpm
+        run: npm install -g @anthropic-ai/claude-code pnpm
+      - name: Install the demo app's Playwright browser
+        working-directory: plugins/stempel-kit/examples/demo-app
+        run: npm ci && npx playwright install --with-deps chromium
       - name: Run the agent tests until the budget is spent
         run: sh plugins/stempel-kit/tests/agent-tests.sh
+      - name: Keep the transcripts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcripts
+          path: ${{ runner.temp }}/transcripts
+          if-no-files-found: ignore

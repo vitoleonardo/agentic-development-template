@@ -6,7 +6,8 @@
 #        sh plugins/stempel-kit/tests/run.sh --extension <name> one extension's suites
 #        sh plugins/stempel-kit/tests/run.sh --select           changed paths on stdin; prints the extensions whose
 #                                                               tests CI runs, one per line: those whose folder
-#                                                               changed, and all when the core or the workflow changed
+#                                                               changed, those whose tests or plugin.json name one of
+#                                                               them, and all when the core or the workflow changed
 # KIT_TEST_SHELL (default sh) runs every suite, for example dash.
 set -u
 
@@ -18,7 +19,14 @@ usage() { sed -n '4,9p' "$0" | sed 's/^# //' >&2; exit 2; }
 if [ "${1:-}" = --select ]; then
   changed=$(cat)
   if printf '%s\n' "$changed" | grep -Eq '^(plugins/stempel-kit/|\.github/workflows/stempel-kit\.yml$)'; then extensions; exit 0; fi
-  for e in $(extensions); do printf '%s\n' "$changed" | grep -q "^plugins/stempel-kit-$e/" && echo "$e"; done
+  selected=$(for e in $(extensions); do printf '%s\n' "$changed" | grep -q "^plugins/stempel-kit-$e/" && echo "$e"; done)
+  for e in $(extensions); do
+    for c in $selected; do
+      [ "$e" != "$c" ] && grep -rqs "stempel-kit-$c" "$plugins/stempel-kit-$e/tests" "$plugins/stempel-kit-$e/plugin/.claude-plugin/plugin.json" &&
+        selected="$selected $e" && break
+    done
+  done
+  printf '%s\n' $selected | sort -u | grep .
   exit 0
 fi
 

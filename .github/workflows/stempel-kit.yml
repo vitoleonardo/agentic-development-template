@@ -2,8 +2,9 @@
 # the TypeScript adapter's quality gates on the demo app with the kit installed. Nothing here spends tokens.
 name: stempel-kit
 
-# No path filters: the jobs are required status checks, and a filtered required check
-# would leave pull requests that do not touch the kit waiting forever.
+# No path filters: "Core tests" and "Demo app gates" are the required status checks, and a filtered required
+# check would leave pull requests that do not touch the kit waiting forever. The "Extension <name>" jobs exist
+# only when the selection names them, so they are not required.
 on:
   pull_request:
   push:
