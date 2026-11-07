@@ -23,6 +23,7 @@ owns() {
   [ -n "$(ls "$ext"/tests/*.test.sh 2>/dev/null)" ] && ok || fail "stempel-kit-${ext##*-} has no tests/*.test.sh"
 }
 
+owns evidence plugin/bin/evidence plugin/skills/verify-feature/SKILL.md tests/evidence.test.sh
 owns onboard plugin/bin/baseline plugin/bin/onboard-apply plugin/skills/onboard/SKILL.md tests/baseline.test.sh
 
 echo "$passed passed, $failed failed"
